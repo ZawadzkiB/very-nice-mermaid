@@ -113,6 +113,18 @@ async function doRender(input: string, opts: RenderOpts): Promise<number> {
 
   // 5. layout (+ optional sidecar)
   let positioned: PositionedModel = layout(model, { theme });
+
+  // D6: rendering nothing is a silent failure. Input that yields zero renderable
+  // nodes is a CLI error in both lenient and strict modes — even when the parser
+  // only emitted warnings. (Unknown constructs *within* otherwise-valid mermaid
+  // still produce ≥1 node and stay lenient. The library API itself stays
+  // lenient: it returns the empty model without throwing; only the CLI escalates
+  // an empty render to a non-zero exit.)
+  if (positioned.nodes.length === 0) {
+    process.stderr.write("error: no diagram found (input produced 0 nodes)\n");
+    return 1;
+  }
+
   if (opts.layout) {
     try {
       const data = JSON.parse(readFileSync(opts.layout, "utf8")) as {

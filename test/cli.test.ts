@@ -92,6 +92,31 @@ describe("vnm CLI (child_process)", () => {
     expect(r.stderr).toContain("cannot read input");
   });
 
+  // D6: rendering nothing is a silent failure. Input that yields zero renderable
+  // nodes is a CLI error in both modes, even when the parser was only lenient.
+  it("fails with a clear message on fully non-mermaid input that yields 0 nodes", () => {
+    const r = cli(["render", "-", "-f", "svg"], "!!!! ### ???\n@@@ >>> <<<");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("no diagram found (input produced 0 nodes)");
+  });
+
+  it("fails on empty input (0 nodes)", () => {
+    const r = cli(["render", "-", "-f", "svg"], "");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("no diagram found");
+  });
+
+  it("stays lenient for an unknown construct inside otherwise-valid mermaid (>=1 node)", () => {
+    const r = cli(
+      ["render", "-", "-f", "svg"],
+      "flowchart TD\n A[Start] --> B\n click A callback",
+    );
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("<svg");
+    // the unsupported `click` statement is surfaced as a warning, not an error
+    expect(r.stderr).toContain("ignored-statement");
+  });
+
   it("prints help and version", () => {
     expect(cli(["--version"]).stdout).toContain("0.1.0");
     expect(cli(["--help"]).stdout).toContain("render");
