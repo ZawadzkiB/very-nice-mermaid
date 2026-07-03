@@ -1,9 +1,18 @@
 # very-nice-mermaid
 
+[![CI](https://github.com/ZawadzkiB/very-nice-mermaid/actions/workflows/ci.yml/badge.svg)](https://github.com/ZawadzkiB/very-nice-mermaid/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/very-nice-mermaid.svg)](https://www.npmjs.com/package/very-nice-mermaid)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen.svg)](#install)
+
 A framework-agnostic **Mermaid flowchart** renderer. It keeps Mermaid's DSL and
 replaces everything after it with **our own parser, layout, and renderers** — so
 you get **beautiful, interactive, themeable** diagrams with **no `mermaid.js`
 runtime and no headless browser**.
+
+<p align="center">
+  <img src="./assets/example-fancy.png" alt="A microservices flowchart rendered in the fancy theme" width="600">
+</p>
 
 - **Library** — parse DSL and `mount()` an **interactive** diagram (drag nodes,
   edges re-route live, pan / wheel-zoom / fit, minimap, layout persistence) in
@@ -19,6 +28,51 @@ mermaid DSL ──parse──▶ DiagramModel ──dagre──▶ PositionedMod
                                                                  ├─▶ SVG string ──resvg──▶ PNG
                                                                  └─▶ ASCII
 ```
+
+## Quick start
+
+**CLI** — no install needed, just `npx`:
+
+```bash
+# an interactive, self-contained HTML page you can open in any browser
+npx very-nice-mermaid render diagram.mmd -o diagram.html --theme dark
+
+# …or a static SVG / PNG / ASCII
+npx very-nice-mermaid render diagram.mmd -o diagram.svg
+echo 'flowchart LR; A[Hi] --> B([There])' | npx very-nice-mermaid render - -f md
+```
+
+**Library** — mount an interactive diagram in three lines:
+
+```ts
+import { mount } from "very-nice-mermaid";
+
+mount(document.getElementById("diagram")!, `
+  flowchart LR
+    A[Start] --> B{Choice}
+    B -->|yes| C([Done])
+    B -->|no| D[Fix] --> A
+`, { theme: "dark" });
+```
+
+**Web component** — zero wrapper code, works in any framework:
+
+```html
+<script type="module">import "very-nice-mermaid/element";</script>
+<very-nice-mermaid theme="fancy" style="height: 420px">
+  flowchart LR
+    A[Start] --> B{Choice} --> C([Done])
+</very-nice-mermaid>
+```
+
+## Gallery
+
+| Light | Dark |
+|---|---|
+| <img src="./assets/example-light.png" alt="light theme" width="360"> | <img src="./assets/example-dark.png" alt="dark theme" width="360"> |
+
+Drag nodes to reorganize (edges re-route live), scroll to zoom, and the layout
+persists across reloads. `--theme fancy` adds curved edges and glow.
 
 ## Install
 
@@ -172,7 +226,10 @@ renderSvg(dsl, { theme: ocean });
 ```
 
 - **CLI custom theme** — pass a JSON file of the same (partial) token shape:
-  `vnm render d.mmd -o d.svg --theme ./ocean.json`.
+  `vnm render d.mmd -o d.svg --theme ./my-theme.json`. See
+  [`theme.example.json`](./theme.example.json) for an annotated, copy-paste
+  starting point with every token. Only include the keys you want to change —
+  the rest inherit from `light`.
 - **CSS variables** — the DOM renderer applies `theme.cssVars()` (`--vnm-*`) to
   its root, so you can override colors from your own stylesheet:
 

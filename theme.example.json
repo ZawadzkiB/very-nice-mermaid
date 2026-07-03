@@ -1,0 +1,37 @@
+{
+  "//": "A custom theme for `vnm render ... --theme ./theme.example.json`. It is a PARTIAL token set — delete anything you don't want to change; every omitted key inherits from the built-in `light` theme. Colors accept any CSS color (hex, rgb(), rgba(), hsl(), named).",
+
+  "colors": {
+    "background": "#0b1020",
+    "surface": "#151b34",
+    "surfaceStroke": "#3b4a7a",
+    "text": "#eef1ff",
+    "textMuted": "#9fa9d6",
+    "edge": "#7d88c4",
+    "edgeLabelBg": "#0b1020",
+    "edgeLabelText": "#c8cffb",
+    "subgraphFill": "#111834",
+    "subgraphStroke": "#3b4a7a",
+    "subgraphText": "#9fa9d6",
+    "accent": "#8b6cff",
+    "minimapBg": "rgba(12,16,34,0.9)",
+    "minimapViewport": "rgba(139,108,255,0.35)",
+
+    "//roles": "Named palettes a node opts into with `A[Label]:::name` or `class A name` in the DSL. Add your own names too.",
+    "roles": {
+      "accent":  { "fill": "#2a2160", "stroke": "#8b6cff", "text": "#eef1ff" },
+      "success": { "fill": "#123a2e", "stroke": "#3fd39b", "text": "#d6ffef" },
+      "warn":    { "fill": "#3a2f0f", "stroke": "#e6c04d", "text": "#fff4cf" },
+      "danger":  { "fill": "#3f1830", "stroke": "#ff6bb0", "text": "#ffd9ec" }
+    }
+  },
+
+  "radii":   { "node": 12, "card": 12, "label": 6 },
+  "spacing": { "nodePadX": 16, "nodePadY": 12, "nodesep": 44, "ranksep": 66, "fitPadding": 60 },
+  "font":    { "family": "system-ui, sans-serif", "mono": "ui-monospace, monospace", "size": 14, "lineHeight": 18, "weight": 500 },
+
+  "//edge.style": "\"elbow\" for orthogonal edges, \"curved\" for beziers.",
+  "edge":    { "style": "curved", "width": 1.75, "thickWidth": 3.5, "arrowSize": 9 },
+
+  "effects": { "nodeShadow": "0 6px 22px rgba(80,60,180,0.35)", "gradient": true, "hoverLift": 3 }
+}

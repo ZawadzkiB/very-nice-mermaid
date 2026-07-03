@@ -4,6 +4,15 @@
   "description": "A framework-agnostic Mermaid flowchart renderer: parse the DSL, auto-layout with dagre, and render beautiful interactive HTML, static SVG, PNG, or ASCII — no mermaid.js runtime, no headless browser.",
   "type": "module",
   "license": "MIT",
+  "author": "Bartlomiej Zawadzki",
+  "homepage": "https://github.com/ZawadzkiB/very-nice-mermaid#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZawadzkiB/very-nice-mermaid.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ZawadzkiB/very-nice-mermaid/issues"
+  },
   "engines": {
     "node": ">=20"
   },
