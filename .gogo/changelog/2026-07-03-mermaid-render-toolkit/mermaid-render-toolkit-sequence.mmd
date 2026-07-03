@@ -1,0 +1,31 @@
+sequenceDiagram
+  actor User
+  participant El as mount() / element
+  participant RT as vnmRuntime
+  participant Geo as geometry
+  participant LS as localStorage
+
+  Note over El,RT: initial render
+  El->>RT: mount(el, {model, theme})
+  RT->>Geo: routeEdge(a,b,dir,style,waypoints)
+  Geo-->>RT: RoutedEdge.path (elbow/curved through waypoints)
+  RT-->>User: node cards + SVG edge layer + minimap
+
+  Note over User,LS: drag to reorganize (live re-route)
+  User->>RT: pointerdown on node card
+  loop pointermove
+    RT->>RT: update node position (÷ zoom)
+    RT->>Geo: re-route connected edges
+    Geo-->>RT: new paths (stay anchored to borders)
+    RT-->>User: edges follow the node
+  end
+  User->>RT: pointerup
+  RT->>LS: persist layout (debounced)
+
+  Note over User,RT: toolbar & viewport
+  User->>RT: click fit / zoom (guarded from pan capture)
+  RT-->>User: transform updated
+  User->>RT: reload page
+  RT->>LS: read saved layout
+  LS-->>RT: positions
+  RT-->>User: arrangement restored

@@ -16,11 +16,11 @@
 
 - **feature:** very-nice-mermaid — framework-agnostic mermaid DSL renderer: npm lib (interactive HTML component) + CLI (html/svg/png/ascii) with extensible themes
 - **phase:** done            <!-- plan | implement | review | test | knowledge | done -->
-- **status:** done           <!-- awaiting-plan-acceptance | plan-accepted | implementing | reviewing | testing | waiting-for-user | done | shipped | aborted -->
+- **status:** shipped        <!-- awaiting-plan-acceptance | plan-accepted | implementing | reviewing | testing | waiting-for-user | done | shipped | aborted -->
 - **created:** 2026-07-03
 - **branch:** n/a (repo not yet a git repository)
 - **iterations:** plan=1 · implement=5 · review=3 · test=2 · report=1
-- **resume:** none — report ⑤ complete (report/report.md + flow/class/sequence diagrams + refreshed knowledge docs); all phases green, 0 open issues. Run `/gogo:done` to ship to the changelog.
+- **resume:** none — shipped to .gogo/changelog/2026-07-03-mermaid-render-toolkit/ (v0.1.0). All phases green, 0 open issues.
 - **prior-resume:** implement round 5 (test-only hardening) complete — the single open
   finding from review round 3, REV-007 (nit / test-coverage gap), is closed and
   marked `status: fixed` in review/issues.json (fixed_in_round: 5, fix_summary +

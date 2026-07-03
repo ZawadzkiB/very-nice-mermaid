@@ -1,0 +1,23 @@
+{
+  "slug": "mermaid-render-toolkit",
+  "updated": "2026-07-03",
+  "members": ["mermaid-render-toolkit"],
+  "note": "Initial release (v0.1.0). Single-member entry. No before/ set — the repo was greenfield.",
+  "diagrams": [
+    {
+      "kind": "flow",
+      "file": "mermaid-render-toolkit-flow.mmd",
+      "title": "mermaid-render-toolkit: as-built data flow (DSL → parse → layout → renderers → outputs)"
+    },
+    {
+      "kind": "class",
+      "file": "mermaid-render-toolkit-class.mmd",
+      "title": "mermaid-render-toolkit: as-built modules & types"
+    },
+    {
+      "kind": "sequence",
+      "file": "mermaid-render-toolkit-sequence.mmd",
+      "title": "mermaid-render-toolkit: interactive runtime (mount → drag → re-route → persist)"
+    }
+  ]
+}

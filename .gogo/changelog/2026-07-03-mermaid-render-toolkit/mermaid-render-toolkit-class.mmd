@@ -1,0 +1,71 @@
+classDiagram
+  class DiagramModel {
+    +direction: Direction
+    +nodes: DiagramNode[]
+    +edges: DiagramEdge[]
+    +subgraphs: Subgraph[]
+    +classDefs: Map~string, StyleDef~
+    +diagnostics: Diagnostic[]
+  }
+  class PositionedModel {
+    +nodes: PositionedNode[]
+    +edges: RoutedEdge[]
+    +subgraphs: PositionedSubgraph[]
+    +bounds: Rect
+  }
+  class RoutedEdge {
+    +from: string
+    +to: string
+    +path: string
+    +waypoints: Point[]
+    +label?: string
+  }
+  class Theme {
+    +tokens: TokenSet
+    +edgeStyle: EdgeStyle
+  }
+  class Parser {
+    +parse(dsl, ParseOptions) DiagramModel
+  }
+  class Layout {
+    +layout(model, LayoutOptions) PositionedModel
+  }
+  class Geometry {
+    +routeEdge(a, b, dir, style, waypoints) RoutedEdge
+    +elbowThrough() ~orthogonal~
+    +roundedPath() ~curved~
+    +snapWaypoints()
+  }
+  class SvgRenderer {
+    +renderSvg(input, opts) string
+  }
+  class AsciiRenderer {
+    +renderAscii() string
+    +renderMarkdown() string
+  }
+  class DomRuntime {
+    +mount(el, opts) RuntimeHandle
+    +vnmRuntime (serializable)
+  }
+  class HtmlExport {
+    +renderHtml(input, opts) string
+  }
+  class PngExport {
+    +renderPng(input, opts) Uint8Array
+  }
+  class VeryNiceMermaidElement
+
+  Parser --> DiagramModel : produces
+  Layout --> DiagramModel : reads
+  Layout --> PositionedModel : produces
+  Layout ..> Geometry : routes edges
+  PositionedModel *-- RoutedEdge
+  SvgRenderer ..> PositionedModel
+  SvgRenderer ..> Theme
+  AsciiRenderer ..> PositionedModel
+  DomRuntime ..> PositionedModel
+  DomRuntime ..> Theme
+  DomRuntime ..> Geometry : re-routes on drag
+  HtmlExport ..> DomRuntime : serializes vnmRuntime
+  PngExport ..> SvgRenderer : rasterizes via resvg
+  VeryNiceMermaidElement ..> DomRuntime : mount()
