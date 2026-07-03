@@ -148,6 +148,35 @@ describe("parser: classes, classDef, style", () => {
     });
     expect(m.warnings.filter((w) => w.code === "unsafe-style-value")).toHaveLength(0);
   });
+
+  it("keeps comma-form rgb()/hsl() colors via a paren-aware split (REV-006)", () => {
+    // Commas inside rgb()/hsl() must not fragment the value; the whole function
+    // reaches the allowlist intact and is kept, with no spurious warning.
+    const m = parse("flowchart TD\n A-->B\n style A fill:rgb(10,20,30)");
+    expect(m.nodes[0]!.style).toMatchObject({ fill: "rgb(10,20,30)" });
+    expect(m.warnings.filter((w) => w.code === "unsafe-style-value")).toHaveLength(0);
+  });
+
+  it("keeps multiple comma-form values in one declaration list (REV-006)", () => {
+    const m = parse(
+      "flowchart TD\n classDef c fill:hsl(200,50%,40%),stroke:rgb(0,0,0)",
+    );
+    expect(m.classDefs.get("c")).toMatchObject({
+      fill: "hsl(200,50%,40%)",
+      stroke: "rgb(0,0,0)",
+    });
+    expect(m.warnings.filter((w) => w.code === "unsafe-style-value")).toHaveLength(0);
+  });
+
+  it("still drops a hostile comma-containing value after the paren-aware split (REV-006 vs REV-001)", () => {
+    // The attribute-breakout payload trailing a valid rgb() must remain rejected:
+    // the paren-aware split keeps it as one value, and it fails the allowlist.
+    const m = parse(
+      'flowchart TD\n A-->B\n style A fill:rgb(10,20,30)" onmouseover="x',
+    );
+    expect(m.nodes[0]!.style?.fill).toBeUndefined();
+    expect(m.warnings.filter((w) => w.code === "unsafe-style-value")).toHaveLength(1);
+  });
 });
 
 describe("parser: subgraphs", () => {

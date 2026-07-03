@@ -524,13 +524,38 @@ function isSafeStyleValue(key: string, value: string): boolean {
   }
 }
 
+/**
+ * Split a style property list on commas at **paren depth 0** only, so a comma
+ * inside a function value — `rgb(10,20,30)`, `hsl(200,50%,40%)`, `rgba(...)`,
+ * `hsla(...)` — stays with its declaration instead of being fragmented (which
+ * would fail {@link isSafeStyleValue} and drop a legitimate color). The `;`
+ * declaration separator is already split upstream in {@link collectStatements}.
+ */
+function splitTopLevelCommas(input: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      if (depth > 0) depth--;
+    } else if (ch === "," && depth === 0) {
+      parts.push(input.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(input.slice(start));
+  return parts;
+}
+
 /** Parse `fill:#f9f,stroke:#333,stroke-width:2px` into a {@link StyleDef}. */
 function parseStyleProps(
   input: string,
   onDrop?: (key: string, value: string) => void,
 ): StyleDef {
   const style: StyleDef = {};
-  for (const part of input.split(",")) {
+  for (const part of splitTopLevelCommas(input)) {
     const idx = part.indexOf(":");
     if (idx === -1) continue;
     const key = part.slice(0, idx).trim();
