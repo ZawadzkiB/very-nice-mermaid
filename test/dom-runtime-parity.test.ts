@@ -199,6 +199,46 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     expect(edgePaths(root)).toEqual(expected);
   });
 
+  it("routes CURVED (fancy) waypoint edges identically to geometry.routeEdge (REV-007)", () => {
+    // The TEST-001 fix added a curved-style detour path — geometry.roundedPath()
+    // and its inline twin runtime.pathRounded() — taken only when an edge has
+    // dagre waypoints AND the theme uses the curved edge style (fancy). The
+    // elbow cases above never reach it; this guards that .toString()-serialized
+    // twin against future drift, same drift class as the elbow guard.
+    const { model, theme } = prepare("flowchart TD\nA-->B-->C\nA-->C", { theme: "fancy" });
+    expect(theme.edgeStyle).toBe("curved"); // sanity: fancy really selects curved
+
+    const off = model.bounds;
+    const box = (id: string) => {
+      const nd = model.nodes.find((n) => n.id === id)!;
+      return { x: nd.x - off.x, y: nd.y - off.y, width: nd.width, height: nd.height };
+    };
+
+    // A->C is the skip-level detour: it must carry dagre waypoints and, under the
+    // curved style, render as a *rounded* poly-path (the roundedPath/pathRounded
+    // branch — quadratic `Q` corners), while the adjacent A->B / B->C edges take
+    // the plain bezier (`C`) branch. Asserting the shapes here proves this case
+    // genuinely exercises the curved+waypoint path the guard is meant to protect.
+    const ac = model.edges.find((e) => e.from === "A" && e.to === "C")!;
+    expect(ac.waypoints && ac.waypoints.length).toBeGreaterThan(0);
+    const acWps = (ac.waypoints ?? []).map((p) => ({ x: p.x - off.x, y: p.y - off.y }));
+    const acExpected = routeEdge(box("A"), box("C"), model.direction, theme.edgeStyle, acWps).path;
+    expect(acExpected).toContain(" Q "); // rounded corners → curved waypoint branch
+    const abExpected = routeEdge(box("A"), box("B"), model.direction, theme.edgeStyle).path;
+    expect(abExpected).toContain(" C "); // plain curved bezier branch (no waypoints)
+
+    const root = mountFake(buildPayload(model, theme, { minimap: false, persist: false }));
+
+    // Require the live runtime to match the shared geometry (threading the same
+    // waypoints) for EVERY edge, so both the pathRounded twin (A->C) and the
+    // bezier twin (A->B, B->C) stay in lockstep with src/geometry under `curved`.
+    const expected = model.edges.map((e) => {
+      const wps = (e.waypoints ?? []).map((p) => ({ x: p.x - off.x, y: p.y - off.y }));
+      return routeEdge(box(e.from), box(e.to), model.direction, theme.edgeStyle, wps).path;
+    });
+    expect(edgePaths(root)).toEqual(expected);
+  });
+
   it("resolves card styles identically to resolveNodeStyle (stroke-width + dasharray)", () => {
     const dsl = [
       "flowchart TD",

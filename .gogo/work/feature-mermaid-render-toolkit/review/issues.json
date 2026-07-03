@@ -1,7 +1,7 @@
 {
   "slug": "mermaid-render-toolkit",
   "track": "review",
-  "round": 2,
+  "round": 3,
   "updated": "2026-07-03",
   "issues": [
     {
@@ -81,12 +81,26 @@
       "proposed_solution": "AGENT-FIXABLE. Make the property splitter paren-aware: split the style/classDef list on commas only at paren depth 0 (track `(`/`)` depth while scanning) so `rgb(10,20,30)` reaches isSafeStyleValue intact — SAFE_COLOR already accepts the comma form. Add a parser test that `style A fill:rgb(10,20,30),stroke:#333` yields `{fill:'rgb(10,20,30)', stroke:'#333'}` with zero unsafe-style-value warnings. If comma-form support is judged out of scope for v1, at minimum reword the diagnostic so a splitter artifact is not reported as an \"unsafe\" value (e.g. 'unparsable style value'). Minor / non-blocking.",
       "severity": "minor",
       "priority": "P3",
-      "status": "fixed",
+      "status": "verified",
       "origin": "review",
       "found_in_round": 2,
       "fixed_in_round": 3,
       "fixed_in_commit": "429e832",
       "fix_summary": "Made the style/classDef property splitter paren-aware: parseStyleProps() now uses splitTopLevelCommas(), which splits only on commas at paren depth 0, so commas inside rgb()/rgba()/hsl()/hsla() no longer fragment the value. A comma-form color now reaches isSafeStyleValue() intact — SAFE_COLOR already accepts the comma form — so `fill:rgb(10,20,30)` and `classDef c fill:hsl(200,50%,40%),stroke:rgb(0,0,0)` are kept with no unsafe-style-value warning. No allowlist reject rule changed and the `;` declaration separator is still split upstream in collectStatements, so REV-001/REV-002 hold: a hostile value such as `fill:rgb(10,20,30)\" onmouseover=\"x` stays one value, fails the allowlist, and is still dropped + warned. Added three parser regressions in test/parser.test.ts (comma-form kept, multiple comma-form values in one list kept, hostile comma value still dropped/warned) and confirmed the existing REV-001/REV-002 exploit test still passes. Green: build, typecheck, 99 unit (+3), 8 e2e."
+    },
+    {
+      "id": "REV-007",
+      "title": "Curved/fancy waypoint path added in the TEST-001 fix is not covered by the REV-003 DOM-runtime parity guard",
+      "description": "The TEST-001 fix (commit 2aa0eb9) added a new curved-edge-style detour path: geometry.roundedPath() and its inline twin runtime.pathRounded(), taken only when an edge has dagre waypoints AND the theme uses the curved edge style (fancy). This is exactly the .toString()-serialized geometry duplication REV-003 flagged as drift-prone. The parity guard REV-003 introduced (test/dom-runtime-parity.test.ts) only ever instantiates the light theme (elbow edge style): every prepare()/buildPayload call in that file passes theme:'light' / themes.light, so routeEdge(...) is only compared for the elbow branch. The new waypoint case it added ('threads dagre detour waypoints identically') is also light/elbow. Result: the curved+waypoint code path (roundedPath vs pathRounded, plus labelPoint('elbow') vs labelPoly) is production-reachable (fancy theme on any flowchart with a skip-level/back edge; the state-machine fixture has 3 such edges under fancy) yet has no test asserting the static SVG and the live runtime agree. No actual drift exists today: the two implementations are line-for-line equivalent and fancy waypoint paths were confirmed NaN-free, so this is a future-drift/coverage gap, not a present defect, and it does not affect the elbow (light/dark) path, which is covered.",
+      "proposed_solution": "AGENT-FIXABLE. Extend test/dom-runtime-parity.test.ts with a curved-style case: run the existing skip-level DSL (flowchart TD / A-->B-->C / A-->C) through the fancy theme and assert edgePaths(root) equals routeEdge(box(from), box(to), direction, themes.fancy.edgeStyle, wps).path for every edge, so the roundedPath/pathRounded pair and the curved label position stay in lockstep. Optionally parametrize the two existing parity tests over ['light','fancy'] so both edge styles are guarded.",
+      "severity": "nit",
+      "priority": "P3",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 3,
+      "fixed_in_round": 5,
+      "fixed_in_commit": "279456a",
+      "fix_summary": "Test-only hardening (no product code changed). Extended test/dom-runtime-parity.test.ts with a CURVED/fancy-theme parity case over the skip-level shape (flowchart TD / A-->B-->C / A-->C, prepared with theme:'fancy' → edgeStyle:'curved'). It drives the real inlined vnmRuntime through the fake DOM and asserts the live runtime's edge `d` equals the shared geometry.routeEdge(box(from), box(to), direction, 'curved', wps).path for EVERY edge — so the roundedPath↔pathRounded twin (the A->C waypoint detour, whose expected path carries the `Q` rounded corners of the curved-waypoint branch) and the plain bezier twin (A->B, B->C, expected path carries a `C` command) both stay in lockstep with src/geometry. The case explicitly asserts A->C has dagre waypoints and that its expected path contains ` Q ` (proving it exercises the curved+waypoint branch, not the elbow one). The existing light/elbow parity assertions are untouched. Verified the new assertion genuinely catches drift: temporarily perturbing runtime.routeEdgePath so the curved branch used pathPoly() instead of pathRounded() made the A->C `Q`-cornered expectation fail to match the runtime's straight-line output (the only failing test), then reverted — src/ is byte-identical to before. Green: npm run build, npm run typecheck, npm test (110 unit, +1 over 109), npm run test:e2e (10 chromium)."
     }
   ]
 }

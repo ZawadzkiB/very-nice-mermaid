@@ -19,8 +19,34 @@
 - **status:** implementing   <!-- awaiting-plan-acceptance | plan-accepted | implementing | reviewing | testing | waiting-for-user | done | shipped | aborted -->
 - **created:** 2026-07-03
 - **branch:** n/a (repo not yet a git repository)
-- **iterations:** plan=1 · implement=4 · review=2 · test=1
-- **resume:** implement round 4 (test-fix) complete — all four actionable test
+- **iterations:** plan=1 · implement=5 · review=3 · test=2
+- **resume:** implement round 5 (test-only hardening) complete — the single open
+  finding from review round 3, REV-007 (nit / test-coverage gap), is closed and
+  marked `status: fixed` in review/issues.json (fixed_in_round: 5, fix_summary +
+  fixing commit). **NO product code changed — test-only.** Extended
+  test/dom-runtime-parity.test.ts with a CURVED/fancy-theme parity case over the
+  skip-level shape (`flowchart TD / A-->B-->C / A-->C`, prepared with
+  theme:'fancy' → edgeStyle:'curved'): it drives the real inlined runtime through
+  the fake DOM and asserts its edge `d` equals the shared
+  geometry.routeEdge(..., 'curved', wps) for every edge, so the
+  roundedPath↔pathRounded twin (the A->C waypoint detour, `Q` rounded corners)
+  and the plain bezier twin (A->B, B->C, `C` command) stay in lockstep. Verified
+  the guard genuinely fails on drift (perturbed the runtime's curved branch to
+  pathPoly → the A->C `Q`-cornered expectation no longer matched the straight
+  output; reverted, src/ byte-identical). The existing elbow parity assertions
+  and the REV-001/REV-002/REV-006 security suites are untouched and still pass.
+  Green: `npm run build` + `npm run typecheck` + `npm test` (110 unit, +1 over
+  109) + `npm run test:e2e` (10 chromium). Ready for re-review (④).
+  - REV-007 (nit / review r3): the REV-003 parity guard only exercised the
+    light/elbow theme, leaving the curved+waypoint path (added by the TEST-001
+    fix, commit 2aa0eb9) unguarded against future drift of the .toString()-
+    serialized runtime copy. Added a fancy-theme case; the two implementations
+    were already line-for-line equivalent + NaN-free, so this is pure coverage so
+    a FUTURE divergence fails loudly. Commit 279456a.
+  - Per delegation scope: touched only test/dom-runtime-parity.test.ts, state.md,
+    and review/issues.json; no src/ change, no charts/ regen, no
+    implement/result.json (left to the orchestrator).
+- **prior-resume:** implement round 4 (test-fix) complete — all four actionable test
   findings from test round 1 are fixed and written back in test/issues.json
   (`status: fixed`, `fixed_in_round: 4`, per-issue `fix_summary` + fixing commit);
   TEST-003 is marked `wontfix` per decisions.md D5 (no code change). Green:
