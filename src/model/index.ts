@@ -135,6 +135,15 @@ export interface RoutedEdge extends DiagramEdge {
   points: Point[];
   /** SVG path `d` string (`L…` for elbow, `C…` for curved). */
   path: string;
+  /**
+   * Interior detour waypoints from dagre's own multi-rank routing (absolute
+   * coords, dagre's border-attach endpoints stripped). Present only for edges
+   * that span intervening ranks; the renderers thread the route through these
+   * so multi-rank / back edges skirt node boxes instead of cutting straight
+   * through them. Kept on the edge so the live DOM runtime can re-route from
+   * the same detour while dragging.
+   */
+  waypoints?: Point[];
   /** Where the edge label plate is centered, if there is a label. */
   labelPos?: Point;
 }

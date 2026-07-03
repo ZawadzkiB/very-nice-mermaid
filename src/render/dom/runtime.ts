@@ -145,6 +145,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     kind: string;
     arrows: { start: boolean; end: boolean };
     label?: string;
+    /** dagre detour bends (offset-removed) for multi-rank / back edges. */
+    waypoints?: Array<{ x: number; y: number }>;
     path: SVGPathElement;
     plate?: SVGRectElement;
     text?: SVGTextElement;
@@ -162,6 +164,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     if (e.arrows.start) path.setAttribute("marker-start", "url(#vnm-arrow)");
     svg.appendChild(path);
     const rec: EdgeEls = { from: e.from, to: e.to, kind: e.kind, arrows: e.arrows, path };
+    if (e.waypoints && e.waypoints.length) {
+      rec.waypoints = e.waypoints.map((p) => ({ x: p.x - offsetX, y: p.y - offsetY }));
+    }
     if (e.label) {
       rec.label = e.label;
       const plate = doc.createElementNS(SVGNS, "rect");
@@ -288,7 +293,105 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     if (side === "left") return { x: b.x - b.w / 2, y: b.y };
     return { x: b.x + b.w / 2, y: b.y };
   }
-  function routePoints(fromId: string, toId: string) {
+  type Pt = { x: number; y: number };
+  function offAlong(p: Pt, side: string, k: number): Pt {
+    if (side === "top") return { x: p.x, y: p.y - k };
+    if (side === "bottom") return { x: p.x, y: p.y + k };
+    if (side === "left") return { x: p.x - k, y: p.y };
+    return { x: p.x + k, y: p.y };
+  }
+  // mirrors geometry.snapWaypoints(): snap dagre's sub-pixel jogs onto an anchor axis.
+  function snapWaypoints(interior: Pt[], start: Pt, end: Pt): Pt[] {
+    const xs = [start.x, end.x];
+    const ys = [start.y, end.y];
+    return interior.map((p) => {
+      let x = p.x;
+      let y = p.y;
+      for (const ax of xs) {
+        if (Math.abs(x - ax) <= 2) { x = ax; break; }
+      }
+      for (const ay of ys) {
+        if (Math.abs(y - ay) <= 2) { y = ay; break; }
+      }
+      return { x, y };
+    });
+  }
+  // mirrors geometry.elbowThrough(): thread a border-anchored orthogonal
+  // staircase through dagre's interior detour bends (multi-rank / back edges).
+  function elbowThrough(
+    start: Pt,
+    end: Pt,
+    interior: Pt[],
+    exitVertical: boolean,
+    entryVertical: boolean,
+    primaryVertical: boolean,
+  ): Pt[] {
+    const guide = [start, ...snapWaypoints(interior, start, end), end];
+    const out: Pt[] = [guide[0]!];
+    for (let i = 1; i < guide.length; i++) {
+      const prev = out[out.length - 1]!;
+      const cur = guide[i]!;
+      if (nAt(prev.x) !== nAt(cur.x) && nAt(prev.y) !== nAt(cur.y)) {
+        let verticalFirst: boolean;
+        if (i === 1) verticalFirst = exitVertical;
+        else if (i === guide.length - 1) verticalFirst = !entryVertical;
+        else verticalFirst = primaryVertical;
+        out.push(verticalFirst ? { x: prev.x, y: cur.y } : { x: cur.x, y: prev.y });
+      }
+      out.push(cur);
+    }
+    return simplify(out);
+  }
+  function dist(a: Pt, b: Pt): number {
+    return Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
+  }
+  function along(from: Pt, toward: Pt, r: number): Pt {
+    const d = dist(from, toward) || 1;
+    return { x: from.x + ((toward.x - from.x) * r) / d, y: from.y + ((toward.y - from.y) * r) / d };
+  }
+  // mirrors geometry.roundedPath(): smooth an orthogonal polyline for curved edges.
+  function pathRounded(points: Pt[]): string {
+    if (points.length <= 2) return pathPoly(points);
+    let d = "M " + nAt(points[0]!.x) + " " + nAt(points[0]!.y);
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = points[i - 1]!;
+      const cur = points[i]!;
+      const next = points[i + 1]!;
+      const r = Math.min(12, dist(prev, cur) / 2, dist(cur, next) / 2);
+      const a = along(cur, prev, r);
+      const b = along(cur, next, r);
+      d += " L " + nAt(a.x) + " " + nAt(a.y) + " Q " + nAt(cur.x) + " " + nAt(cur.y) + " " + nAt(b.x) + " " + nAt(b.y);
+    }
+    const last = points[points.length - 1]!;
+    d += " L " + nAt(last.x) + " " + nAt(last.y);
+    return d;
+  }
+  function pathPoly(points: Pt[]): string {
+    if (points.length === 0) return "";
+    let d = "M " + nAt(points[0]!.x) + " " + nAt(points[0]!.y);
+    for (let i = 1; i < points.length; i++) d += " L " + nAt(points[i]!.x) + " " + nAt(points[i]!.y);
+    return d;
+  }
+  function pathBezier(p: Pt[]): string {
+    return (
+      "M " + nAt(p[0]!.x) + " " + nAt(p[0]!.y) + " C " + nAt(p[1]!.x) + " " + nAt(p[1]!.y) + " " +
+      nAt(p[2]!.x) + " " + nAt(p[2]!.y) + " " + nAt(p[3]!.x) + " " + nAt(p[3]!.y)
+    );
+  }
+  function labelPoly(points: Pt[]): Pt {
+    if (points.length === 2) return { x: (points[0]!.x + points[1]!.x) / 2, y: (points[0]!.y + points[1]!.y) / 2 };
+    const mid = Math.floor(points.length / 2);
+    return { x: (points[mid - 1]!.x + points[mid]!.x) / 2, y: (points[mid - 1]!.y + points[mid]!.y) / 2 };
+  }
+  function labelBezier(p: Pt[]): Pt {
+    return {
+      x: 0.125 * p[0]!.x + 0.375 * p[1]!.x + 0.375 * p[2]!.x + 0.125 * p[3]!.x,
+      y: 0.125 * p[0]!.y + 0.375 * p[1]!.y + 0.375 * p[2]!.y + 0.125 * p[3]!.y,
+    };
+  }
+  // mirrors geometry.routeEdge(): recompute path + label from live positions,
+  // threading dagre's detour waypoints (kept fixed) when the edge has them.
+  function routeEdgePath(fromId: string, toId: string, waypoints?: Pt[]): { path: string; labelPos: Pt } {
     const fp = positions[fromId]!;
     const tp = positions[toId]!;
     const fs = sizes[fromId]!;
@@ -299,55 +402,40 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const r = anchor(from, "right");
       const t = anchor(from, "top");
       const off = Math.max(24, from.h * 0.6);
-      return [r, { x: r.x + off, y: r.y }, { x: r.x + off, y: t.y - off }, { x: t.x, y: t.y - off }, t];
+      const pts = [r, { x: r.x + off, y: r.y }, { x: r.x + off, y: t.y - off }, { x: t.x, y: t.y - off }, t];
+      return { path: pathPoly(pts), labelPos: labelPoly(pts) };
     }
     const s = pickSides(from, to);
     const start = anchor(from, s.exit);
     const end = anchor(to, s.entry);
     const horizontal = s.exit === "left" || s.exit === "right";
-    if (edgeStyle === "curved") {
+    const hasWps = !!(waypoints && waypoints.length > 0);
+    if (edgeStyle === "curved" && !hasWps) {
       const k = horizontal ? Math.max(24, Math.abs(end.x - start.x) * 0.5) : Math.max(24, Math.abs(end.y - start.y) * 0.5);
       const c1 = offAlong(start, s.exit, k);
       const c2 = offAlong(end, s.entry, k);
-      return [start, c1, c2, end];
+      const pts = [start, c1, c2, end];
+      return { path: pathBezier(pts), labelPos: labelBezier(pts) };
     }
-    if (horizontal) {
-      const midX = (start.x + end.x) / 2;
-      return simplify([start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]);
-    }
-    const midY = (start.y + end.y) / 2;
-    return simplify([start, { x: start.x, y: midY }, { x: end.x, y: midY }, end]);
-  }
-  function offAlong(p: { x: number; y: number }, side: string, k: number) {
-    if (side === "top") return { x: p.x, y: p.y - k };
-    if (side === "bottom") return { x: p.x, y: p.y + k };
-    if (side === "left") return { x: p.x - k, y: p.y };
-    return { x: p.x + k, y: p.y };
-  }
-  function pathOf(points: Array<{ x: number; y: number }>): string {
-    if (points.length === 0) return "";
-    if (edgeStyle === "curved" && points.length === 4) {
-      const p = points as Array<{ x: number; y: number }>;
-      return (
-        "M " + nAt(p[0]!.x) + " " + nAt(p[0]!.y) + " C " + nAt(p[1]!.x) + " " + nAt(p[1]!.y) + " " +
-        nAt(p[2]!.x) + " " + nAt(p[2]!.y) + " " + nAt(p[3]!.x) + " " + nAt(p[3]!.y)
+    let pts: Pt[];
+    if (hasWps) {
+      pts = elbowThrough(
+        start,
+        end,
+        waypoints!,
+        !horizontal,
+        s.entry === "top" || s.entry === "bottom",
+        !(model.direction === "LR" || model.direction === "RL"),
       );
+    } else if (horizontal) {
+      const midX = (start.x + end.x) / 2;
+      pts = simplify([start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]);
+    } else {
+      const midY = (start.y + end.y) / 2;
+      pts = simplify([start, { x: start.x, y: midY }, { x: end.x, y: midY }, end]);
     }
-    let d = "M " + nAt(points[0]!.x) + " " + nAt(points[0]!.y);
-    for (let i = 1; i < points.length; i++) d += " L " + nAt(points[i]!.x) + " " + nAt(points[i]!.y);
-    return d;
-  }
-  function labelAt(points: Array<{ x: number; y: number }>) {
-    if (edgeStyle === "curved" && points.length === 4) {
-      const p = points;
-      return {
-        x: 0.125 * p[0]!.x + 0.375 * p[1]!.x + 0.375 * p[2]!.x + 0.125 * p[3]!.x,
-        y: 0.125 * p[0]!.y + 0.375 * p[1]!.y + 0.375 * p[2]!.y + 0.125 * p[3]!.y,
-      };
-    }
-    if (points.length === 2) return { x: (points[0]!.x + points[1]!.x) / 2, y: (points[0]!.y + points[1]!.y) / 2 };
-    const mid = Math.floor(points.length / 2);
-    return { x: (points[mid - 1]!.x + points[mid]!.x) / 2, y: (points[mid - 1]!.y + points[mid]!.y) / 2 };
+    const path = edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts);
+    return { path, labelPos: labelPoly(pts) };
   }
 
   // ================= style resolution (mirrors render/style) =================
@@ -430,10 +518,10 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   }
   function renderEdges(): void {
     for (const e of edgeEls) {
-      const pts = routePoints(e.from, e.to);
-      e.path.setAttribute("d", pathOf(pts));
+      const routed = routeEdgePath(e.from, e.to, e.waypoints);
+      e.path.setAttribute("d", routed.path);
       if (e.plate && e.text && e.label) {
-        const lp = labelAt(pts);
+        const lp = routed.labelPos;
         const w = e.label.length * (tokens.font.size * 0.62) + 10;
         const h = tokens.font.lineHeight + 4;
         e.plate.setAttribute("x", String(nAt(lp.x - w / 2)));

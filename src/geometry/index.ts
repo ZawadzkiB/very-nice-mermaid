@@ -92,11 +92,78 @@ function simplify(points: Point[]): Point[] {
   return out;
 }
 
-/** Orthogonal elbow waypoints leaving/entering perpendicular to the borders. */
+/**
+ * How close (in user units) an interior waypoint must be to an endpoint anchor's
+ * axis before we snap it onto that axis. Kills the sub-pixel jogs dagre leaves
+ * when its border-intersection point lands a fraction off the node center, while
+ * staying far below a real detour lane (≥ one nodesep away).
+ */
+const WAYPOINT_SNAP = 2;
+
+/** Snap interior waypoints onto an endpoint anchor's axis when within tolerance. */
+function snapWaypoints(interior: Point[], start: Point, end: Point): Point[] {
+  const xs = [start.x, end.x];
+  const ys = [start.y, end.y];
+  return interior.map((p) => {
+    let { x, y } = p;
+    for (const ax of xs) {
+      if (Math.abs(x - ax) <= WAYPOINT_SNAP) {
+        x = ax;
+        break;
+      }
+    }
+    for (const ay of ys) {
+      if (Math.abs(y - ay) <= WAYPOINT_SNAP) {
+        y = ay;
+        break;
+      }
+    }
+    return { x, y };
+  });
+}
+
+/**
+ * Turn a guide polyline (border anchor → dagre's interior bend points → border
+ * anchor) into a clean orthogonal staircase: leave the source and enter the
+ * target perpendicular to their borders, and insert an L-corner wherever two
+ * consecutive guide points are diagonal to each other.
+ */
+function elbowThrough(
+  start: Point,
+  end: Point,
+  interior: Point[],
+  sides: { exitVertical: boolean; entryVertical: boolean; primaryVertical: boolean },
+): Point[] {
+  const guide = [start, ...snapWaypoints(interior, start, end), end];
+  const out: Point[] = [guide[0]!];
+  for (let i = 1; i < guide.length; i++) {
+    const prev = out[out.length - 1]!;
+    const cur = guide[i]!;
+    if (n(prev.x) !== n(cur.x) && n(prev.y) !== n(cur.y)) {
+      // First segment leaves the source perpendicular; last segment enters the
+      // target perpendicular; interior corners follow the layout's primary axis.
+      let verticalFirst: boolean;
+      if (i === 1) verticalFirst = sides.exitVertical;
+      else if (i === guide.length - 1) verticalFirst = !sides.entryVertical;
+      else verticalFirst = sides.primaryVertical;
+      out.push(verticalFirst ? { x: prev.x, y: cur.y } : { x: cur.x, y: prev.y });
+    }
+    out.push(cur);
+  }
+  return simplify(out);
+}
+
+/**
+ * Orthogonal elbow waypoints leaving/entering perpendicular to the borders.
+ * When `waypoints` (dagre's interior multi-rank bend points) are supplied, the
+ * route is threaded through them so it skirts intervening node boxes; otherwise
+ * it falls back to the naive single-bend elbow between the two borders.
+ */
 export function routeElbow(
   from: NodeBox,
   to: NodeBox,
   direction: Direction,
+  waypoints: Point[] = [],
 ): Point[] {
   if (from === to || (from.x === to.x && from.y === to.y)) {
     return selfLoop(from);
@@ -105,6 +172,13 @@ export function routeElbow(
   const start = sidePoint(from, exit);
   const end = sidePoint(to, entry);
   const horizontal = exit === "left" || exit === "right";
+  if (waypoints.length > 0) {
+    return elbowThrough(start, end, waypoints, {
+      exitVertical: !horizontal,
+      entryVertical: entry === "top" || entry === "bottom",
+      primaryVertical: !isHorizontalLayout(direction),
+    });
+  }
   let points: Point[];
   if (horizontal) {
     const midX = (start.x + end.x) / 2;
@@ -164,6 +238,41 @@ function selfLoop(box: NodeBox): Point[] {
   ];
 }
 
+function dist(a: Point, b: Point): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+/** A point `r` units from `from` toward `toward`. */
+function along(from: Point, toward: Point, r: number): Point {
+  const d = dist(from, toward) || 1;
+  return {
+    x: from.x + ((toward.x - from.x) * r) / d,
+    y: from.y + ((toward.y - from.y) * r) / d,
+  };
+}
+
+/**
+ * Render an orthogonal polyline as a smooth path by rounding each corner with a
+ * short quadratic arc — the curved edge style's take on a routed (multi-rank)
+ * edge, so it flows around intervening nodes instead of cutting a straight line.
+ */
+export function roundedPath(points: Point[], radius = 12): string {
+  if (points.length <= 2) return toPath(points, "elbow");
+  let d = `M ${n(points[0]!.x)} ${n(points[0]!.y)}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1]!;
+    const cur = points[i]!;
+    const next = points[i + 1]!;
+    const r = Math.min(radius, dist(prev, cur) / 2, dist(cur, next) / 2);
+    const a = along(cur, prev, r);
+    const b = along(cur, next, r);
+    d += ` L ${n(a.x)} ${n(a.y)} Q ${n(cur.x)} ${n(cur.y)} ${n(b.x)} ${n(b.y)}`;
+  }
+  const last = points[points.length - 1]!;
+  d += ` L ${n(last.x)} ${n(last.y)}`;
+  return d;
+}
+
 /** Build the SVG path `d` for a routed edge (elbow polyline or bezier). */
 export function toPath(points: Point[], style: EdgeStyle): string {
   if (points.length === 0) return "";
@@ -205,15 +314,30 @@ export function labelPoint(points: Point[], style: EdgeStyle): Point {
   return { x: n((a.x + b.x) / 2), y: n((a.y + b.y) / 2) };
 }
 
-/** Route an edge end-to-end: waypoints, SVG path, and label position. */
+/**
+ * Route an edge end-to-end: waypoints, SVG path, and label position. Optional
+ * `waypoints` are dagre's interior multi-rank bend points; when present the
+ * route is threaded through them (a rounded path for the curved style, an
+ * orthogonal staircase for elbow) so it skirts intervening node boxes.
+ */
 export function routeEdge(
   from: NodeBox,
   to: NodeBox,
   direction: Direction,
   style: EdgeStyle,
+  waypoints: Point[] = [],
 ): { points: Point[]; path: string; labelPos: Point } {
-  const points = style === "curved" ? routeCurved(from, to, direction) : routeElbow(from, to, direction);
-  return { points, path: toPath(points, style), labelPos: labelPoint(points, style) };
+  const selfish = from === to || (from.x === to.x && from.y === to.y);
+  if (style === "curved" && waypoints.length > 0 && !selfish) {
+    const points = routeElbow(from, to, direction, waypoints);
+    return { points, path: roundedPath(points), labelPos: labelPoint(points, "elbow") };
+  }
+  if (style === "curved") {
+    const points = routeCurved(from, to, direction);
+    return { points, path: toPath(points, "curved"), labelPos: labelPoint(points, "curved") };
+  }
+  const points = routeElbow(from, to, direction, waypoints);
+  return { points, path: toPath(points, "elbow"), labelPos: labelPoint(points, "elbow") };
 }
 
 /** Bounding rect over every box (and optional extra points), plus padding. */

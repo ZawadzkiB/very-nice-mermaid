@@ -13,6 +13,7 @@ import type {
   PositionedSubgraph,
   RoutedEdge,
   Direction,
+  Point,
 } from "../model/index.js";
 import { themes, type Theme } from "../theme/index.js";
 import { contentBounds, routeEdge, type NodeBox } from "../geometry/index.js";
@@ -101,15 +102,22 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
   }
 
   const edges: RoutedEdge[] = [];
-  for (const edge of model.edges) {
+  model.edges.forEach((edge, i) => {
     const from = nodeBoxes.get(edge.from);
     const to = nodeBoxes.get(edge.to);
-    if (!from || !to) continue;
-    const routed = routeEdge(from, to, model.direction, theme.edgeStyle);
+    if (!from || !to) return;
+    // Multi-rank / back edges: reuse dagre's own routing bends (it already
+    // steers them around intervening ranks) instead of a naive straight elbow
+    // that would cut through the nodes in between. Adjacent edges (dagre emits
+    // ≤3 points: two border-attach ends + a single rank-gap bend) keep the
+    // border-anchored elbow, so their routing is unchanged.
+    const waypoints = edgeWaypoints(g, edge.from, edge.to, `e${i}`);
+    const routed = routeEdge(from, to, model.direction, theme.edgeStyle, waypoints);
     const out: RoutedEdge = { ...edge, points: routed.points, path: routed.path };
+    if (waypoints.length > 0) out.waypoints = waypoints;
     if (edge.label) out.labelPos = routed.labelPos;
     edges.push(out);
-  }
+  });
 
   const allEdgePoints = edges.flatMap((e) => e.points);
   const bounds = contentBounds(
@@ -152,8 +160,12 @@ export function applyPositions(
     const from = nodeBoxes.get(edge.from);
     const to = nodeBoxes.get(edge.to);
     if (!from || !to) return edge;
-    const routed = routeEdge(from, to, model.direction, theme.edgeStyle);
+    // Keep the original detour waypoints so a sidecar/repositioned layout still
+    // routes multi-rank edges around intervening ranks (matching the live DOM
+    // runtime, which keeps them while dragging).
+    const routed = routeEdge(from, to, model.direction, theme.edgeStyle, edge.waypoints ?? []);
     const out: RoutedEdge = { ...edge, points: routed.points, path: routed.path };
+    if (edge.waypoints) out.waypoints = edge.waypoints;
     if (edge.label) out.labelPos = routed.labelPos;
     return out;
   });
@@ -170,6 +182,24 @@ export function applyPositions(
     BOUNDS_PADDING,
   );
   return { ...model, nodes, edges, bounds };
+}
+
+/**
+ * Extract dagre's interior routing bends for an edge. Returns `[]` for adjacent
+ * edges (≤3 points: two border-attach ends plus a single rank-gap midpoint),
+ * and the stripped interior points (dagre's border-attach ends removed, rounded)
+ * for genuine multi-rank / back edges that dagre steered around other nodes.
+ */
+function edgeWaypoints(
+  g: InstanceType<typeof dagre.graphlib.Graph>,
+  from: string,
+  to: string,
+  name: string,
+): Point[] {
+  if (!g.hasEdge(from, to, name)) return [];
+  const raw = (g.edge(from, to, name) as { points?: Array<{ x: number; y: number }> }).points;
+  if (!raw || raw.length <= 3) return [];
+  return raw.slice(1, -1).map((p) => ({ x: round(p.x), y: round(p.y) }));
 }
 
 function toBox(node: PositionedNode): NodeBox {

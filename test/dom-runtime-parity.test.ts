@@ -172,6 +172,33 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     expect(edgePaths(root)).toEqual([expected]);
   });
 
+  it("threads dagre detour waypoints identically to the baked layout (TEST-001)", () => {
+    // A skip-level edge (A->B->C plus A->C) makes dagre route A->C around B.
+    // The live runtime recomputes edges from positions, so it must thread the
+    // very same waypoints the static SVG baked, or the two renderers diverge.
+    const { model, theme } = prepare("flowchart TD\nA-->B-->C\nA-->C", { theme: "light" });
+    const ac = model.edges.find((e) => e.from === "A" && e.to === "C")!;
+    // the routed detour is present and is a real poly-line (more than 2 points)
+    expect(ac.waypoints && ac.waypoints.length).toBeGreaterThan(0);
+    expect((ac.path.match(/ L /g) ?? []).length).toBeGreaterThan(1);
+
+    const root = mountFake(buildPayload(model, theme, { minimap: false, persist: false }));
+
+    // The runtime routes in offset-removed ("world") coords; compute the shared
+    // geometry's expectation in the same space (threading the same waypoints) and
+    // require the live runtime to match it for every edge, including A->C.
+    const off = model.bounds;
+    const box = (id: string) => {
+      const nd = model.nodes.find((n) => n.id === id)!;
+      return { x: nd.x - off.x, y: nd.y - off.y, width: nd.width, height: nd.height };
+    };
+    const expected = model.edges.map((e) => {
+      const wps = (e.waypoints ?? []).map((p) => ({ x: p.x - off.x, y: p.y - off.y }));
+      return routeEdge(box(e.from), box(e.to), model.direction, theme.edgeStyle, wps).path;
+    });
+    expect(edgePaths(root)).toEqual(expected);
+  });
+
   it("resolves card styles identically to resolveNodeStyle (stroke-width + dasharray)", () => {
     const dsl = [
       "flowchart TD",

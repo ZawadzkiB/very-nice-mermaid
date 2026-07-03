@@ -17,6 +17,53 @@ function overlaps(a: PositionedNode, b: PositionedNode): boolean {
   );
 }
 
+/** Does segment p→q cut through node `n`'s (slightly shrunk) box interior? */
+function segmentCrossesNode(
+  p: { x: number; y: number },
+  q: { x: number; y: number },
+  node: PositionedNode,
+): boolean {
+  // Liang–Barsky clip, box shrunk 1px so a border-anchored endpoint doesn't count.
+  const x1 = node.x - node.width / 2 + 1;
+  const y1 = node.y - node.height / 2 + 1;
+  const x2 = node.x + node.width / 2 - 1;
+  const y2 = node.y + node.height / 2 - 1;
+  let t0 = 0;
+  let t1 = 1;
+  const dx = q.x - p.x;
+  const dy = q.y - p.y;
+  const clip = (pn: number, qn: number): boolean => {
+    if (pn === 0) return qn >= 0;
+    const t = qn / pn;
+    if (pn < 0) {
+      if (t > t1) return false;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return false;
+      if (t < t1) t1 = t;
+    }
+    return true;
+  };
+  if (clip(-dx, p.x - x1) && clip(dx, x2 - p.x) && clip(-dy, p.y - y1) && clip(dy, y2 - p.y)) {
+    return t1 > t0 + 1e-6;
+  }
+  return false;
+}
+
+/** Count edge segments that pass through a node that isn't the edge's endpoint. */
+function edgeThroughNodeCount(pos: ReturnType<typeof layout>): number {
+  let hits = 0;
+  for (const e of pos.edges) {
+    for (let i = 0; i < e.points.length - 1; i++) {
+      for (const node of pos.nodes) {
+        if (node.id === e.from || node.id === e.to) continue;
+        if (segmentCrossesNode(e.points[i]!, e.points[i + 1]!, node)) hits++;
+      }
+    }
+  }
+  return hits;
+}
+
 describe("layout determinism", () => {
   it("produces byte-identical output across runs", () => {
     const model = parse(readFileSync(join(fixturesDir, "microservices.mmd"), "utf8"));
@@ -54,6 +101,46 @@ describe("layout produces non-overlapping nodes", () => {
       }
     });
   }
+});
+
+describe("multi-rank edges route around intervening nodes (TEST-001)", () => {
+  it("skip-level A->C avoids B (A->B->C, A->C)", () => {
+    const pos = layout(parse("flowchart TD\n A-->B-->C\n A-->C"));
+    const ac = pos.edges.find((e) => e.from === "A" && e.to === "C")!;
+    const b = pos.nodes.find((n) => n.id === "B")!;
+    // routed as a real poly-line detour, not a straight 2-point line…
+    expect(ac.points.length).toBeGreaterThan(2);
+    // …and no segment of it crosses B's box.
+    for (let i = 0; i < ac.points.length - 1; i++) {
+      expect(segmentCrossesNode(ac.points[i]!, ac.points[i + 1]!, b)).toBe(false);
+    }
+  });
+
+  it("back-edge in a cycle avoids the node it loops over (A->B->C->A)", () => {
+    const pos = layout(parse("flowchart TD\n A-->B-->C\n C-->A"));
+    const ca = pos.edges.find((e) => e.from === "C" && e.to === "A")!;
+    const b = pos.nodes.find((n) => n.id === "B")!;
+    for (let i = 0; i < ca.points.length - 1; i++) {
+      expect(segmentCrossesNode(ca.points[i]!, ca.points[i + 1]!, b)).toBe(false);
+    }
+  });
+
+  it("the state-machine fixture's retry back-edge no longer crosses the 'Response OK?' diamond", () => {
+    const pos = layout(parse(readFileSync(join(fixturesDir, "state-machine.mmd"), "utf8")));
+    const retry = pos.edges.find((e) => e.from === "errored" && e.to === "loading")!;
+    const diamond = pos.nodes.find((n) => n.id === "success")!;
+    expect(retry.points.length).toBeGreaterThan(2);
+    for (let i = 0; i < retry.points.length - 1; i++) {
+      expect(segmentCrossesNode(retry.points[i]!, retry.points[i + 1]!, diamond)).toBe(false);
+    }
+  });
+
+  it("leaves no edge cutting through a non-endpoint node in any shipped fixture", () => {
+    for (const file of readdirSync(fixturesDir).filter((f) => f.endsWith(".mmd"))) {
+      const model = parse(readFileSync(join(fixturesDir, file), "utf8"));
+      expect(edgeThroughNodeCount(layout(model))).toBe(0);
+    }
+  });
 });
 
 describe("layout output shape", () => {
