@@ -249,6 +249,26 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   function nAt(v: number): number {
     return Math.round(v * 100) / 100;
   }
+  // mirrors geometry.simplify(): drop duplicate + exactly-collinear waypoints
+  // so the interactive elbow route matches the static SVG point-for-point.
+  function simplify(points: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
+    const out: Array<{ x: number; y: number }> = [];
+    for (const p of points) {
+      const last = out[out.length - 1];
+      if (last && nAt(last.x) === nAt(p.x) && nAt(last.y) === nAt(p.y)) continue;
+      out.push(p);
+    }
+    for (let i = out.length - 2; i >= 1; i--) {
+      const a = out[i - 1]!;
+      const b = out[i]!;
+      const c = out[i + 1]!;
+      const collinear =
+        (nAt(a.x) === nAt(b.x) && nAt(b.x) === nAt(c.x)) ||
+        (nAt(a.y) === nAt(b.y) && nAt(b.y) === nAt(c.y));
+      if (collinear) out.splice(i, 1);
+    }
+    return out;
+  }
   function pickSides(
     from: { x: number; y: number; w: number; h: number },
     to: { x: number; y: number; w: number; h: number },
@@ -293,10 +313,10 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     }
     if (horizontal) {
       const midX = (start.x + end.x) / 2;
-      return [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end];
+      return simplify([start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]);
     }
     const midY = (start.y + end.y) / 2;
-    return [start, { x: start.x, y: midY }, { x: end.x, y: midY }, end];
+    return simplify([start, { x: start.x, y: midY }, { x: end.x, y: midY }, end]);
   }
   function offAlong(p: { x: number; y: number }, side: string, k: number) {
     if (side === "top") return { x: p.x, y: p.y - k };
@@ -331,11 +351,20 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   }
 
   // ================= style resolution (mirrors render/style) =================
-  function styleForNode(_id: string, classes: string[], inline?: StyleDef) {
+  interface NodeStyle {
+    fill: string;
+    stroke: string;
+    text: string;
+    strokeWidth?: string;
+    strokeDasharray?: string;
+  }
+  function styleForNode(_id: string, classes: string[], inline?: StyleDef): NodeStyle {
     const c = tokens.colors;
     let fill = c.surface;
     let stroke = c.surfaceStroke;
     let text = c.text;
+    let strokeWidth: string | undefined;
+    let strokeDasharray: string | undefined;
     for (const cls of classes) {
       const role = c.roles[cls];
       if (role) {
@@ -348,28 +377,43 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
         if (def.fill) fill = def.fill;
         if (def.stroke) stroke = def.stroke;
         if (def.color) text = def.color;
+        if (def.strokeWidth) strokeWidth = def.strokeWidth;
+        if (def.strokeDasharray) strokeDasharray = def.strokeDasharray;
       }
     }
     if (inline) {
       if (inline.fill) fill = inline.fill;
       if (inline.stroke) stroke = inline.stroke;
       if (inline.color) text = inline.color;
+      if (inline.strokeWidth) strokeWidth = inline.strokeWidth;
+      if (inline.strokeDasharray) strokeDasharray = inline.strokeDasharray;
     }
-    return { fill, stroke, text };
+    const out: NodeStyle = { fill, stroke, text };
+    if (strokeWidth !== undefined) out.strokeWidth = strokeWidth;
+    if (strokeDasharray !== undefined) out.strokeDasharray = strokeDasharray;
+    return out;
   }
-  function cardStyle(id: string, st: { fill: string; stroke: string; text: string }): string {
+  function cardStyle(id: string, st: NodeStyle): string {
     const s = sizes[id]!;
     let radius = tokens.radii.node + "px";
     const shapeEl = model.nodes.find((x) => x.id === id);
     const shape = shapeEl ? shapeEl.shape : "rect";
     if (shape === "stadium" || shape === "circle") radius = "999px";
     else if (shape === "rounded") radius = tokens.radii.card + 4 + "px";
+    // Mirror the static SVG stroke: honor classDef/style stroke-width (SVG user
+    // units → px for a CSS border) and render stroke-dasharray as a dashed edge.
+    const borderWidth = st.strokeWidth
+      ? /^[0-9.]+$/.test(st.strokeWidth)
+        ? st.strokeWidth + "px"
+        : st.strokeWidth
+      : "1.5px";
+    const borderStyle = st.strokeDasharray ? "dashed" : "solid";
     return (
       "position:absolute;box-sizing:border-box;display:flex;align-items:center;justify-content:center;" +
       "width:" + s.w + "px;height:" + s.h + "px;padding:0 " + tokens.spacing.nodePadX + "px;" +
       "border-radius:" + radius + ";cursor:grab;transition:box-shadow .12s ease, transform .12s ease;" +
       "font-size:var(--vnm-font-size);font-weight:var(--vnm-font-weight);box-shadow:var(--vnm-node-shadow);" +
-      "background:" + st.fill + ";border:1.5px solid " + st.stroke + ";color:" + st.text + ";"
+      "background:" + st.fill + ";border:" + borderWidth + " " + borderStyle + " " + st.stroke + ";color:" + st.text + ";"
     );
   }
 
