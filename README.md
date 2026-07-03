@@ -185,9 +185,33 @@ renderSvg(dsl, { theme: ocean });
 ```bash
 npm run build       # tsup → dist/ (ESM + .d.ts)
 npm run typecheck   # tsc --noEmit
-npm test            # vitest unit tests
-npm run test:e2e    # playwright (needs: npx playwright install chromium)
+npm run build && npm run test:all   # build, typecheck, all tests below
 ```
+
+### Tests
+
+Three layers, run independently:
+
+```bash
+npm run test:unit   # pure unit (parser, layout, geometry, svg, ascii, theme, html)
+npm run test:cli    # CLI integration — spawns the built `vnm` bin end-to-end
+npm run test:e2e    # Playwright — drives the real interactive renderer in Chromium
+npm test            # unit + CLI integration together (vitest)
+npm run test:all    # build + typecheck + vitest + Playwright
+```
+
+- **Unit** — the pure pipeline: DSL → model → layout → SVG/ASCII, theme merging,
+  the HTML-export/runtime parity guard.
+- **CLI integration** (`test/cli.test.ts`) — runs the actual built binary via
+  `child_process`: all four formats to files and stdout, format inference, every
+  fixture rendered (valid XML SVG, zero-network HTML), PNG scaling, built-in and
+  custom-JSON themes, `--layout` / `--strict` / `--title` / `--background`, and
+  the error paths (bad DSL with line/col, zero-node input, unreadable files).
+- **e2e** (`e2e/*.spec.ts`) — the exported HTML and the `<very-nice-mermaid>`
+  element in a real browser: drag-to-reroute, pan / wheel-zoom / fit / zoom
+  buttons, minimap, layout persistence, the `exportLayout`/`importLayout` handle
+  API, per-theme edge geometry, subgraph rendering, and a console-error-free
+  interaction session. Needs `npx playwright install chromium`.
 
 ## License
 
