@@ -29,6 +29,14 @@ const G = {
   arrowLeft: "◀",
 };
 
+const CORNERS = new Set([G.tl, G.tr, G.bl, G.br]);
+
+/** The corner glyph joining a vertical arm (`up`/`down`) to a horizontal arm. */
+function cornerGlyph(vert: "up" | "down", horiz: "left" | "right"): string {
+  if (vert === "up") return horiz === "right" ? G.bl : G.br; // └ ┘
+  return horiz === "right" ? G.tl : G.tr; // ┌ ┐
+}
+
 class Grid {
   private rows: string[][] = [];
   constructor(
@@ -54,6 +62,23 @@ class Grid {
     }
     // crossing lines become a cross
     if ((cur === G.h && ch === G.v) || (cur === G.v && ch === G.h)) {
+      this.set(x, y, G.cross);
+      return;
+    }
+    this.set(x, y, ch);
+  }
+  /**
+   * Place an elbow corner glyph. On an empty cell it draws the corner; where a
+   * different edge's line/corner already runs it becomes a genuine crossing
+   * (`┼`) instead of masquerading as a clean turn.
+   */
+  corner(x: number, y: number, ch: string): void {
+    const cur = this.get(x, y);
+    if (cur === " " || cur === ch) {
+      this.set(x, y, ch);
+      return;
+    }
+    if (cur === G.h || cur === G.v || cur === G.cross || CORNERS.has(cur)) {
       this.set(x, y, G.cross);
       return;
     }
@@ -177,9 +202,27 @@ function connect(
     const startY = dy >= 0 ? from.y2 + 1 : from.y1 - 1;
     const endY = dy >= 0 ? to.y1 - 1 : to.y2 + 1;
     const midY = Math.round((startY + endY) / 2);
-    for (let y = Math.min(startY, midY); y <= Math.max(startY, midY); y++) grid.line(a.x, y, G.v);
-    for (let x = Math.min(a.x, c.x); x <= Math.max(a.x, c.x); x++) grid.line(x, midY, G.h);
-    for (let y = Math.min(midY, endY); y <= Math.max(midY, endY); y++) grid.line(c.x, y, G.v);
+    const turns = a.x !== c.x;
+    // Leave the two elbow joints for the corner glyphs so the edge's own turn
+    // isn't drawn as a `┼` crossing (that glyph is reserved for two edges).
+    for (let y = Math.min(startY, midY); y <= Math.max(startY, midY); y++) {
+      if (turns && y === midY) continue;
+      grid.line(a.x, y, G.v);
+    }
+    for (let x = Math.min(a.x, c.x); x <= Math.max(a.x, c.x); x++) {
+      if (turns && (x === a.x || x === c.x)) continue;
+      grid.line(x, midY, G.h);
+    }
+    for (let y = Math.min(midY, endY); y <= Math.max(midY, endY); y++) {
+      if (turns && y === midY) continue;
+      grid.line(c.x, y, G.v);
+    }
+    if (turns) {
+      const vertA = dy >= 0 ? "up" : "down"; // the source arm is above the joint when going down
+      grid.corner(a.x, midY, cornerGlyph(vertA, c.x > a.x ? "right" : "left"));
+      const vertC = dy >= 0 ? "down" : "up"; // the target arm continues past the joint
+      grid.corner(c.x, midY, cornerGlyph(vertC, a.x > c.x ? "right" : "left"));
+    }
     if (arrowEnd) grid.set(c.x, endY, dy >= 0 ? G.arrowDown : G.arrowUp);
     if (arrowStart) grid.set(a.x, startY, dy >= 0 ? G.arrowUp : G.arrowDown);
   } else {
@@ -187,9 +230,23 @@ function connect(
     const startX = dx >= 0 ? from.x2 + 1 : from.x1 - 1;
     const endX = dx >= 0 ? to.x1 - 1 : to.x2 + 1;
     const midX = Math.round((startX + endX) / 2);
-    for (let x = Math.min(startX, midX); x <= Math.max(startX, midX); x++) grid.line(x, a.y, G.h);
-    for (let y = Math.min(a.y, c.y); y <= Math.max(a.y, c.y); y++) grid.line(midX, y, G.v);
-    for (let x = Math.min(midX, endX); x <= Math.max(midX, endX); x++) grid.line(x, c.y, G.h);
+    const turns = a.y !== c.y;
+    for (let x = Math.min(startX, midX); x <= Math.max(startX, midX); x++) {
+      if (turns && x === midX) continue;
+      grid.line(x, a.y, G.h);
+    }
+    for (let y = Math.min(a.y, c.y); y <= Math.max(a.y, c.y); y++) {
+      if (turns && (y === a.y || y === c.y)) continue;
+      grid.line(midX, y, G.v);
+    }
+    for (let x = Math.min(midX, endX); x <= Math.max(midX, endX); x++) {
+      if (turns && x === midX) continue;
+      grid.line(x, c.y, G.h);
+    }
+    if (turns) {
+      grid.corner(midX, a.y, cornerGlyph(c.y > a.y ? "down" : "up", startX < midX ? "left" : "right"));
+      grid.corner(midX, c.y, cornerGlyph(a.y > c.y ? "down" : "up", endX > midX ? "right" : "left"));
+    }
     if (arrowEnd) grid.set(endX, c.y, dx >= 0 ? G.arrowRight : G.arrowLeft);
     if (arrowStart) grid.set(startX, a.y, dx >= 0 ? G.arrowLeft : G.arrowRight);
   }

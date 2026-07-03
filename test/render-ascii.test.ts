@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { renderAscii, renderMarkdown } from "../src/render/ascii.js";
+
+const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures");
 
 const SAMPLE = ["flowchart TD", "  A[Start] --> B[Middle]", "  B --> C[End]"].join("\n");
 
@@ -22,6 +27,25 @@ describe("renderAscii", () => {
 
   it("returns empty string for an empty diagram", () => {
     expect(renderAscii("flowchart TD")).toBe("");
+  });
+
+  // TEST-005: an edge's own elbow turn used to be merged into a `┼` crossing
+  // glyph, reading as an ambiguous junction — most visibly a `┼` jammed against
+  // the 'Lint passes?' box border in the ci-pipeline fixture. Elbows must now
+  // draw clean corner glyphs, with `┼` reserved for two edges that genuinely
+  // cross. ci-pipeline has many elbows but no true crossing, so it must render
+  // free of `┼` while keeping its corner turns and arrowheads.
+  it("draws edge elbows as corners, not crossings (TEST-005)", () => {
+    const art = renderAscii(readFileSync(join(fixturesDir, "ci-pipeline.mmd"), "utf8"));
+    expect(art).not.toContain("┼"); // no false crossing where a single edge turns
+    expect(art).not.toContain("┼│"); // and none jammed against a node border
+    expect(/[┌┐└┘]/.test(art)).toBe(true); // elbow turns render as corner glyphs
+    expect(/[▼▲▶◀]/.test(art)).toBe(true); // flow direction stays legible
+  });
+
+  it("still marks a genuine two-edge crossing with ┼", () => {
+    const crossing = ["flowchart LR", "  A --> C", "  A --> D", "  B --> C", "  B --> D"].join("\n");
+    expect(renderAscii(crossing)).toContain("┼");
   });
 });
 
