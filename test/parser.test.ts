@@ -134,9 +134,13 @@ describe("parser: subgraphs", () => {
     expect(inner.children).toEqual(["C", "D"]);
   });
 
-  it("warns on an unterminated subgraph", () => {
+  it("warns on an unterminated subgraph at its opening line/col (REV-005)", () => {
     const m = parse("flowchart TD\n subgraph s\n A-->B");
-    expect(m.warnings.some((w) => w.code === "unterminated-subgraph")).toBe(true);
+    const d = m.warnings.find((w) => w.code === "unterminated-subgraph")!;
+    expect(d).toBeDefined();
+    // the `subgraph` keyword sits on line 2, column 2 — not the hardcoded 1:1
+    expect(d.line).toBe(2);
+    expect(d.col).toBe(2);
   });
 });
 

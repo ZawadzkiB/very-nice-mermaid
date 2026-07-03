@@ -90,6 +90,8 @@ export function parse(dsl: string, opts: ParseOptions = {}): DiagramModel {
   const nodeMap = new Map<string, DiagramNode>();
   /** Stack of open subgraphs (innermost last). */
   const subgraphStack: Subgraph[] = [];
+  /** Opening line/col of each subgraph, for the unterminated diagnostic. */
+  const subgraphOpenPos = new Map<Subgraph, { line: number; col: number }>();
   let subgraphCounter = 0;
 
   const diag = (code: string, message: string, line: number, col: number) => {
@@ -161,11 +163,12 @@ export function parse(dsl: string, opts: ParseOptions = {}): DiagramModel {
 
   if (subgraphStack.length > 0) {
     for (const open of subgraphStack) {
+      const pos = subgraphOpenPos.get(open);
       diag(
         "unterminated-subgraph",
         `subgraph "${open.title || open.id}" is missing an \`end\``,
-        1,
-        1,
+        pos ? pos.line : 1,
+        pos ? pos.col : 1,
       );
     }
   }
@@ -225,8 +228,7 @@ export function parse(dsl: string, opts: ParseOptions = {}): DiagramModel {
     if (parent && !parent.children.includes(id)) parent.children.push(id);
     model.subgraphs.push(sub);
     subgraphStack.push(sub);
-    void stmt;
-    void col;
+    subgraphOpenPos.set(sub, { line: stmt.line, col });
   }
 
   function closeSubgraph(stmt: Statement, col: number): void {
