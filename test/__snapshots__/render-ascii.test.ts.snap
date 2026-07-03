@@ -1,0 +1,29 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderAscii > draws boxes and connectors deterministically 1`] = `
+"
+
+
+         ┌───────┐
+         │ Start │
+         └───────┘
+             │
+             │
+             │
+             │
+             │
+             │
+             ▼
+         ┌───────┐
+         │Middle │
+         └───────┘
+             │
+             │
+             │
+             │
+             │
+             ▼
+          ┌─────┐
+          │ End │
+          └─────┘"
+`;
