@@ -128,6 +128,50 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
   };
 }
 
+/**
+ * Apply an externally-supplied set of node positions (a portable
+ * `layout.json` sidecar) over an already-positioned model: move the matching
+ * nodes, re-route every edge, and recompute bounds. Subgraph boxes are kept.
+ */
+export function applyPositions(
+  model: PositionedModel,
+  positions: Record<string, { x: number; y: number }>,
+  opts: { theme?: Theme } = {},
+): PositionedModel {
+  const theme = opts.theme ?? themes.light!;
+  const nodeBoxes = new Map<string, NodeBox>();
+  const nodes: PositionedNode[] = model.nodes.map((node) => {
+    const p = positions[node.id];
+    const x = p ? p.x : node.x;
+    const y = p ? p.y : node.y;
+    nodeBoxes.set(node.id, { x, y, width: node.width, height: node.height });
+    return { ...node, x, y };
+  });
+
+  const edges: RoutedEdge[] = model.edges.map((edge) => {
+    const from = nodeBoxes.get(edge.from);
+    const to = nodeBoxes.get(edge.to);
+    if (!from || !to) return edge;
+    const routed = routeEdge(from, to, model.direction, theme.edgeStyle);
+    const out: RoutedEdge = { ...edge, points: routed.points, path: routed.path };
+    if (edge.label) out.labelPos = routed.labelPos;
+    return out;
+  });
+
+  const subgraphBoxes: NodeBox[] = model.subgraphs.map((sg) => ({
+    x: sg.x,
+    y: sg.y,
+    width: sg.width,
+    height: sg.height,
+  }));
+  const bounds = contentBounds(
+    [...subgraphBoxes, ...nodes.map(toBox)],
+    edges.flatMap((e) => e.points),
+    BOUNDS_PADDING,
+  );
+  return { ...model, nodes, edges, bounds };
+}
+
 function toBox(node: PositionedNode): NodeBox {
   return { x: node.x, y: node.y, width: node.width, height: node.height };
 }
