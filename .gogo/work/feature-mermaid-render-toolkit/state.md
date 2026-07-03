@@ -19,14 +19,41 @@
 - **status:** implementing   <!-- awaiting-plan-acceptance | plan-accepted | implementing | reviewing | testing | waiting-for-user | done | shipped | aborted -->
 - **created:** 2026-07-03
 - **branch:** n/a (repo not yet a git repository)
-- **iterations:** plan=1 · implement=3 · review=2 · test=0
-- **resume:** implement round 3 (small review-fix) complete — the one open finding
-  from re-review, REV-006 (minor/correctness), is fixed and marked `status: fixed`
-  in review/issues.json (fixed_in_round: 3, fixed_in_commit 429e832, fix_summary).
-  Green: `npm run build` + `npm run typecheck` + `npm test` (99 unit, +3 REV-006
-  regressions) + `npm run test:e2e` (8 chromium). REV-001/REV-002 exploit test
-  still passes. Ready for re-review / advance to test (④); review list has no
-  open/new blockers or majors and REV-006 is now closed.
+- **iterations:** plan=1 · implement=4 · review=2 · test=1
+- **resume:** implement round 4 (test-fix) complete — all four actionable test
+  findings from test round 1 are fixed and written back in test/issues.json
+  (`status: fixed`, `fixed_in_round: 4`, per-issue `fix_summary` + fixing commit);
+  TEST-003 is marked `wontfix` per decisions.md D5 (no code change). Green:
+  `npm run build` + `npm run typecheck` + `npm test` (109 unit, up from 99: +5
+  routing/parity/cli, +2 ascii-corner) + `npm run test:e2e` (10 chromium — the
+  tester's previously-failing TEST-002 regression now passes). Security
+  (REV-001/REV-002) + REV-006 tests still pass. Committed one small increment per
+  issue. Ready for re-test (④).
+  - TEST-001 (major/geometry): multi-rank & back edges now reuse dagre's own
+    interior routing waypoints (layout threads them for edges with >3 dagre
+    points; geometry orthogonalizes/rounds them; the model carries them so the
+    DOM runtime re-routes the same detour on drag → static SVG + interactive stay
+    in parity). Adjacent edges + all snapshots unchanged. 0 edge-through-node
+    overlaps across every fixture + skip/cycle constructed cases. Commit 2aa0eb9.
+  - TEST-002 (major/UI): viewport onPointerDown early-returns on a `.vnm-toolbar`
+    target, so fit/zoom buttons' clicks are no longer swallowed by pan capture.
+    Commit 5d466e7.
+  - TEST-005 (minor/ascii): elbow turns render as corner glyphs (┌┐└┘); `┼`
+    reserved for genuine two-edge crossings. Fixed in code (not documented as a
+    limitation). Commit d69c14a.
+  - TEST-004 / D6 (nit→decided): CLI exits non-zero with "no diagram found
+    (input produced 0 nodes)" on a zero-node render (both modes); library API
+    unchanged. Commit c51ce39.
+  - TEST-003 (minor): wontfix per D5 (edges under cards is conventional).
+  - Per delegation scope: did not regenerate charts/ or write implement/result.json
+    (left to the orchestrator); only state.md + test/issues.json touched under
+    .gogo/. plan.md/decisions.md D6 refinements were the orchestrator's; left as-is.
+  - Prior rounds' notes (below) still stand.
+- **prior-resume:** implement round 3 (small review-fix) complete — the one open
+  finding from re-review, REV-006 (minor/correctness), is fixed and marked
+  `status: fixed` in review/issues.json (fixed_in_round: 3, fixed_in_commit
+  429e832, fix_summary). Green then: 99 unit + 8 e2e. REV-001/REV-002 exploit test
+  still passes.
   - REV-006: parseStyleProps() property splitter is now paren-aware
     (splitTopLevelCommas splits commas only at paren depth 0), so comma-form
     `rgb()`/`hsl()` colors reach isSafeStyleValue() intact and are kept without a
