@@ -20,5 +20,18 @@
 - **created:** 2026-07-03
 - **branch:** n/a (repo not yet a git repository)
 - **iterations:** plan=1 · implement=1 · review=0 · test=0
-- **resume:** implement — plan accepted 2026-07-03 (D1–D4 resolved per recommendation); gogo-developer delegated with the full checklist
+- **resume:** implement round 1 complete — all 14 checklist items built (parser,
+  layout, geometry, themes, SVG/ASCII/DOM/HTML/PNG renderers, web component, CLI).
+  Green: `npm run build` + `npm run typecheck` + `npm test` (89 unit) + `npm run
+  test:e2e` (8 playwright, Chromium installed here). Committed in milestone
+  increments. Ready for review ③.
+  - Notable: found + fixed a packaging bug via e2e — @dagrejs/dagre must be
+    bundled into the browser entries (mount + web component run parse→layout
+    client-side); commander + resvg stay external.
+  - Small in-scope choices for the reviewer: DOM node cards are rounded-rect
+    cards (full shape variants live in the static SVG, per the xplan reference);
+    the interactive elbow routing is re-implemented inline inside the
+    self-contained HTML runtime (mirrors src/geometry).
+  - Per delegation scope: did not regenerate charts/ or write implement/result.json
+    (left to the orchestrator); only state.md touched under .gogo/.
 - **open-decision:** none
