@@ -19,8 +19,22 @@
 - **status:** implementing   <!-- awaiting-plan-acceptance | plan-accepted | implementing | reviewing | testing | waiting-for-user | done | shipped | aborted -->
 - **created:** 2026-07-03
 - **branch:** n/a (repo not yet a git repository)
-- **iterations:** plan=1 · implement=2 · review=1 · test=0
-- **resume:** implement round 2 (review-fix) complete — all 5 review-round-1
+- **iterations:** plan=1 · implement=3 · review=2 · test=0
+- **resume:** implement round 3 (small review-fix) complete — the one open finding
+  from re-review, REV-006 (minor/correctness), is fixed and marked `status: fixed`
+  in review/issues.json (fixed_in_round: 3, fixed_in_commit 429e832, fix_summary).
+  Green: `npm run build` + `npm run typecheck` + `npm test` (99 unit, +3 REV-006
+  regressions) + `npm run test:e2e` (8 chromium). REV-001/REV-002 exploit test
+  still passes. Ready for re-review / advance to test (④); review list has no
+  open/new blockers or majors and REV-006 is now closed.
+  - REV-006: parseStyleProps() property splitter is now paren-aware
+    (splitTopLevelCommas splits commas only at paren depth 0), so comma-form
+    `rgb()`/`hsl()` colors reach isSafeStyleValue() intact and are kept without a
+    spurious `unsafe-style-value` warning. No allowlist reject rule changed; the
+    `;` declaration separator is still split upstream, so a hostile value trailing
+    a valid rgb() is still dropped + warned (REV-001/REV-002 hold). Commit 429e832.
+  - Prior rounds' notes (below) still stand.
+- **prior-resume:** implement round 2 (review-fix) complete — all 5 review-round-1
   findings fixed and marked `status: fixed` in review/issues.json with fix_summary
   + fixed_in_round + fixing commit. Green: `npm run build` + `npm run typecheck` +
   `npm test` (96 unit, +7) + `npm run test:e2e` (8 playwright). Committed one small
