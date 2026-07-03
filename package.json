@@ -1,0 +1,61 @@
+{
+  "name": "very-nice-mermaid",
+  "version": "0.1.0",
+  "description": "A framework-agnostic Mermaid flowchart renderer: parse the DSL, auto-layout with dagre, and render beautiful interactive HTML, static SVG, PNG, or ASCII — no mermaid.js runtime, no headless browser.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mermaid",
+    "flowchart",
+    "diagram",
+    "svg",
+    "renderer",
+    "dagre",
+    "interactive",
+    "web-component"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./element": {
+      "types": "./dist/element.d.ts",
+      "import": "./dist/element.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "vnm": "dist/cli/index.js",
+    "very-nice-mermaid": "dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^1.1.4",
+    "commander": "^12.1.0"
+  },
+  "optionalDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^22.7.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

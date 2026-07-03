@@ -1,0 +1,20 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# test / tool caches
+coverage/
+.vitest/
+test-results/
+playwright-report/
+.playwright/
+*.log
+
+# OS / editor cruft
+.DS_Store
+
+# gogo working state: keep the durable knowledge + work docs in the repo, but
+# ignore the vendored offline mermaid runtime (a ~3 MB binary blob).
+.gogo/resources/

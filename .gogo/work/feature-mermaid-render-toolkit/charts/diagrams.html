@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo diagrams — mermaid-render-toolkit</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo diagrams — <code>mermaid-render-toolkit</code></h1>
+    <p class="hint">Offline viewer · mermaid is vendored with the plugin (no network, no CLI) · regenerate via the gogo-mermaid skill.</p>
+  </header>
+
+  <h2>Data flow: DSL → parser → model → layout → renderers → outputs</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  dsl["mermaid DSL<br/>(.mmd / string / stdin)"]:::io
+  parser["parser<br/>tokenize + grammar"]:::proc
+  model["DiagramModel<br/>nodes · edges · subgraphs · warnings"]:::art
+  layout["layout<br/>dagre, deterministic"]:::proc
+  pos["PositionedModel"]:::art
+  theme["theme tokens<br/>light · dark · fancy · custom"]:::art
+  dom["interactive DOM renderer<br/>cards + edge layer + minimap"]:::proc
+  svg["SVG string renderer"]:::proc
+  ascii["ASCII renderer"]:::proc
+  htmlx["standalone HTML export"]:::out
+  png["PNG (resvg)"]:::out
+  comp["mount() / &lt;very-nice-mermaid&gt;<br/>in React · Angular · any page"]:::out
+  files["vnm CLI → .html .svg .png .md"]:::out
+
+  dsl --> parser --> model --> layout --> pos
+  theme --> dom
+  theme --> svg
+  pos --> dom --> comp
+  dom --> htmlx
+  pos --> svg --> png
+  pos --> ascii
+  htmlx --> files
+  svg --> files
+  png --> files
+  ascii --> files
+
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111
+  </pre></div>
+
+  <h2>Core types: DiagramModel, PositionedModel, Theme, Renderer implementations</h2>
+  <div class="diagram"><pre class="mermaid">
+classDiagram
+  class DiagramModel {
+    +direction: Direction
+    +nodes: DiagramNode[]
+    +edges: DiagramEdge[]
+    +subgraphs: Subgraph[]
+    +classDefs: Map~string, StyleDef~
+    +warnings: Diagnostic[]
+  }
+  class DiagramNode {
+    +id: string
+    +label: string
+    +shape: Shape
+    +classes: string[]
+  }
+  class DiagramEdge {
+    +from: string
+    +to: string
+    +kind: solid|open|dotted|thick
+    +label?: string
+  }
+  class Subgraph {
+    +id: string
+    +title: string
+    +children: string[]
+  }
+  class PositionedModel {
+    +nodes: PositionedNode[]
+    +edges: RoutedEdge[]
+    +bounds: Rect
+  }
+  class Theme {
+    +tokens: TokenSet
+    +edgeStyle: elbow|curved
+    +cssVars() string
+  }
+  class Renderer {
+    <<interface>>
+    +render(model: PositionedModel, theme: Theme)
+  }
+  class SvgRenderer
+  class AsciiRenderer
+  class DomRenderer {
+    +mount(el, opts) DiagramHandle
+  }
+
+  DiagramModel *-- DiagramNode
+  DiagramModel *-- DiagramEdge
+  DiagramModel *-- Subgraph
+  DiagramModel --> PositionedModel : layout(dagre)
+  Renderer <|.. SvgRenderer
+  Renderer <|.. AsciiRenderer
+  Renderer <|.. DomRenderer
+  Renderer ..> PositionedModel
+  Renderer ..> Theme
+  </pre></div>
+
+  <h2>Capabilities: embed &amp; reorganize diagrams, CLI outputs, theming</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  dev([Frontend developer]):::actor
+  cli([CLI user]):::actor
+  themer([Theme author]):::actor
+
+  dev --> uc1(["Mount interactive diagram<br/>via mount() or &lt;very-nice-mermaid&gt;"]):::uc
+  dev --> uc2(["Drag nodes to reorganize;<br/>edges re-route live"]):::uc
+  dev --> uc3(["Persist / export layout.json"]):::uc
+  cli --> uc4(["Render .mmd → interactive HTML"]):::uc
+  cli --> uc5(["Render .mmd → SVG / PNG"]):::uc
+  cli --> uc6(["Render .mmd → ASCII in markdown"]):::uc
+  themer --> uc7(["Pick light / dark / fancy"]):::uc
+  themer --> uc8(["Define custom theme<br/>(JSON / defineTheme / CSS vars)"]):::uc
+
+  classDef actor fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef uc fill:#fff3d6,stroke:#caa54a,color:#111
+  </pre></div>
+
+  <script src="../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from: ../../../resources/mermaid.min.js\n' +
+          'Re-run the gogo-mermaid skill, or read the .mmd source files directly.</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

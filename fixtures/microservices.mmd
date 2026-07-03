@@ -1,0 +1,19 @@
+flowchart TB
+  client[Web client] --> gw{{API gateway}}
+  gw --> auth & catalog & cart
+
+  subgraph services [Core services]
+    direction TB
+    auth[Auth service]
+    catalog[Catalog service]
+    cart[Cart service]
+  end
+
+  auth --> authdb[(Auth DB)]
+  catalog --> catdb[(Catalog DB)]
+  cart -.-> cache[(Redis cache)]
+  cart ==> orders[Order service]
+  orders --> queue[[Event queue]]
+
+  classDef db fill:#fff3d6,stroke:#caa54a,color:#111
+  class authdb,catdb,cache db

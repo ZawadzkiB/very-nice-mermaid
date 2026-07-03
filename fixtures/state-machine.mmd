@@ -1,0 +1,8 @@
+graph TD
+  idle((Idle)) --> loading[Loading]
+  loading --> success{Response OK?}
+  success -->|2xx| ready[Ready]
+  success -->|error| errored[/Errored/]
+  ready --> idle
+  errored -->|retry| loading
+  errored -->|give up| idle

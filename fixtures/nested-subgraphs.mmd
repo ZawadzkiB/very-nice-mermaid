@@ -1,0 +1,13 @@
+flowchart LR
+  in[/Raw input/] --> parse[Parse]
+
+  subgraph pipeline [Processing pipeline]
+    parse --> validate[Validate]
+    subgraph transform [Transform stage]
+      validate --> map[Map]
+      map --> reduce[Reduce]
+    end
+    reduce --> emit[Emit]
+  end
+
+  emit --> out[(Warehouse)]

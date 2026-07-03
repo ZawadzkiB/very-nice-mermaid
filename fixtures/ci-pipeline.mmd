@@ -1,0 +1,15 @@
+flowchart TD
+  start([Push to main]) --> install[Install deps]
+  install --> lint{Lint passes?}
+  lint -->|yes| test[Run tests]
+  lint -->|no| fail[(Report failure)]
+  test --> build[Build artifacts]
+  build --> deploy{{Deploy?}}
+  deploy -- prod --> prod[/Ship to prod/]
+  deploy -- staging --> stg[\Ship to staging\]
+  prod --> done((Done))
+  stg --> done
+  fail --> done
+
+  classDef bad fill:#fde8e8,stroke:#d9534f,color:#611
+  class fail bad

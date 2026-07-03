@@ -1,0 +1,22 @@
+{
+  "slug": "mermaid-render-toolkit",
+  "updated": "2026-07-03",
+  "note": "Plan-phase intended-design set. No charts/before/ baseline: the repo is empty (greenfield), so there is no existing flow to draw.",
+  "diagrams": [
+    {
+      "kind": "flow",
+      "file": ".gogo/work/feature-mermaid-render-toolkit/charts/flow.mmd",
+      "title": "Data flow: DSL → parser → model → layout → renderers → outputs"
+    },
+    {
+      "kind": "class",
+      "file": ".gogo/work/feature-mermaid-render-toolkit/charts/class.mmd",
+      "title": "Core types: DiagramModel, PositionedModel, Theme, Renderer implementations"
+    },
+    {
+      "kind": "use-case",
+      "file": ".gogo/work/feature-mermaid-render-toolkit/charts/use-case.mmd",
+      "title": "Capabilities: embed & reorganize diagrams, CLI outputs, theming"
+    }
+  ]
+}

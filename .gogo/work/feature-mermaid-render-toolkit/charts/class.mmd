@@ -1,0 +1,55 @@
+classDiagram
+  class DiagramModel {
+    +direction: Direction
+    +nodes: DiagramNode[]
+    +edges: DiagramEdge[]
+    +subgraphs: Subgraph[]
+    +classDefs: Map~string, StyleDef~
+    +warnings: Diagnostic[]
+  }
+  class DiagramNode {
+    +id: string
+    +label: string
+    +shape: Shape
+    +classes: string[]
+  }
+  class DiagramEdge {
+    +from: string
+    +to: string
+    +kind: solid|open|dotted|thick
+    +label?: string
+  }
+  class Subgraph {
+    +id: string
+    +title: string
+    +children: string[]
+  }
+  class PositionedModel {
+    +nodes: PositionedNode[]
+    +edges: RoutedEdge[]
+    +bounds: Rect
+  }
+  class Theme {
+    +tokens: TokenSet
+    +edgeStyle: elbow|curved
+    +cssVars() string
+  }
+  class Renderer {
+    <<interface>>
+    +render(model: PositionedModel, theme: Theme)
+  }
+  class SvgRenderer
+  class AsciiRenderer
+  class DomRenderer {
+    +mount(el, opts) DiagramHandle
+  }
+
+  DiagramModel *-- DiagramNode
+  DiagramModel *-- DiagramEdge
+  DiagramModel *-- Subgraph
+  DiagramModel --> PositionedModel : layout(dagre)
+  Renderer <|.. SvgRenderer
+  Renderer <|.. AsciiRenderer
+  Renderer <|.. DomRenderer
+  Renderer ..> PositionedModel
+  Renderer ..> Theme

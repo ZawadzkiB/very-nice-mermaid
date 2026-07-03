@@ -1,0 +1,31 @@
+flowchart LR
+  dsl["mermaid DSL<br/>(.mmd / string / stdin)"]:::io
+  parser["parser<br/>tokenize + grammar"]:::proc
+  model["DiagramModel<br/>nodes · edges · subgraphs · warnings"]:::art
+  layout["layout<br/>dagre, deterministic"]:::proc
+  pos["PositionedModel"]:::art
+  theme["theme tokens<br/>light · dark · fancy · custom"]:::art
+  dom["interactive DOM renderer<br/>cards + edge layer + minimap"]:::proc
+  svg["SVG string renderer"]:::proc
+  ascii["ASCII renderer"]:::proc
+  htmlx["standalone HTML export"]:::out
+  png["PNG (resvg)"]:::out
+  comp["mount() / <very-nice-mermaid><br/>in React · Angular · any page"]:::out
+  files["vnm CLI → .html .svg .png .md"]:::out
+
+  dsl --> parser --> model --> layout --> pos
+  theme --> dom
+  theme --> svg
+  pos --> dom --> comp
+  dom --> htmlx
+  pos --> svg --> png
+  pos --> ascii
+  htmlx --> files
+  svg --> files
+  png --> files
+  ascii --> files
+
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111

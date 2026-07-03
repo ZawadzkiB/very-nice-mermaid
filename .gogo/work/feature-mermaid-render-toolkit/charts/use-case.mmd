@@ -1,0 +1,16 @@
+flowchart LR
+  dev([Frontend developer]):::actor
+  cli([CLI user]):::actor
+  themer([Theme author]):::actor
+
+  dev --> uc1(["Mount interactive diagram<br/>via mount() or <very-nice-mermaid>"]):::uc
+  dev --> uc2(["Drag nodes to reorganize;<br/>edges re-route live"]):::uc
+  dev --> uc3(["Persist / export layout.json"]):::uc
+  cli --> uc4(["Render .mmd → interactive HTML"]):::uc
+  cli --> uc5(["Render .mmd → SVG / PNG"]):::uc
+  cli --> uc6(["Render .mmd → ASCII in markdown"]):::uc
+  themer --> uc7(["Pick light / dark / fancy"]):::uc
+  themer --> uc8(["Define custom theme<br/>(JSON / defineTheme / CSS vars)"]):::uc
+
+  classDef actor fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef uc fill:#fff3d6,stroke:#caa54a,color:#111

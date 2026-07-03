@@ -1,0 +1,12 @@
+%% Login sequence as a flowchart
+graph LR
+  user([User]):::actor
+  user --> login["Login form<br/>(email + password)"]
+  login --> api{Credentials valid?}
+  api -->|yes| token[Issue JWT]
+  api -->|no| deny[/Show error/]
+  token --> home((Dashboard))
+  deny --> login
+
+  classDef actor fill:#e8ecff,stroke:#7c8bd9,color:#111
+  style home fill:#e6f4ea,stroke:#5db97a
