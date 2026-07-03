@@ -139,10 +139,13 @@ function renderNode(node: PositionedNode, model: PositionedModel, theme: Theme):
   const t = theme.tokens;
   const s = resolveNodeStyle(node, model.classDefs, theme);
   const shadow = t.effects.gradient ? ` filter="url(#vnm-shadow)"` : "";
-  const strokeWidth = s.strokeWidth ?? "1.5";
+  // Style values originate from user `style`/`classDef` statements. They are
+  // already allowlist-sanitized in the parser (see isSafeStyleValue); escaping
+  // them here too is defense in depth so nothing can break out of an attribute.
+  const strokeWidth = escAttr(s.strokeWidth ?? "1.5");
   const dash = s.strokeDasharray ? ` stroke-dasharray="${escAttr(s.strokeDasharray)}"` : "";
-  const shape = nodeShape(node, s.fill, s.stroke, strokeWidth, dash);
-  const text = nodeText(node, s.text, theme);
+  const shape = nodeShape(node, escAttr(s.fill), escAttr(s.stroke), strokeWidth, dash);
+  const text = nodeText(node, escAttr(s.text), theme);
   return `<g${shadow}>${shape}${text}</g>`;
 }
 

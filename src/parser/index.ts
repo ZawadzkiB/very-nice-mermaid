@@ -258,7 +258,9 @@ export function parse(dsl: string, opts: ParseOptions = {}): DiagramModel {
       return;
     }
     const names = rest.slice(0, sp).split(",").map((n) => n.trim()).filter(Boolean);
-    const style = parseStyleProps(rest.slice(sp + 1));
+    const style = parseStyleProps(rest.slice(sp + 1), (key) =>
+      diag("unsafe-style-value", `dropped unsafe value for \`${key}\``, stmt.line, col),
+    );
     for (const name of names) {
       const existing = model.classDefs.get(name);
       model.classDefs.set(name, existing ? { ...existing, ...style } : style);
@@ -286,7 +288,12 @@ export function parse(dsl: string, opts: ParseOptions = {}): DiagramModel {
       return;
     }
     const node = ensureNode(m[1]!);
-    node.style = { ...(node.style ?? {}), ...parseStyleProps(m[2]!) };
+    node.style = {
+      ...(node.style ?? {}),
+      ...parseStyleProps(m[2]!, (key) =>
+        diag("unsafe-style-value", `dropped unsafe value for \`${key}\``, stmt.line, col),
+      ),
+    };
   }
 
   /** Parse a node/edge chain: `A[x] --> B & C -->|y| D`. */
@@ -484,8 +491,44 @@ function normalizeDirection(dir: Direction): Direction {
   return dir === "TD" ? "TB" : dir;
 }
 
+/**
+ * Allowlist of safe CSS values for the style properties that reach a render
+ * sink: SVG attributes in `renderSvg`, and inline card CSS in the DOM runtime /
+ * standalone HTML export. `style`/`classDef` values are attacker-controlled, so
+ * a value outside these grammars — notably one containing `url(`, quotes,
+ * `<`/`>`, `;`, `}`, backslashes, whitespace, or control chars — is DROPPED at
+ * the source rather than rendered. This closes the SVG attribute-breakout XSS
+ * (REV-001) and the CSS `url()` network fetch that would break the zero-network
+ * HTML export (REV-002). The SVG sink additionally attribute-escapes as defense
+ * in depth.
+ */
+const SAFE_COLOR =
+  /^(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\([0-9.,%\s/]*\)|[a-zA-Z]+)$/;
+const SAFE_WIDTH = /^[0-9]*\.?[0-9]+(?:px|pt|em|rem|%)?$/;
+const SAFE_DASH = /^[0-9][0-9.,\s]*$/;
+
+/** Is a `style`/`classDef` value safe to render for its property? */
+function isSafeStyleValue(key: string, value: string): boolean {
+  switch (key) {
+    case "stroke-width":
+      return SAFE_WIDTH.test(value);
+    case "stroke-dasharray":
+      return SAFE_DASH.test(value);
+    case "fill":
+    case "stroke":
+    case "color":
+      return SAFE_COLOR.test(value);
+    default:
+      // Unknown keys are preserved verbatim but never reach a render sink.
+      return true;
+  }
+}
+
 /** Parse `fill:#f9f,stroke:#333,stroke-width:2px` into a {@link StyleDef}. */
-function parseStyleProps(input: string): StyleDef {
+function parseStyleProps(
+  input: string,
+  onDrop?: (key: string, value: string) => void,
+): StyleDef {
   const style: StyleDef = {};
   for (const part of input.split(",")) {
     const idx = part.indexOf(":");
@@ -493,6 +536,10 @@ function parseStyleProps(input: string): StyleDef {
     const key = part.slice(0, idx).trim();
     const value = part.slice(idx + 1).trim();
     if (key === "" || value === "") continue;
+    if (!isSafeStyleValue(key, value)) {
+      onDrop?.(key, value);
+      continue;
+    }
     switch (key) {
       case "stroke-width":
         style.strokeWidth = value;

@@ -58,4 +58,33 @@ describe("renderSvg", () => {
     const svg = renderSvg('flowchart TD\n A["a & b < c"] --> B', { theme: "light" });
     expect(svg).toContain("a &amp; b &lt; c");
   });
+
+  it("neutralizes an attribute-breakout attempt in a user style value (REV-001)", () => {
+    // The classic exploit: close the fill attribute and inject an event handler.
+    const svg = renderSvg(
+      'flowchart TD\nA[Click me]-->B\nstyle A fill:#fff" onmouseover="alert(document.domain)',
+      { theme: "light" },
+    );
+    // No injected handler / script survives into the emitted SVG.
+    expect(svg).not.toContain("onmouseover");
+    expect(svg).not.toContain("alert(document.domain)");
+    // The hostile fill is dropped at the source, so the node keeps the theme fill.
+    expect(svg).toContain('fill="#ffffff"');
+    // …and the output is still well-formed XML (no dangling attribute quote).
+    const parser = new XMLParser({ ignoreAttributes: false });
+    expect(() => parser.parse(svg)).not.toThrow();
+  });
+
+  it("drops the same breakout supplied via classDef (REV-001)", () => {
+    const svg = renderSvg(
+      [
+        "flowchart TD",
+        "A:::x-->B",
+        'classDef x fill:#fff" onmouseover="alert(1)',
+      ].join("\n"),
+      { theme: "light" },
+    );
+    expect(svg).not.toContain("onmouseover");
+    expect(svg).not.toContain("alert(1)");
+  });
 });

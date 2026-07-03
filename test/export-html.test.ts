@@ -46,6 +46,20 @@ describe("renderHtml: self-contained", () => {
     expect(() => new Function("return (" + src + ")")()).not.toThrow();
   });
 
+  it("keeps ZERO external requests under an adversarial url() style (REV-002)", () => {
+    // `url(...)` has no `;`/`,`, so it slips past the statement splitter — it must
+    // be dropped at the source so the exported page never fetches a remote asset.
+    const hostile = renderHtml(
+      "flowchart TD\nA-->B\nstyle A fill:url(http://evil.example/track.png)",
+      { theme: "dark" },
+    );
+    expect(hostile).not.toContain("evil.example");
+    // reuse the zero-network external-url guard: no fetchable url() may appear
+    expect(hostile).not.toMatch(/url\(\s*['"]?[^#'")]/i);
+    const stripped = hostile.replace(/https?:\/\/www\.w3\.org\/[^"' )]*/g, "");
+    expect(stripped).not.toMatch(/https?:\/\//);
+  });
+
   it("round-trips the embedded model", () => {
     const m = /var __vnm_payload = ([\s\S]*?);\nvnmRuntime/.exec(html);
     expect(m).not.toBeNull();

@@ -109,6 +109,45 @@ describe("parser: classes, classDef, style", () => {
     const m = parse("flowchart TD\n A-->B\n style A fill:#eee,stroke-width:2px");
     expect(m.nodes[0]!.style).toMatchObject({ fill: "#eee", strokeWidth: "2px" });
   });
+
+  it("drops unsafe style/classDef values at the source and warns (REV-001/002)", () => {
+    const m = parse(
+      [
+        "flowchart TD",
+        "A-->B",
+        "style A fill:url(http://evil/x.png),stroke:#333",
+        'classDef bad fill:#fff" onmouseover="x',
+        "A:::bad",
+      ].join("\n"),
+    );
+    const a = m.nodes.find((n) => n.id === "A")!;
+    // the hostile fill is gone; the safe stroke on the same statement survives
+    expect(a.style?.fill).toBeUndefined();
+    expect(a.style?.stroke).toBe("#333");
+    // the hostile classDef fill is dropped entirely (empty style bag)
+    expect(m.classDefs.get("bad")?.fill).toBeUndefined();
+    // both drops surface as structured warnings
+    expect(m.warnings.filter((w) => w.code === "unsafe-style-value")).toHaveLength(2);
+  });
+
+  it("keeps benign color forms (hex, rgb, named) and stroke-dasharray", () => {
+    // Note: `,` separates style properties, so the space-separated rgb() form is
+    // the one that survives the splitter — commas inside rgb(a, b, c) do not.
+    const m = parse(
+      [
+        "flowchart TD",
+        "A-->B",
+        "style A fill:#abc,stroke:rgb(10 20 30),color:red,stroke-dasharray:6 3",
+      ].join("\n"),
+    );
+    expect(m.nodes[0]!.style).toMatchObject({
+      fill: "#abc",
+      stroke: "rgb(10 20 30)",
+      color: "red",
+      strokeDasharray: "6 3",
+    });
+    expect(m.warnings.filter((w) => w.code === "unsafe-style-value")).toHaveLength(0);
+  });
 });
 
 describe("parser: subgraphs", () => {
