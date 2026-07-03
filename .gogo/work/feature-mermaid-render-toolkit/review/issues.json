@@ -1,0 +1,78 @@
+{
+  "slug": "mermaid-render-toolkit",
+  "track": "review",
+  "round": 1,
+  "updated": "2026-07-03",
+  "issues": [
+    {
+      "id": "REV-001",
+      "title": "SVG output does not escape user-controlled style values → attribute-breakout XSS",
+      "description": "In src/render/svg.ts the resolved node style is interpolated straight into SVG attributes with no attribute escaping: nodeShape() builds `common = fill=\"${fill}\" stroke=\"${stroke}\" stroke-width=\"${strokeWidth}\"` (line ~162) and nodeText() emits `fill=\"${color}\"` (line ~264). fill/stroke/strokeWidth/color come from resolveNodeStyle(), i.e. from the DSL `style` and `classDef` statements — attacker-controlled. `esc()` only handles &,<,> and is applied to text content, not these attributes; note strokeDasharray IS run through escAttr() (line ~143), so the omission is an inconsistency, not an intentional trust boundary. VERIFIED: rendering `flowchart TD\\nA[Click me]-->B\\nstyle A fill:#fff\\\" onmouseover=\\\"alert(document.domain)` produces `<rect ... fill=\"#fff\" onmouseover=\"alert(document.domain)\" stroke=...>`. When the CLI-written .svg (or any inlining of it into HTML) is opened in a browser, the injected event handler executes — a stored XSS. This is the exact 'must never break out' class the review brief flags; labels are handled but style values are not. Same breakout is reachable via `classDef` values (comma-split, so a value with no comma survives).",
+      "proposed_solution": "AGENT-FIXABLE. Run every user-derived attribute value through escAttr() in svg.ts: fill, stroke, stroke-width, and the text color (mirror what strokeDasharray already does). Better: also validate style values at the source (allowlist a safe CSS color/paint grammar in parseStyleProps/resolveNodeStyle and drop values containing quotes/parens/whitespace), which additionally closes REV-002. Add a regression test that a `style`/`classDef` fill containing `\"` and `onmouseover=` cannot introduce a new attribute or handler.",
+      "severity": "blocker",
+      "priority": "P0",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fixed_in_commit": "0c8db89",
+      "fix_summary": "Root fix in the parser: parseStyleProps() now runs every fill/stroke/color/stroke-width/stroke-dasharray value through an allowlist (isSafeStyleValue) and drops anything outside safe CSS color/width/dash grammars — quotes, url(, <>, ;, }, backslashes, whitespace and control chars can no longer reach the sink — emitting an 'unsafe-style-value' diagnostic. The sanitized StyleDef feeds the SVG renderer, the serialized runtime and the HTML export. As defense in depth, svg.ts renderNode() also attribute-escapes fill/stroke/stroke-width/color. Regression tests (test/render-svg.test.ts) reproduce the `fill:#fff\" onmouseover=...` breakout via both `style` and `classDef` and assert no injected attribute/handler and valid XML."
+    },
+    {
+      "id": "REV-002",
+      "title": "Interactive/HTML-export card style is built from unsanitized style values → CSS + network injection (breaks FR8 zero-network)",
+      "description": "In src/render/dom/runtime.ts, cardStyle() concatenates resolved style values into a CSS string set via setAttribute('style', ...): `\"background:\" + st.fill + \";border:1.5px solid \" + st.stroke + \";color:\" + st.text + \";\"` (line ~372). st.fill/stroke/text come from the DSL `style`/`classDef` (styleForNode). The statement splitter blocks `;`/`,`, but a value like `url(http://evil.example/track.png)` contains neither. VERIFIED: `style A fill:url(http://evil.example/track.png)` parses to `{fill:'url(http://evil.example/track.png)'}` and renderHtml() embeds it, so the card renders `background:url(http://evil.example/track.png)` — a live network fetch from a page whose headline guarantee (plan FR8) is 'zero network requests'. The existing zero-network test only exercises benign input, so it misses this; the same input also trips that test's own external-url guard regex. Applies to both mount() and the standalone HTML export. Lower impact than REV-001 (CSS context via setAttribute, not script), but it defeats an advertised security property under adversarial input and shares REV-001's root cause.",
+      "proposed_solution": "AGENT-FIXABLE. Sanitize style values before they reach cardStyle()/styleForNode(): reject or strip values containing `url(`, quotes, parentheses, or that don't match a safe color/paint allowlist. Centralizing this in parseStyleProps or resolveNodeStyle fixes REV-001 and REV-002 together. Add a test asserting a url()/`;`-bearing style value cannot introduce a remote reference into the exported HTML.",
+      "severity": "major",
+      "priority": "P1",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fixed_in_commit": "0c8db89",
+      "fix_summary": "Closed by the same source sanitizer as REV-001: `fill:url(http://evil.example/track.png)` fails the SAFE_COLOR allowlist (contains url()/parens) and is dropped in parseStyleProps() before serialization, so the payload the runtime/HTML export embeds never carries a remote url(). No runtime change was needed for the security property. Added an adversarial zero-network regression in test/export-html.test.ts that renders the url() style and asserts the exported HTML contains no 'evil.example' and no fetchable url() (extending the existing external-url guard)."
+    },
+    {
+      "id": "REV-003",
+      "title": "Inlined DOM runtime geometry/style copies have drifted from the shared modules, with no parity guard",
+      "description": "src/render/dom/runtime.ts deliberately re-implements geometry (routePoints/pickSides/pathOf/labelAt) and style resolution (styleForNode/cardStyle) so it can be .toString()-serialized (comments say 'mirrors src/geometry' / 'mirrors render/style'). The comment is the only guard — there is no test asserting the copies stay in sync, and they have already diverged: (1) the runtime's routePoints() never calls the shared simplify() that geometry.routeElbow() applies (drops collinear/duplicate waypoints), so edge point counts differ; (2) styleForNode()/cardStyle() ignore strokeWidth and strokeDasharray, which resolveNodeStyle() + svg.ts honor — so a `classDef ... stroke-width:4px,stroke-dasharray:...` renders in static SVG but the interactive card always shows a fixed `1.5px solid` border. Result: the static SVG and the interactive/exported view render styled nodes and (potentially) label positions inconsistently, contradicting the 'shared geometry + tokens' claim.",
+      "proposed_solution": "AGENT-FIXABLE. Mirror stroke-width/stroke-dasharray into cardStyle() (and mirror simplify() in routePoints, or confirm it is visually inert), OR explicitly document the divergences. Add a small parity test that feeds the same styled model through resolveNodeStyle()+geometry and the runtime helpers and asserts they agree, so future drift is caught.",
+      "severity": "minor",
+      "priority": "P2",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fixed_in_commit": "c268f99",
+      "fix_summary": "Mirrored the shared modules into the runtime: routePoints() now applies a simplify() copy of geometry.simplify() to the elbow route (matching the static SVG waypoints), and styleForNode()/cardStyle() now honor stroke-width (SVG user units → px CSS border) and stroke-dasharray (→ dashed border) like resolveNodeStyle()+svg.ts. Added test/dom-runtime-parity.test.ts, which drives the real runtime through a minimal fake DOM and asserts its rendered edge paths equal routeEdge() and its card styles equal resolveNodeStyle() point-for-point, so any future drift fails the suite."
+    },
+    {
+      "id": "REV-004",
+      "title": "DOM interactive renderer draws every node shape as a rounded-rect card — undocumented",
+      "description": "src/render/dom/runtime.ts cardStyle() only varies border-radius (stadium/circle → 999px, rounded → card+4, else node radius); diamonds, hexagons, cylinders, parallelograms, subroutines etc. lose their silhouette in the interactive view and the standalone HTML export, while the static SVG draws the true shapes. This is an in-scope simplification (implementer flag 3, xplan-style cards), but it is not called out anywhere in README.md (the 'Shapes' section lists all shapes with no note that the interactive/HTML output renders them as cards), so a consumer will see a mismatch between `renderSvg`/PNG and `mount`/HTML for the same diagram.",
+      "proposed_solution": "AGENT-FIXABLE. Add one line to README (and ideally the mount()/renderHtml docstrings) stating the interactive renderer and HTML export draw all nodes as rounded cards; full shape silhouettes are in the static SVG/PNG output.",
+      "severity": "minor",
+      "priority": "P3",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fixed_in_commit": "e14c5e0",
+      "fix_summary": "Added an 'Interactive vs. static rendering' note to the README 'Supported DSL' section stating the interactive renderer and HTML export draw all nodes as rounded cards (only corner radius varies) while the static SVG/PNG draws full shape silhouettes, and mirrored the note into the mount() and renderHtml() docstrings."
+    },
+    {
+      "id": "REV-005",
+      "title": "`unterminated-subgraph` diagnostic reports hardcoded line 1, col 1 instead of the subgraph's position",
+      "description": "src/parser/index.ts emits the unterminated-subgraph diagnostic with `diag('unterminated-subgraph', ..., 1, 1)` (lines ~162-170) — line and col are hardcoded, because openSubgraph() never records the opening statement's line/col on the Subgraph. The plan (FR1) and the review brief stress that parser diagnostics must carry correct line/col; every other diagnostic does, so this one is misleading (points a user at 1:1 for a subgraph opened much later). The existing test only asserts the code is present, not its position.",
+      "proposed_solution": "AGENT-FIXABLE. Store the opening line/col on each Subgraph when it is pushed in openSubgraph(), and report those in the unterminated-subgraph diagnostic. Extend the test to assert the reported line/col match the `subgraph` keyword.",
+      "severity": "minor",
+      "priority": "P2",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fixed_in_commit": "7962ede",
+      "fix_summary": "openSubgraph() now records each subgraph's opening line/col in a subgraphOpenPos map, and the unterminated-subgraph diagnostic reports the recorded position (falling back to 1:1 only if absent). Extended the parser test to assert the diagnostic points at the `subgraph` keyword (line 2, col 2 for the fixture)."
+    }
+  ]
+}

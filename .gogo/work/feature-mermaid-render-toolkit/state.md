@@ -19,19 +19,26 @@
 - **status:** implementing   <!-- awaiting-plan-acceptance | plan-accepted | implementing | reviewing | testing | waiting-for-user | done | shipped | aborted -->
 - **created:** 2026-07-03
 - **branch:** n/a (repo not yet a git repository)
-- **iterations:** plan=1 · implement=1 · review=0 · test=0
-- **resume:** implement round 1 complete — all 14 checklist items built (parser,
-  layout, geometry, themes, SVG/ASCII/DOM/HTML/PNG renderers, web component, CLI).
-  Green: `npm run build` + `npm run typecheck` + `npm test` (89 unit) + `npm run
-  test:e2e` (8 playwright, Chromium installed here). Committed in milestone
-  increments. Ready for review ③.
-  - Notable: found + fixed a packaging bug via e2e — @dagrejs/dagre must be
-    bundled into the browser entries (mount + web component run parse→layout
-    client-side); commander + resvg stay external.
-  - Small in-scope choices for the reviewer: DOM node cards are rounded-rect
-    cards (full shape variants live in the static SVG, per the xplan reference);
-    the interactive elbow routing is re-implemented inline inside the
-    self-contained HTML runtime (mirrors src/geometry).
+- **iterations:** plan=1 · implement=2 · review=1 · test=0
+- **resume:** implement round 2 (review-fix) complete — all 5 review-round-1
+  findings fixed and marked `status: fixed` in review/issues.json with fix_summary
+  + fixed_in_round + fixing commit. Green: `npm run build` + `npm run typecheck` +
+  `npm test` (96 unit, +7) + `npm run test:e2e` (8 playwright). Committed one small
+  increment per issue. Ready for re-review (round 2, same living list).
+  - REV-001 (blocker) + REV-002 (major): single root fix — the parser now
+    allowlist-sanitizes user `style`/`classDef` values (drops url()/quotes/`<>`/etc.,
+    emits an `unsafe-style-value` diagnostic) so the XSS and the CSS network-fetch
+    are closed at the source for SVG, DOM runtime, and HTML export alike; svg.ts
+    also attribute-escapes as defense in depth. Commit 0c8db89.
+  - REV-003: mirrored geometry.simplify() + stroke-width/stroke-dasharray into the
+    inlined runtime and added test/dom-runtime-parity.test.ts (drives the real
+    runtime through a fake DOM, compares paths/styles to the shared modules).
+    Commit c268f99.
+  - REV-004: documented rounded-card interactive rendering (README + docstrings),
+    commit e14c5e0. REV-005: unterminated-subgraph diagnostic now reports the real
+    line/col, commit 7962ede.
+  - Round-1 notes still stand: @dagrejs/dagre is bundled into the browser entries;
+    DOM cards are rounded-rect (full silhouettes in static SVG, now documented).
   - Per delegation scope: did not regenerate charts/ or write implement/result.json
-    (left to the orchestrator); only state.md touched under .gogo/.
+    (left to the orchestrator); only state.md + review/issues.json touched under .gogo/.
 - **open-decision:** none
