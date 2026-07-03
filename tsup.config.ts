@@ -14,6 +14,10 @@ export default defineConfig({
   sourcemap: false,
   splitting: false,
   treeshake: true,
-  // dagre / commander / resvg stay external (peer install, optional dep, etc.)
-  external: ["@dagrejs/dagre", "commander", "@resvg/resvg-js"],
+  // dagre is pure JS and must run in the browser (mount + custom element need
+  // parse→layout), so bundle it into every entry. commander is CLI-only and
+  // @resvg/resvg-js is a native, lazily dynamic-imported optional dep — keep
+  // both external so they are never pulled into the browser-safe core.
+  noExternal: ["@dagrejs/dagre"],
+  external: ["commander", "@resvg/resvg-js"],
 });
