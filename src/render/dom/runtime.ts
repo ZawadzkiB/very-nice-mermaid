@@ -620,6 +620,12 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
 
   function onPointerDown(ev: PointerEvent): void {
     const target = ev.target as HTMLElement;
+    // Toolbar controls (fit / zoom-in / zoom-out) live inside the viewport, so
+    // their pointerdown bubbles here. Capturing the pointer for a pan would
+    // steal the implicit pointerup and suppress the button's synthesized click,
+    // so bail out and let the button's own click handler run (it stops
+    // propagation itself) — mirroring the minimap's stopPropagation guard.
+    if (target.closest && target.closest(".vnm-toolbar")) return;
     const card = target.closest ? (target.closest(".vnm-node") as HTMLElement | null) : null;
     moved = false;
     startX = ev.clientX;
