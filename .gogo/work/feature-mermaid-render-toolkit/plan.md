@@ -1,6 +1,6 @@
 # Plan — very-nice-mermaid: a framework-agnostic Mermaid renderer (lib + CLI)
 
-Status: **accepted** (user, 2026-07-03)
+Status: **shipped / as-built** (2026-07-03) — accepted, implemented, reviewed, and tested green. See `report/report.md` for the as-built account. All 11 FRs delivered; the interactive renderer draws rounded-rect cards (full shape polygons in the static SVG), and lenient mode now errors on zero-node input (D6).
 
 **In one breath:** turn this empty repo into an npm package + CLI that takes
 Mermaid **flowchart DSL** in and produces **beautiful, interactive, themeable**
@@ -58,7 +58,11 @@ over the same positioned model.
   `classDef` / `class` / `:::`; `style` (fill/stroke/color subset); `%%`
   comments; quoted labels + `<br/>` line breaks. **Lenient by default**: unknown
   constructs degrade gracefully with a structured warning (line/col); `--strict`
-  turns warnings into errors. Parse errors always carry line/col.
+  turns warnings into errors. Parse errors always carry line/col. **(Refined
+  in test D6:** input that yields **zero renderable nodes** is a failure in *both*
+  modes — non-zero exit + a clear "no diagram found" message — since rendering
+  nothing is a silent failure; unknown constructs *within* otherwise-valid mermaid
+  stay lenient.)
 - **FR2 — Auto-layout**: deterministic layered layout via **@dagrejs/dagre**
   (pure JS, runs in Node and browser), honoring direction and subgraph clusters.
   Same input → same positions, always.

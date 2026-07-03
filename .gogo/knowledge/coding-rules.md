@@ -16,10 +16,21 @@ Generated-by: /gogo:build (2026-07-03)
 - Smallest correct change; stay scoped to the plan; no opportunistic refactors.
 - Keep build + tests green; commit in safe increments (only when asked to commit).
 
-## Project-specific
-None yet (empty repo — no lint/format config, no existing code to match). The
-first implemented feature sets the idiom; add rules here or in a `CLAUDE.md`
-as they emerge, then re-run `/gogo:build`.
+## Project-specific (learned from the v1 build, 2026-07-03)
+- **ESM only** (`"type": "module"`); use `.js` extensions in relative imports.
+- **Browser-safe core:** nothing reachable from the `.` / `./element` entries may
+  load a Node built-in. Node-only code lives under `src/cli/` and `src/export/png.ts`
+  (resvg via lazy `import()`). The tsup config encodes the bundle boundary
+  (`@dagrejs/dagre` bundled into browser entries; `commander`/resvg external).
+- **Sanitize user style values at the source.** User `style`/`classDef` values flow
+  into SVG attributes, HTML-export CSS, and the DOM runtime — allowlist them in the
+  parser (colors/widths/dashes only; drop `url(`, quotes, `<>`) and emit a
+  diagnostic. Never interpolate them raw. Attribute-escape at the SVG sink too.
+- **Keep the inlined `vnmRuntime` in parity** with `src/geometry` + `src/render/style`
+  — it's `.toString()`-serialized into HTML exports, so drift is invisible until it
+  ships. The `dom-runtime-parity` test guards this; extend it when you touch routing.
+- **Deterministic renders:** no `Date.now`/`Math.random`/`performance.now` in `src/`
+  render paths (SVG snapshots and layouts must be stable).
 
 ## gogo overrides
 <!-- Preserved across re-runs. -->

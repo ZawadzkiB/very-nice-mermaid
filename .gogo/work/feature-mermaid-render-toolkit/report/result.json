@@ -1,0 +1,31 @@
+{
+  "slug": "mermaid-render-toolkit",
+  "phase": "report",
+  "status": "ok",
+  "round": 1,
+  "inputs": [
+    ".gogo/work/feature-mermaid-render-toolkit/plan.md",
+    ".gogo/work/feature-mermaid-render-toolkit/state.md",
+    ".gogo/work/feature-mermaid-render-toolkit/decisions.md",
+    ".gogo/work/feature-mermaid-render-toolkit/review/issues.json",
+    ".gogo/work/feature-mermaid-render-toolkit/test/issues.json"
+  ],
+  "outputs": [
+    ".gogo/work/feature-mermaid-render-toolkit/report/report.md",
+    ".gogo/work/feature-mermaid-render-toolkit/report/flow.mmd",
+    ".gogo/work/feature-mermaid-render-toolkit/report/class.mmd",
+    ".gogo/work/feature-mermaid-render-toolkit/report/sequence.mmd",
+    ".gogo/work/feature-mermaid-render-toolkit/report/manifest.json",
+    ".gogo/work/feature-mermaid-render-toolkit/report/diagrams.html",
+    ".gogo/knowledge/tech-stack.md",
+    ".gogo/knowledge/testing-tools.md",
+    ".gogo/knowledge/project-knowledge.md",
+    ".gogo/knowledge/coding-rules.md",
+    ".gogo/knowledge/code-review-standards.md",
+    ".gogo/knowledge/test-strategy.md"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "open_issues": 0,
+  "summary": "Clean green run: v1 shipped (110 unit + 10 e2e green); as-built report + flow/class/sequence diagrams written; 6 gogo-owned knowledge docs refreshed from the shipped code."
+}

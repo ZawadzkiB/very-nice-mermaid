@@ -1,0 +1,32 @@
+flowchart LR
+  dsl["mermaid DSL<br/>string / .mmd / stdin"]:::io
+  parse["parse()<br/>src/parser"]:::proc
+  model["DiagramModel<br/>nodes · edges · subgraphs<br/>classDefs · diagnostics"]:::art
+  layout["layout()<br/>src/layout → @dagrejs/dagre"]:::proc
+  pos["PositionedModel<br/>+ RoutedEdge.waypoints"]:::art
+  theme["resolveTheme()<br/>light · dark · fancy · custom"]:::art
+  svg["renderSvg()<br/>src/render/svg"]:::proc
+  ascii["renderAscii / renderMarkdown<br/>src/render/ascii"]:::proc
+  dom["mount()<br/>src/render/dom (vnmRuntime)"]:::proc
+  html["renderHtml()<br/>src/export/html"]:::out
+  png["renderPng()<br/>src/export/png → @resvg/resvg-js"]:::out
+  elem["&lt;very-nice-mermaid&gt;<br/>src/element"]:::out
+  cli["vnm render<br/>src/cli"]:::out
+
+  dsl --> parse --> model --> layout --> pos
+  theme --> svg
+  theme --> dom
+  pos --> svg
+  pos --> ascii
+  pos --> dom --> elem
+  dom --> html
+  svg --> png
+  svg --> cli
+  ascii --> cli
+  html --> cli
+  png --> cli
+
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111

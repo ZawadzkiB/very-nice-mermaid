@@ -1,0 +1,31 @@
+{
+  "slug": "mermaid-render-toolkit",
+  "phase": "review",
+  "status": "ok",
+  "round": 3,
+  "inputs": [
+    ".gogo/work/feature-mermaid-render-toolkit/plan.md",
+    ".gogo/work/feature-mermaid-render-toolkit/decisions.md",
+    ".gogo/work/feature-mermaid-render-toolkit/test/issues.json",
+    ".gogo/work/feature-mermaid-render-toolkit/test-01.md",
+    ".gogo/work/feature-mermaid-render-toolkit/review/issues.json",
+    ".gogo/knowledge/code-review-standards.md",
+    ".gogo/knowledge/non-functional-requirements.md",
+    ".gogo/knowledge/coding-rules.md",
+    "src/geometry/index.ts",
+    "src/layout/index.ts",
+    "src/model/index.ts",
+    "src/render/dom/runtime.ts",
+    "src/render/ascii.ts",
+    "src/cli/run.ts"
+  ],
+  "outputs": [
+    ".gogo/work/feature-mermaid-render-toolkit/test/issues.json",
+    ".gogo/work/feature-mermaid-render-toolkit/review/issues.json",
+    ".gogo/work/feature-mermaid-render-toolkit/review-03.md"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "open_issues": 1,
+  "summary": "Round 3 focused re-review of the round-4 test-fix diff (4 commits). VERIFIED all four applicable test fixes and marked them verified: TEST-001 multi-rank routing (0 node-crossings/NaN/zero-length across every fixture via independent Liang-Barsky scan; retry edge no longer slices the diamond; elbow parity test extended to a real waypoint edge and green; determinism byte-identical, no random/date), TEST-002 toolbar guard (scoped to .vnm-toolbar, minimap sibling + pan/drag unaffected, e2e regression now green, 10/10), TEST-004 zero-node CLI exit (exit 1 + stderr msg + empty stdout for symbol-soup/empty; lenient exit 0 for unknown-construct; library parse/layout still non-throwing; matches decision D6 scope), TEST-005 ASCII corners (ci-pipeline: 0 crossing glyphs, 51 clean corners, arrowheads; genuine crossing still cross). TEST-003 correctly wontfix per D5. REV-006 comma-rgb verified; REV-001/REV-002 sanitization holds (12/12 targeted security tests pass); waypoints are dagre numbers, no injection surface. One NEW nit filed: REV-007 (curved/fancy waypoint path added by the fix is not covered by the REV-003 parity guard; no drift today, future-drift/coverage gap, agent-fixable). Build/typecheck/109 unit/10 e2e green. Verdict APPROVE - no open/new blockers or majors."
+}

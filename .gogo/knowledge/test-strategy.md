@@ -24,11 +24,20 @@ Generated-by: /gogo:build (scaffold)
 - **API** → hit endpoints (status, shape, errors).
 - **CLI** → run the commands; assert stdout / exit code.
 
-## Key user journeys
-None yet — define with the first shipped feature.
+## Key user journeys (from v1, 2026-07-03)
+- **CLI:** `vnm render <file|-> -f html|svg|png|md [--theme …] [--strict] [--scale N]`
+  — verify all 4 formats from a file and stdin; format inferred from `-o` extension;
+  bad DSL → line/col diagnostic + non-zero exit; zero-node input → "no diagram found".
+- **Interactive component:** `mount()` and `<very-nice-mermaid>` — drag a node and
+  confirm edges re-route live and stay border-anchored; pan / wheel-zoom-at-cursor /
+  fit; minimap recenter; layout persists across reload (localStorage) + export/import;
+  theme switch restyles. Drive with **real pointer events**, watch the console.
+- **"Looks right":** diagrams must beat mermaid-cli — no edges through node boxes
+  (overlap scan), readable labels, flush arrowheads, good theme contrast (light/dark/fancy).
 
 ## Deployment checks
-None yet — define once there is something to build/run.
+Library, not a service: `npm run build` clean, `npm pack` ships `dist/` + types +
+the `vnm` shebang bin, and the built `.` entry imports cleanly in Node.
 
 ## Done bar
 Build clean AND all unit AND all e2e green, PLUS hands-on exploration of the

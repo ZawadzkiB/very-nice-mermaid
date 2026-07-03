@@ -4,32 +4,39 @@
 and test it — used by the plan, implement, and test phases.
 
 <!-- gogo:meta
-Mode: owned            # no manifest / lockfile / README exists yet
-Source: [ ]
-Confidence: low
-Generated-by: /gogo:build (2026-07-03)
+Mode: proxy
+Source: [ ../../package.json, ../../tsup.config.ts, ../../tsconfig.json, ../../README.md ]
+Confidence: high
+Generated-by: /gogo:build (2026-07-03); refreshed by /gogo:report (2026-07-03)
 -->
-> Verified against the codebase 2026-07-03: **no code exists** — the repo
-> contains only `.claude/settings.local.json`. Every command below is
-> unset by design, not missing by accident.
+> Verified against the shipped code 2026-07-03. Source of truth: `package.json`
+> (scripts/deps/exports/bin) + `tsup.config.ts` (bundling boundary).
 
 ## Stack
-- Language(s): none yet (no source files)
-- Framework(s): none yet
-- Package manager: none yet (no manifest or lockfile)
+- Language: TypeScript (ESM-only, `"type": "module"`), Node ≥ 20
+- Runtime deps: `@dagrejs/dagre` (layout), `commander` (CLI); `@resvg/resvg-js`
+  is an **optionalDependency** (PNG only, lazy-imported)
+- Build: **tsup** (ESM + `.d.ts`); typecheck via `tsc --noEmit`
+- Package manager: npm
 
 ## Commands (run from repo root)
-- build:     none yet
-- test:      none yet
-- e2e:       none yet
-- lint:      none yet
-- typecheck: none yet
-- dev / run: none yet
+- build:     `npm run build`     # tsup → dist/ (ESM + types)
+- test:      `npm test`          # vitest run (unit)
+- e2e:       `npm run test:e2e`  # playwright (needs `npx playwright install chromium`)
+- typecheck: `npm run typecheck` # tsc --noEmit
+- run (CLI): `node dist/cli/index.js render <file> …`  (or `npx vnm render …`)
+- lint:      none configured (typecheck + tests are the gate)
+
+## Package shape
+- `exports`: `.` (main API) and `./element` (the `<very-nice-mermaid>` web component)
+- `bin`: `vnm`, `very-nice-mermaid` → `dist/cli/index.js`
+- Browser-safe core: nothing in the `.`/`./element` entries loads a Node built-in;
+  `@dagrejs/dagre` is **bundled** into the browser entries, `commander`/resvg stay external.
 
 ## Services / runtime
-None yet.
+Pure library + CLI — no server, DB, or ports. PNG needs the native `@resvg/resvg-js`
+addon installed.
 
 ## gogo overrides
 <!-- Preserved across re-runs. -->
-- The first `/gogo:plan` should pick the stack; once a manifest lands, re-run
-  `/gogo:build` so this file becomes a proxy of it.
+- Entry points: `src/index.ts` (API), `src/element.ts` (web component), `src/cli/index.ts` (CLI bin).

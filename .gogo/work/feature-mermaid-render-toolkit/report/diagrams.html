@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo report diagrams — mermaid-render-toolkit</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo report diagrams — <code>mermaid-render-toolkit</code></h1>
+    <p class="hint">As-built UML set · offline viewer · mermaid vendored with the plugin (no network, no CLI).</p>
+  </header>
+
+  <h2>As-built data flow</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  dsl["mermaid DSL<br/>string / .mmd / stdin"]:::io
+  parse["parse()<br/>src/parser"]:::proc
+  model["DiagramModel<br/>nodes · edges · subgraphs<br/>classDefs · diagnostics"]:::art
+  layout["layout()<br/>src/layout → @dagrejs/dagre"]:::proc
+  pos["PositionedModel<br/>+ RoutedEdge.waypoints"]:::art
+  theme["resolveTheme()<br/>light · dark · fancy · custom"]:::art
+  svg["renderSvg()<br/>src/render/svg"]:::proc
+  ascii["renderAscii / renderMarkdown<br/>src/render/ascii"]:::proc
+  dom["mount()<br/>src/render/dom (vnmRuntime)"]:::proc
+  html["renderHtml()<br/>src/export/html"]:::out
+  png["renderPng()<br/>src/export/png → @resvg/resvg-js"]:::out
+  elem["&lt;very-nice-mermaid&gt;<br/>src/element"]:::out
+  cli["vnm render<br/>src/cli"]:::out
+
+  dsl --> parse --> model --> layout --> pos
+  theme --> svg
+  theme --> dom
+  pos --> svg
+  pos --> ascii
+  pos --> dom --> elem
+  dom --> html
+  svg --> png
+  svg --> cli
+  ascii --> cli
+  html --> cli
+  png --> cli
+
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111
+  </pre></div>
+
+  <h2>As-built modules &amp; types</h2>
+  <div class="diagram"><pre class="mermaid">
+classDiagram
+  class DiagramModel {
+    +direction: Direction
+    +nodes: DiagramNode[]
+    +edges: DiagramEdge[]
+    +subgraphs: Subgraph[]
+    +classDefs: Map~string, StyleDef~
+    +diagnostics: Diagnostic[]
+  }
+  class PositionedModel {
+    +nodes: PositionedNode[]
+    +edges: RoutedEdge[]
+    +subgraphs: PositionedSubgraph[]
+    +bounds: Rect
+  }
+  class RoutedEdge {
+    +from: string
+    +to: string
+    +path: string
+    +waypoints: Point[]
+    +label?: string
+  }
+  class Theme {
+    +tokens: TokenSet
+    +edgeStyle: EdgeStyle
+  }
+  class Parser {
+    +parse(dsl, ParseOptions) DiagramModel
+  }
+  class Layout {
+    +layout(model, LayoutOptions) PositionedModel
+  }
+  class Geometry {
+    +routeEdge(a, b, dir, style, waypoints) RoutedEdge
+    +elbowThrough() ~orthogonal~
+    +roundedPath() ~curved~
+    +snapWaypoints()
+  }
+  class SvgRenderer {
+    +renderSvg(input, opts) string
+  }
+  class AsciiRenderer {
+    +renderAscii() string
+    +renderMarkdown() string
+  }
+  class DomRuntime {
+    +mount(el, opts) RuntimeHandle
+    +vnmRuntime (serializable)
+  }
+  class HtmlExport {
+    +renderHtml(input, opts) string
+  }
+  class PngExport {
+    +renderPng(input, opts) Uint8Array
+  }
+  class VeryNiceMermaidElement
+
+  Parser --> DiagramModel : produces
+  Layout --> DiagramModel : reads
+  Layout --> PositionedModel : produces
+  Layout ..> Geometry : routes edges
+  PositionedModel *-- RoutedEdge
+  SvgRenderer ..> PositionedModel
+  SvgRenderer ..> Theme
+  AsciiRenderer ..> PositionedModel
+  DomRuntime ..> PositionedModel
+  DomRuntime ..> Theme
+  DomRuntime ..> Geometry : re-routes on drag
+  HtmlExport ..> DomRuntime : serializes vnmRuntime
+  PngExport ..> SvgRenderer : rasterizes via resvg
+  VeryNiceMermaidElement ..> DomRuntime : mount()
+  </pre></div>
+
+  <h2>Interactive runtime: drag → live re-route → persist</h2>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  actor User
+  participant El as mount() / element
+  participant RT as vnmRuntime
+  participant Geo as geometry
+  participant LS as localStorage
+
+  Note over El,RT: initial render
+  El->>RT: mount(el, {model, theme})
+  RT->>Geo: routeEdge(a,b,dir,style,waypoints)
+  Geo-->>RT: RoutedEdge.path (elbow/curved through waypoints)
+  RT-->>User: node cards + SVG edge layer + minimap
+
+  Note over User,LS: drag to reorganize (live re-route)
+  User->>RT: pointerdown on node card
+  loop pointermove
+    RT->>RT: update node position (÷ zoom)
+    RT->>Geo: re-route connected edges
+    Geo-->>RT: new paths (stay anchored to borders)
+    RT-->>User: edges follow the node
+  end
+  User->>RT: pointerup
+  RT->>LS: persist layout (debounced)
+
+  Note over User,RT: toolbar & viewport
+  User->>RT: click fit / zoom (guarded from pan capture)
+  RT-->>User: transform updated
+  User->>RT: reload page
+  RT->>LS: read saved layout
+  LS-->>RT: positions
+  RT-->>User: arrangement restored
+  </pre></div>
+
+  <script src="../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from: ../../../resources/mermaid.min.js\n' +
+          'Re-run the gogo-mermaid skill, or read the .mmd source files directly.</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

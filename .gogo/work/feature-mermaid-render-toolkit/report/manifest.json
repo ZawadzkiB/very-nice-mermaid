@@ -1,0 +1,22 @@
+{
+  "slug": "mermaid-render-toolkit",
+  "updated": "2026-07-03",
+  "note": "As-built set. No before/ set: the repo was greenfield, so there was no existing flow to compare against (plan ① drew no charts/before/).",
+  "diagrams": [
+    {
+      "kind": "flow",
+      "file": ".gogo/work/feature-mermaid-render-toolkit/report/flow.mmd",
+      "title": "As-built data flow: DSL → parse → layout(dagre) → SVG/ASCII/DOM → html/png/element/CLI"
+    },
+    {
+      "kind": "class",
+      "file": ".gogo/work/feature-mermaid-render-toolkit/report/class.mmd",
+      "title": "As-built modules & types: DiagramModel, PositionedModel/RoutedEdge, geometry, renderers, exports"
+    },
+    {
+      "kind": "sequence",
+      "file": ".gogo/work/feature-mermaid-render-toolkit/report/sequence.mmd",
+      "title": "Interactive runtime: mount → drag node → live edge re-route → persist/restore layout"
+    }
+  ]
+}
