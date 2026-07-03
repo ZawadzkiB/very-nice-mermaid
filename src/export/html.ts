@@ -38,7 +38,13 @@ function embedJson(value: unknown): string {
     .join("\\u2029");
 }
 
-/** Render a fully self-contained interactive HTML document. */
+/**
+ * Render a fully self-contained interactive HTML document.
+ *
+ * Like `mount()`, the embedded interactive renderer draws every node as a
+ * **rounded card** (only the corner radius varies); full shape silhouettes are
+ * in the static `renderSvg` / PNG output.
+ */
 export function renderHtml(input: RenderInput, opts: HtmlExportOptions = {}): string {
   const { model, theme } = prepare(input, { theme: opts.theme, strict: opts.strict });
   const payload = buildPayload(model, theme, opts);

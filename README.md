@@ -141,6 +141,13 @@ Flowcharts only (`flowchart` / `graph`, directions `TB`/`TD`/`BT`/`LR`/`RL`):
 - **Styling** — `classDef`, `class`, inline `:::class`, `style`.
 - **Misc** — `%%` comments, quoted labels, `<br/>` line breaks.
 
+> **Interactive vs. static rendering** — the static **SVG** / **PNG** output
+> draws each node's full shape silhouette (diamonds, hexagons, cylinders, …). The
+> interactive renderer — `mount()`, the `<very-nice-mermaid>` element, and the
+> standalone **HTML** export — draws every node as a **rounded card**, varying
+> only the corner radius (stadium / circle → pill). Expect the interactive / HTML
+> view to differ from `renderSvg` / PNG for non-rectangular shapes.
+
 Parsing is **lenient** by default: unknown constructs degrade to a structured
 warning carrying `line`/`col`. `--strict` (CLI) / `{ strict: true }` (API) turns
 warnings into errors.

@@ -17,6 +17,10 @@ export interface MountOptions extends InteractiveOptions {
 /**
  * Mount an interactive diagram into `el` and return a handle
  * (`fit`, `zoomIn/Out`, `exportLayout`, `importLayout`, `setTheme`, `destroy`).
+ *
+ * Note: the interactive renderer draws every node as a **rounded card** (only
+ * the corner radius varies); full shape silhouettes (diamond, hexagon, cylinder,
+ * …) are drawn by the static `renderSvg` / PNG output.
  */
 export function mount(el: HTMLElement, dsl: RenderInput, opts: MountOptions = {}): RuntimeHandle {
   const { model, theme } = prepare(dsl, { theme: opts.theme, strict: opts.strict });
