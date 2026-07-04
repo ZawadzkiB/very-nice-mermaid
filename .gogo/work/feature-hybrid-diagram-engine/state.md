@@ -16,7 +16,7 @@
 
 - **feature:** hybrid diagram engine — detectType router + mermaid.js fallback for all types + native re-skinned renderers (sequence/class/state/journey), ASCII for flowchart+sequence, transparent fallback diagnostics
 - **phase:** done            <!-- plan | implement | review | test | knowledge | done -->
-- **status:** done           <!-- awaiting-plan-acceptance | plan-accepted | implementing | reviewing | testing | waiting-for-user | done | shipped | aborted -->
+- **status:** shipped        <!-- awaiting-plan-acceptance | plan-accepted | implementing | reviewing | testing | waiting-for-user | done | shipped | aborted -->
 - **created:** 2026-07-04
 - **branch:** master (repo now a git repo; v0.1.0 shipped)
 - **iterations:** plan=1 · implement=6 · review=2 · test=2

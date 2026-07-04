@@ -1,0 +1,11 @@
+{
+  "slug": "hybrid-diagram-engine",
+  "updated": "2026-07-04",
+  "members": ["hybrid-diagram-engine"],
+  "note": "v0.2.0 — hybrid diagram engine. Single-member entry. before/ holds the v1 flowchart-only baseline for the before/after compare.",
+  "diagrams": [
+    { "kind": "flow", "file": "hybrid-diagram-engine-flow.mmd", "title": "hybrid-diagram-engine: router → flowchart/native/fallback → outputs + diagnostics" },
+    { "kind": "class", "file": "hybrid-diagram-engine-class.mmd", "title": "hybrid-diagram-engine: modules — router, native readers, geometry(ports), renderers, diagnostics" },
+    { "kind": "sequence", "file": "hybrid-diagram-engine-sequence.mmd", "title": "hybrid-diagram-engine: runtime routing incl. honest fallback failure" }
+  ]
+}
