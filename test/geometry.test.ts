@@ -8,6 +8,7 @@ import {
   labelPoint,
   routeEdge,
   contentBounds,
+  computePortOffsets,
   type NodeBox,
 } from "../src/geometry/index.js";
 
@@ -84,6 +85,58 @@ describe("routeEdge", () => {
     expect(r.points.length).toBeGreaterThanOrEqual(2);
     expect(r.path.startsWith("M ")).toBe(true);
     expect(r.labelPos).toBeDefined();
+  });
+});
+
+describe("sidePoint spreads with an offset (TEST-002/003)", () => {
+  it("slides the anchor along the border, clamped to stay on it", () => {
+    expect(sidePoint(A, "bottom", 10)).toEqual({ x: 110, y: 120 });
+    expect(sidePoint(A, "bottom", -10)).toEqual({ x: 90, y: 120 });
+    // clamped: A is 80 wide → half 40, margin 6 → max |offset| = 34
+    expect(sidePoint(A, "bottom", 1000)).toEqual({ x: 134, y: 120 });
+    // left/right slide on y
+    expect(sidePoint(A, "right", 8)).toEqual({ x: 140, y: 108 });
+  });
+});
+
+describe("computePortOffsets spreads shared-border edges (TEST-002/003)", () => {
+  const boxes = new Map<string, NodeBox>([
+    ["A", { x: 100, y: 100, width: 80, height: 40 }],
+    ["B", { x: 100, y: 300, width: 80, height: 40 }],
+  ]);
+
+  it("gives an anti-parallel pair opposite offsets so they don't fully occlude", () => {
+    const offsets = computePortOffsets([{ from: "A", to: "B" }, { from: "B", to: "A" }], boxes, "TB");
+    // each edge keeps the same sign at both ends → a straight, distinct channel
+    expect(Math.sign(offsets[0]!.source)).toBe(Math.sign(offsets[0]!.target));
+    expect(Math.sign(offsets[1]!.source)).toBe(Math.sign(offsets[1]!.target));
+    // and the two edges land on opposite channels
+    expect(Math.sign(offsets[0]!.source)).not.toBe(Math.sign(offsets[1]!.source));
+    expect(offsets[0]!.source).not.toBe(0);
+  });
+
+  it("leaves a single edge unspread (ordinary flowchart routing unchanged)", () => {
+    const offsets = computePortOffsets([{ from: "A", to: "B" }], boxes, "TB");
+    expect(offsets[0]).toEqual({ source: 0, target: 0 });
+  });
+
+  it("fans several edges leaving one node onto distinct source anchors", () => {
+    const fan = new Map<string, NodeBox>([
+      ["S", { x: 200, y: 100, width: 120, height: 40 }],
+      ["L", { x: 80, y: 300, width: 60, height: 40 }],
+      ["M", { x: 200, y: 300, width: 60, height: 40 }],
+      ["R", { x: 320, y: 300, width: 60, height: 40 }],
+    ]);
+    const offsets = computePortOffsets(
+      [{ from: "S", to: "L" }, { from: "S", to: "M" }, { from: "S", to: "R" }],
+      fan,
+      "TB",
+    );
+    const sources = offsets.map((o) => o.source);
+    expect(new Set(sources).size).toBe(3); // three distinct source channels
+    // ordered by the target's x: left target gets the leftmost anchor
+    expect(sources[0]).toBeLessThan(sources[1]!);
+    expect(sources[1]).toBeLessThan(sources[2]!);
   });
 });
 

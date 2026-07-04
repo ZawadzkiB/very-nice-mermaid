@@ -16,7 +16,7 @@ import type {
   Point,
 } from "../model/index.js";
 import { themes, type Theme } from "../theme/index.js";
-import { contentBounds, routeEdge, type NodeBox } from "../geometry/index.js";
+import { contentBounds, routeEdge, computePortOffsets, type NodeBox } from "../geometry/index.js";
 import { measureNode } from "./measure.js";
 
 // Interop: dagre ships CJS; under ESM the namespace may nest the real exports
@@ -101,6 +101,10 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
     positionedSubgraphs.push({ ...sg, x: box.x, y: box.y, width: box.width, height: box.height });
   }
 
+  // Spread edges that share a node border onto distinct channels so anti-parallel
+  // pairs don't fully occlude and a fan's start markers each sit on their own edge.
+  const ports = computePortOffsets(model.edges, nodeBoxes, model.direction);
+
   const edges: RoutedEdge[] = [];
   model.edges.forEach((edge, i) => {
     const from = nodeBoxes.get(edge.from);
@@ -112,9 +116,11 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
     // ≤3 points: two border-attach ends + a single rank-gap bend) keep the
     // border-anchored elbow, so their routing is unchanged.
     const waypoints = edgeWaypoints(g, edge.from, edge.to, `e${i}`);
-    const routed = routeEdge(from, to, model.direction, theme.edgeStyle, waypoints);
+    const port = ports[i]!;
+    const routed = routeEdge(from, to, model.direction, theme.edgeStyle, waypoints, port);
     const out: RoutedEdge = { ...edge, points: routed.points, path: routed.path };
     if (waypoints.length > 0) out.waypoints = waypoints;
+    if (port.source !== 0 || port.target !== 0) out.ports = port;
     if (edge.label) out.labelPos = routed.labelPos;
     edges.push(out);
   });
@@ -162,10 +168,12 @@ export function applyPositions(
     if (!from || !to) return edge;
     // Keep the original detour waypoints so a sidecar/repositioned layout still
     // routes multi-rank edges around intervening ranks (matching the live DOM
-    // runtime, which keeps them while dragging).
-    const routed = routeEdge(from, to, model.direction, theme.edgeStyle, edge.waypoints ?? []);
+    // runtime, which keeps them while dragging), and the same port channels so a
+    // spread anti-parallel pair / fan stays legible after repositioning.
+    const routed = routeEdge(from, to, model.direction, theme.edgeStyle, edge.waypoints ?? [], edge.ports);
     const out: RoutedEdge = { ...edge, points: routed.points, path: routed.path };
     if (edge.waypoints) out.waypoints = edge.waypoints;
+    if (edge.ports) out.ports = edge.ports;
     if (edge.label) out.labelPos = routed.labelPos;
     return out;
   });

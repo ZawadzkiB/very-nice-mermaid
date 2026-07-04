@@ -108,4 +108,26 @@ describe("renderClassSvg", () => {
     const layout = layoutClass(MODEL, { theme: themes.dark! });
     expect(renderSvg(layout, { theme: "dark" })).toBe(renderClassSvg(layout, themes.dark!));
   });
+
+  it(
+    "keeps the composition diamond on its own edge, not a shared sibling trunk (TEST-002)",
+    () => {
+      // Dog has three outgoing relations (composition/association/realization);
+      // before port-spreading they left Dog from one shared point, so the
+      // composition diamond appeared to belong to all three. Now each starts on
+      // its own channel, so the diamond's edge start is unique.
+      const svg = renderClassSvg(layoutClass(MODEL, { theme: themes.light! }), themes.light!);
+
+      // Edge paths (not marker-def paths) carry `stroke-linejoin`.
+      const edges = [...svg.matchAll(/<path d="M ([\d.]+) ([\d.]+)[^"]*"([^>]*)\/>/g)]
+        .filter((m) => m[3]!.includes("stroke-linejoin"))
+        .map((m) => ({ start: `${m[1]},${m[2]}`, attrs: m[3]! }));
+
+      const composition = edges.filter((e) => e.attrs.includes("vnm-cls-diamond-solid"));
+      expect(composition).toHaveLength(1); // exactly one filled diamond
+      // no sibling edge shares the composition edge's start point (its own trunk)
+      const sharingStart = edges.filter((e) => e.start === composition[0]!.start);
+      expect(sharingStart).toHaveLength(1);
+    },
+  );
 });

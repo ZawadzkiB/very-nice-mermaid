@@ -144,6 +144,15 @@ export interface RoutedEdge extends DiagramEdge {
    * the same detour while dragging.
    */
   waypoints?: Point[];
+  /**
+   * Per-endpoint anchor offsets (in user units, perpendicular to the border) that
+   * spread multiple edges sharing the same node-border so their arrowheads /
+   * relation markers / labels stay individually legible instead of stacking on
+   * one point — fixes anti-parallel edges fully occluding and a relation marker
+   * bleeding onto sibling edges at a shared trunk. Kept on the edge so re-routing
+   * (state pseudo-state shrink, `applyPositions`) reproduces the same channels.
+   */
+  ports?: { source: number; target: number };
   /** Where the edge label plate is centered, if there is a label. */
   labelPos?: Point;
 }

@@ -71,4 +71,20 @@ describe("renderStateSvg", () => {
     const layout = layoutState(MODEL, { theme: themes.dark! });
     expect(renderSvg(layout, { theme: "dark" })).toBe(renderStateSvg(layout, themes.dark!));
   });
+
+  it(
+    "renders anti-parallel transitions (Idle<->Running) on distinct paths — neither is occluded (TEST-003)",
+    () => {
+      const layout = layoutState(MODEL, { theme: themes.light! });
+      const ir = layout.model.edges.find((e) => e.from === "Idle" && e.to === "Running")!;
+      const ri = layout.model.edges.find((e) => e.from === "Running" && e.to === "Idle")!;
+      // the two opposite transitions no longer share the identical path…
+      expect(ir.path).not.toBe(ri.path);
+      // …and both survive the pseudo-state shrink re-route with their offsets kept.
+      expect(ir.ports).toBeDefined();
+      expect(ri.ports).toBeDefined();
+      // their labels land at distinct x positions so both stay legible
+      expect(Math.abs(ir.labelPos!.x - ri.labelPos!.x)).toBeGreaterThan(8);
+    },
+  );
 });

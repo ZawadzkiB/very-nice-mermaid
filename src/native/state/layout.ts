@@ -82,9 +82,10 @@ export function layoutState(model: StateModel, opts: StateLayoutOptions = {}): S
     const from = boxes.get(e.from);
     const to = boxes.get(e.to);
     if (!from || !to) return e;
-    const r = routeEdge(from, to, positioned.direction, theme.edgeStyle, e.waypoints ?? []);
+    const r = routeEdge(from, to, positioned.direction, theme.edgeStyle, e.waypoints ?? [], e.ports);
     const out: RoutedEdge = { ...e, points: r.points, path: r.path };
     if (e.waypoints) out.waypoints = e.waypoints;
+    if (e.ports) out.ports = e.ports;
     if (e.label) out.labelPos = r.labelPos;
     return out;
   });

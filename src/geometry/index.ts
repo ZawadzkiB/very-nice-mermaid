@@ -19,25 +19,111 @@ export interface NodeBox {
 
 export type Side = "top" | "bottom" | "left" | "right";
 
+/** Per-endpoint anchor offset (perpendicular to the border) for edge spreading. */
+export interface PortOffsets {
+  source: number;
+  target: number;
+}
+
+/** Keep a spread anchor at least this many units inside a border corner. */
+const PORT_MARGIN = 6;
+/** Preferred gap between adjacent spread anchors on a shared border. */
+const PORT_STEP = 20;
+/** Cap the total spread to this fraction of the border length. */
+const PORT_SPREAD_FRAC = 0.7;
+
 /** Round to 2 decimals for deterministic, compact SVG output. */
 export function n(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-/** Midpoint of one side of a box (the perpendicular anchor point). */
-export function sidePoint(box: NodeBox, side: Side): Point {
+/** Clamp an anchor offset so it stays on its border (never past a corner). */
+function clampOffset(offset: number, half: number): number {
+  const max = Math.max(0, half - PORT_MARGIN);
+  return Math.max(-max, Math.min(max, offset));
+}
+
+/**
+ * Anchor point on one side of a box. `offset` slides it along that border
+ * (perpendicular to the side's normal), clamped to stay on the border — used to
+ * spread several edges that share the same node side onto distinct channels.
+ */
+export function sidePoint(box: NodeBox, side: Side, offset = 0): Point {
   const hw = box.width / 2;
   const hh = box.height / 2;
   switch (side) {
     case "top":
-      return { x: box.x, y: box.y - hh };
+      return { x: box.x + clampOffset(offset, hw), y: box.y - hh };
     case "bottom":
-      return { x: box.x, y: box.y + hh };
+      return { x: box.x + clampOffset(offset, hw), y: box.y + hh };
     case "left":
-      return { x: box.x - hw, y: box.y };
+      return { x: box.x - hw, y: box.y + clampOffset(offset, hh) };
     case "right":
-      return { x: box.x + hw, y: box.y };
+      return { x: box.x + hw, y: box.y + clampOffset(offset, hh) };
   }
+}
+
+/**
+ * Assign per-endpoint anchor offsets so edges sharing the same node border are
+ * spread onto distinct, parallel channels. Two effects, one mechanism:
+ *   - **anti-parallel** edges between the same pair (e.g. `Running --> Paused`
+ *     and `Paused --> Running`) stop rendering exactly on top of each other, and
+ *   - a **fan** of edges leaving one node stops sharing a single start point, so
+ *     a relation's start marker (composition diamond, inheritance triangle) sits
+ *     unambiguously on its own edge instead of the shared trunk.
+ *
+ * Deterministic: endpoints on a border are ordered by the *other* end's position
+ * along that border (then edge index), so an edge keeps the same side at both of
+ * its ends and the channels don't cross. Single-edge borders get a zero offset,
+ * so ordinary flowchart routing is unchanged. Returns one entry per input edge.
+ */
+export function computePortOffsets(
+  edges: ReadonlyArray<{ from: string; to: string }>,
+  boxes: Map<string, NodeBox>,
+  direction: Direction,
+): PortOffsets[] {
+  const result: PortOffsets[] = edges.map(() => ({ source: 0, target: 0 }));
+  interface Rec {
+    edgeIndex: number;
+    role: "source" | "target";
+    along: number;
+  }
+  const groups = new Map<string, Rec[]>();
+  const groupNode = new Map<string, string>();
+
+  const add = (nodeId: string, side: Side, rec: Rec): void => {
+    const key = nodeId + "|" + side;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(rec);
+    groupNode.set(key, nodeId);
+  };
+
+  edges.forEach((e, i) => {
+    const from = boxes.get(e.from);
+    const to = boxes.get(e.to);
+    if (!from || !to) return;
+    if (from === to || (from.x === to.x && from.y === to.y)) return; // self-loop
+    const { exit, entry } = pickSides(from, to, direction);
+    const axisX = (s: Side) => s === "top" || s === "bottom";
+    add(e.from, exit, { edgeIndex: i, role: "source", along: axisX(exit) ? to.x : to.y });
+    add(e.to, entry, { edgeIndex: i, role: "target", along: axisX(entry) ? from.x : from.y });
+  });
+
+  for (const [key, recs] of groups) {
+    if (recs.length < 2) continue;
+    const side = key.slice(key.lastIndexOf("|") + 1) as Side;
+    const box = boxes.get(groupNode.get(key)!)!;
+    const borderLen = side === "top" || side === "bottom" ? box.width : box.height;
+    recs.sort(
+      (a, b) => a.along - b.along || a.edgeIndex - b.edgeIndex || a.role.localeCompare(b.role),
+    );
+    const k = recs.length;
+    const step = Math.min(PORT_STEP, (borderLen * PORT_SPREAD_FRAC) / (k - 1));
+    recs.forEach((r, slot) => {
+      const off = (slot - (k - 1) / 2) * step;
+      result[r.edgeIndex]![r.role] = off;
+    });
+  }
+  return result;
 }
 
 const isHorizontalLayout = (d: Direction): boolean => d === "LR" || d === "RL";
@@ -164,13 +250,14 @@ export function routeElbow(
   to: NodeBox,
   direction: Direction,
   waypoints: Point[] = [],
+  offsets?: PortOffsets,
 ): Point[] {
   if (from === to || (from.x === to.x && from.y === to.y)) {
     return selfLoop(from);
   }
   const { exit, entry } = pickSides(from, to, direction);
-  const start = sidePoint(from, exit);
-  const end = sidePoint(to, entry);
+  const start = sidePoint(from, exit, offsets?.source ?? 0);
+  const end = sidePoint(to, entry, offsets?.target ?? 0);
   const horizontal = exit === "left" || exit === "right";
   if (waypoints.length > 0) {
     return elbowThrough(start, end, waypoints, {
@@ -195,13 +282,14 @@ export function routeCurved(
   from: NodeBox,
   to: NodeBox,
   direction: Direction,
+  offsets?: PortOffsets,
 ): Point[] {
   if (from === to || (from.x === to.x && from.y === to.y)) {
     return selfLoop(from);
   }
   const { exit, entry } = pickSides(from, to, direction);
-  const start = sidePoint(from, exit);
-  const end = sidePoint(to, entry);
+  const start = sidePoint(from, exit, offsets?.source ?? 0);
+  const end = sidePoint(to, entry, offsets?.target ?? 0);
   const horizontal = exit === "left" || exit === "right";
   const k = horizontal
     ? Math.max(24, Math.abs(end.x - start.x) * 0.5)
@@ -326,17 +414,18 @@ export function routeEdge(
   direction: Direction,
   style: EdgeStyle,
   waypoints: Point[] = [],
+  offsets?: PortOffsets,
 ): { points: Point[]; path: string; labelPos: Point } {
   const selfish = from === to || (from.x === to.x && from.y === to.y);
   if (style === "curved" && waypoints.length > 0 && !selfish) {
-    const points = routeElbow(from, to, direction, waypoints);
+    const points = routeElbow(from, to, direction, waypoints, offsets);
     return { points, path: roundedPath(points), labelPos: labelPoint(points, "elbow") };
   }
   if (style === "curved") {
-    const points = routeCurved(from, to, direction);
+    const points = routeCurved(from, to, direction, offsets);
     return { points, path: toPath(points, "curved"), labelPos: labelPoint(points, "curved") };
   }
-  const points = routeElbow(from, to, direction, waypoints);
+  const points = routeElbow(from, to, direction, waypoints, offsets);
   return { points, path: toPath(points, "elbow"), labelPos: labelPoint(points, "elbow") };
 }
 

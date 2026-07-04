@@ -143,6 +143,30 @@ describe("multi-rank edges route around intervening nodes (TEST-001)", () => {
   });
 });
 
+describe("anti-parallel edges are spread onto distinct paths (TEST-003)", () => {
+  it("a bidirectional pair A<->B renders two different paths + label positions", () => {
+    const pos = layout(parse("flowchart TD\n A-->B\n B-->A"));
+    const ab = pos.edges.find((e) => e.from === "A" && e.to === "B")!;
+    const ba = pos.edges.find((e) => e.from === "B" && e.to === "A")!;
+    // the two transitions no longer render on the identical path
+    expect(ab.path).not.toBe(ba.path);
+    // both carry a non-zero port offset (spread into separate channels)
+    expect(ab.ports).toBeDefined();
+    expect(ba.ports).toBeDefined();
+    // their start x's differ by a legible margin
+    expect(Math.abs(ab.points[0]!.x - ba.points[ba.points.length - 1]!.x)).toBeGreaterThan(8);
+  });
+
+  it("the state-machine fixture's Idle<->Running (start/stop) pair does not overlap", () => {
+    const pos = layout(parse(readFileSync(join(fixturesDir, "state-machine.mmd"), "utf8")));
+    // any two edges between the same node pair in opposite directions must differ
+    for (const e of pos.edges) {
+      const rev = pos.edges.find((o) => o.from === e.to && o.to === e.from);
+      if (rev) expect(e.path).not.toBe(rev.path);
+    }
+  });
+});
+
 describe("layout output shape", () => {
   it("routes every edge and computes bounds", () => {
     const pos = layout(parse(readFileSync(join(fixturesDir, "nested-subgraphs.mmd"), "utf8")));
