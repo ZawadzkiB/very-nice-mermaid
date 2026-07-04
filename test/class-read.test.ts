@@ -89,4 +89,30 @@ describe("readClassModel (SVG → model, FR2/D3)", () => {
     },
     T,
   );
+
+  it(
+    "disambiguates an ambiguous underscore split via edge geometry (A / A_B / B_C / C — REV-006)",
+    async () => {
+      // Classes A, A_B, B_C, C make mermaid's undelimited id `id_A_B_C_n` split as
+      // BOTH `A|B_C` and `A_B|C`. The real relation is `A_B --> C`; the leftmost
+      // split would silently mis-pair it as `A --> B_C`, so geometry must decide.
+      const model = await readClassModel(
+        [
+          "classDiagram",
+          "  class A",
+          "  class A_B",
+          "  class B_C",
+          "  class C",
+          "  A_B --> C : real",
+        ].join("\n"),
+      );
+
+      const rel = model.relations.find((r) => r.label === "real")!;
+      expect(rel).toBeDefined();
+      expect(rel).toMatchObject({ from: "A_B", to: "C" });
+      // …and it is NOT the leftmost-split mis-pairing.
+      expect(model.relations.some((r) => r.from === "A" && r.to === "B_C")).toBe(false);
+    },
+    T,
+  );
 });

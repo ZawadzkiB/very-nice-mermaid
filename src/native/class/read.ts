@@ -34,7 +34,7 @@ import type {
 } from "../../model/class.js";
 import type { Diagnostic } from "../../model/index.js";
 import { loadMermaid } from "../../mermaid/router.js";
-import { hasClass, readEdgeLabelMap } from "../read-util.js";
+import { hasClass, pathPoints, parseTranslate, readEdgeLabelMap, type Pt } from "../read-util.js";
 
 /** A stable id keeps mermaid's internal ids deterministic across runs. */
 const READ_ID = "vnm-class-read";
@@ -115,17 +115,78 @@ function readClasses(doc: Document): ClassEntity[] {
   return classes;
 }
 
-/** Split `id_<From>_<To>_<n>` into (from, to) against the known class-name set. */
-function splitEnds(dataId: string, names: Set<string>): { from: string; to: string } | null {
+/**
+ * Every (from, to) split of `id_<From>_<To>_<n>` that lands on two KNOWN class
+ * names. mermaid's id is undelimited, so with underscore-heavy class names more
+ * than one split can be valid (e.g. classes `A`/`A_B`/`B_C`/`C` make
+ * `id_A_B_C_1` split as both `A|B_C` and `A_B|C`) — {@link readRelations} then
+ * disambiguates the ambiguous case via the edge-path endpoint geometry (REV-006).
+ */
+function candidateEnds(dataId: string, names: Set<string>): Array<{ from: string; to: string }> {
   // strip the `id_` prefix and the trailing `_<index>`
   const core = dataId.replace(/^id_/, "").replace(/_\d+$/, "");
   const parts = core.split("_");
+  const out: Array<{ from: string; to: string }> = [];
   for (let i = 1; i < parts.length; i++) {
     const from = parts.slice(0, i).join("_");
     const to = parts.slice(i).join("_");
-    if (names.has(from) && names.has(to)) return { from, to };
+    if (names.has(from) && names.has(to)) out.push({ from, to });
   }
-  return null;
+  return out;
+}
+
+/** The id of the class node whose center is nearest to a point, or `null`. */
+function nearestClass(pt: Pt, centers: Map<string, Pt>): string | null {
+  let best: string | null = null;
+  let bestD = Infinity;
+  for (const [id, c] of centers) {
+    const d = (c.x - pt.x) ** 2 + (c.y - pt.y) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = id;
+    }
+  }
+  return best;
+}
+
+/** Map each class id → its node center (mermaid's `g.node` `translate(x, y)`). */
+function readClassCenters(doc: Document): Map<string, Pt> {
+  const centers = new Map<string, Pt>();
+  for (const g of Array.from(doc.querySelectorAll("g.node"))) {
+    const name = classNameFromId(g.getAttribute("id") ?? "");
+    if (!name) continue;
+    const c = parseTranslate(g.getAttribute("transform"));
+    if (c) centers.set(name, c);
+  }
+  return centers;
+}
+
+/**
+ * Choose a relation's (from, to) among the data-id split candidates. With a
+ * single candidate we use it directly (the common, unambiguous case). When the
+ * split is ambiguous, we disambiguate via geometry the way the state reader does
+ * — match the relation path's first/last point to the nearest class-node center
+ * — and pick the candidate that agrees (REV-006). Returns `null` when nothing
+ * can be recovered so the caller emits the existing diagnostic instead of
+ * silently mis-pairing.
+ */
+function resolveEnds(
+  candidates: Array<{ from: string; to: string }>,
+  path: Element,
+  centers: Map<string, Pt>,
+): { from: string; to: string } | null {
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0]!;
+  const pts = pathPoints(path.getAttribute("d") ?? "");
+  if (pts.length >= 2) {
+    const gFrom = nearestClass(pts[0]!, centers);
+    const gTo = nearestClass(pts[pts.length - 1]!, centers);
+    if (gFrom && gTo) {
+      const hit = candidates.find((c) => c.from === gFrom && c.to === gTo);
+      if (hit) return hit;
+    }
+  }
+  return null; // ambiguous and geometry can't disambiguate — don't guess.
 }
 
 /** Which relation marker (if any) a `url(#…)` reference names, + which type it is. */
@@ -160,6 +221,7 @@ function relationType(
 function readRelations(
   doc: Document,
   names: Set<string>,
+  centers: Map<string, Pt>,
   warnings: Diagnostic[],
 ): ClassRelation[] {
   const paths = Array.from(doc.querySelectorAll("g.edgePaths path.relation"));
@@ -168,7 +230,7 @@ function readRelations(
 
   paths.forEach((p, i) => {
     const dataId = p.getAttribute("data-id") ?? p.getAttribute("id") ?? "";
-    const ends = splitEnds(dataId, names);
+    const ends = resolveEnds(candidateEnds(dataId, names), p, centers);
     const startRef = p.getAttribute("marker-start");
     const endRef = p.getAttribute("marker-end");
     const token = markerToken(startRef) ?? markerToken(endRef);
@@ -209,6 +271,7 @@ export async function readClassModel(dsl: string): Promise<ClassModel> {
   const warnings: Diagnostic[] = [];
   const classes = readClasses(doc);
   const names = new Set(classes.map((c) => c.id));
-  const relations = readRelations(doc, names, warnings);
+  const centers = readClassCenters(doc);
+  const relations = readRelations(doc, names, centers, warnings);
   return { kind: "class", classes, relations, warnings };
 }
