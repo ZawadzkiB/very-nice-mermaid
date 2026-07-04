@@ -479,8 +479,9 @@ describe("vnm CLI (child_process)", () => {
   describe("fallback tier (mermaid.js)", () => {
     const PIE = 'pie title Pets\n "Dogs" : 386\n "Cats" : 85';
     // An ER diagram takes the mermaid.js fallback tier and its dagre/getBBox
-    // bounds are degenerate headless (spike-01.md) → a `render-degraded` warning.
-    // (class/state used to sit here but are now native re-skinned renderers.)
+    // bounds are degenerate/blank headless (spike-01.md) → per D9-A the CLI fails
+    // honestly with a `fallback-render-unavailable` error rather than writing the
+    // broken SVG. (class/state used to sit here but are now native re-skinned.)
     const ER = "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  ORDER ||--|{ LINE_ITEM : contains";
 
     it(
@@ -520,22 +521,42 @@ describe("vnm CLI (child_process)", () => {
     );
 
     it(
-      "--strict escalates a degraded fallback render to a non-zero exit",
+      "hard-fails a degenerate headless fallback render — fallback-render-unavailable, non-zero, no file written (TEST-004/D9-A)",
       () => {
-        const r = cli(["render", "-", "-f", "svg", "--strict"], ER);
+        const out = join(tmp, "degenerate-er.svg");
+        // No --strict: a genuinely-blank render is a real failure, not a warning.
+        const r = cli(["render", "-", "-o", out, "-f", "svg"], ER);
         expect(r.status).toBe(1);
-        expect(r.stderr).toMatch(/render-degraded warn fallback/);
+        expect(r.stderr).toMatch(/fallback-render-unavailable error fallback/);
+        // …and the broken SVG is NOT written to disk (nor an HTML wrapper of it).
+        expect(existsSync(out)).toBe(false);
       },
       60_000,
     );
 
     it(
-      "reports ASCII/Markdown as unavailable for a fallback type (FR4)",
+      "reports ASCII/Markdown as unavailable for a fallback type (FR4) — graceful exit 0 by default, non-zero only under --strict (TEST-005/D8-A)",
       () => {
-        const r = cli(["render", "-", "-f", "md"], PIE);
-        expect(r.status).toBe(1);
-        expect(r.stderr).toContain("capability-unavailable");
-        expect(r.stderr).toMatch(/capability=ascii/);
+        const lenient = cli(["render", "-", "-f", "md"], PIE);
+        expect(lenient.status).toBe(0);
+        expect(lenient.stderr).toMatch(/capability-unavailable warn fallback capability=ascii/);
+
+        const strict = cli(["render", "-", "-f", "md", "--strict"], PIE);
+        expect(strict.status).toBe(1);
+        expect(strict.stderr).toMatch(/capability-unavailable warn fallback capability=ascii/);
+      },
+      60_000,
+    );
+
+    it(
+      "native + fallback ascii-unavailable exit codes are consistent by default (TEST-005)",
+      () => {
+        // Same warn-level `capability-unavailable` diagnostic on BOTH tiers must
+        // exit 0 by default (only --strict escalates) — native (state) already did.
+        const nativeMd = cli(["render", join(fixtures, "order-state.mmd"), "-f", "md"]);
+        const fallbackMd = cli(["render", "-", "-f", "md"], PIE);
+        expect(nativeMd.status).toBe(0);
+        expect(fallbackMd.status).toBe(0);
       },
       60_000,
     );

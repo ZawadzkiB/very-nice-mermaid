@@ -85,6 +85,23 @@ export class Diagnostics {
   }
 
   /**
+   * The fallback engine produced a **degenerate/blank** artifact headless — a
+   * zero/negative-width viewBox, negative-dimension rects, or empty content — so
+   * there is no usable output at all (D9-A: honest failure, not a broken SVG
+   * baked to disk). error-level; the CLI exits non-zero and writes nothing. The
+   * diagram renders correctly in a real browser / the library.
+   */
+  fallbackUnavailable(reason: string, message: string): RenderDiagnostic {
+    return this.emit({
+      code: "fallback-render-unavailable",
+      severity: "error",
+      tier: "fallback",
+      reason,
+      message,
+    });
+  }
+
+  /**
    * A theme token failed the style allowlist and was dropped/replaced before
    * reaching mermaid's `themeVariables` (FR5/FR7). warn-level: the render still
    * succeeds, but the requested styling was not applied verbatim.

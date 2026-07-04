@@ -44,18 +44,22 @@ describe("fallback SVG render under jsdom (FR3/FR6)", () => {
   );
 
   it(
-    "reports degraded geometry for a dagre/getBBox type (class) under jsdom (FR5)",
+    "hard-fails a degenerate dagre/getBBox render headless — fallback-render-unavailable, no broken SVG (TEST-004/D9-A)",
     async () => {
-      const { svg, diagnostics, degraded } = await renderFallbackSvg(
-        "classDiagram\n Animal <|-- Dog",
-        { detected: "class" },
-      );
-      expect(svg).toContain("<svg");
-      expect(degraded).toBe(true);
-      const deg = diagnostics.find((d) => d.code === "render-degraded");
-      expect(deg).toBeDefined();
-      expect(deg!.severity).toBe("warn");
-      expect(deg!.capability).toBe("geometry");
+      // ER's headless dagre/getBBox bounds explode to a degenerate sliver viewBox.
+      // Per D9-A we fail honestly (a clear FR5 error) instead of returning the
+      // blank/invalid SVG for it to be written to a file or baked into HTML.
+      const diagnostics = new Diagnostics();
+      await expect(
+        renderFallbackSvg("erDiagram\n CUSTOMER ||--o{ ORDER : places", {
+          detected: "er",
+          diagnostics,
+        }),
+      ).rejects.toThrow(/cannot be rendered headlessly/i);
+      const d = diagnostics.all().find((x) => x.code === "fallback-render-unavailable");
+      expect(d).toBeDefined();
+      expect(d!.severity).toBe("error");
+      expect(d!.tier).toBe("fallback");
     },
     T,
   );

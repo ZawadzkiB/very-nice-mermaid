@@ -32,15 +32,39 @@ export interface FallbackRenderResult {
 /** A stable id keeps mermaid's internal ids deterministic across runs. */
 const RENDER_ID = "vnm-fallback";
 
-/** Detect mermaid's degenerate-geometry symptom under jsdom (no text metrics). */
-function viewBoxDegenerate(svg: string): boolean {
+/** Thrown when a fallback render is degenerate/blank headless (D9-A honest fail). */
+export class FallbackUnavailableError extends Error {
+  constructor(
+    public readonly detected: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "FallbackUnavailableError";
+  }
+}
+
+/**
+ * Detect a degenerate/blank mermaid render under jsdom (no real text metrics):
+ * a zero/negative-area viewBox, an aspect ratio collapsed to a sliver (bounds
+ * that explode to tens of thousands on one axis), a negative width/height on any
+ * `<rect>`, or empty content. Any of these means the artifact is unusable — not
+ * merely "approximate" (TEST-004) — so the caller hard-fails instead of emitting
+ * a broken SVG.
+ */
+function isDegenerate(svg: string): boolean {
   const m =
     /viewBox="\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s*"/.exec(svg);
-  if (!m) return false;
-  const w = parseFloat(m[3]!);
-  const h = parseFloat(m[4]!);
-  // dagre/getBBox-derived bounds collapse to ~0 or explode to tens of thousands.
-  return !(w > 0 && h > 0) || w > 8000 || h > 8000;
+  if (m) {
+    const w = parseFloat(m[3]!);
+    const h = parseFloat(m[4]!);
+    // dagre/getBBox-derived bounds collapse to ~0 or explode to tens of thousands.
+    if (!(w > 0 && h > 0) || w > 8000 || h > 8000) return true;
+  }
+  // A negative width/height attribute is spec-invalid and renders nothing.
+  if (/\b(?:width|height)="\s*-[\d.]/.test(svg)) return true;
+  // No drawable content at all (only the root <svg> wrapper).
+  if (!/<(?:rect|path|circle|ellipse|line|polygon|text|g|foreignObject)\b/.test(svg)) return true;
+  return false;
 }
 
 /**
@@ -90,15 +114,17 @@ export async function renderFallbackSvg(
     );
   }
 
-  let degraded = false;
-  if (headless && viewBoxDegenerate(svg)) {
-    degraded = true;
-    diagnostics.degraded(
-      "geometry",
-      detected,
-      `'${detected}' geometry is approximate under jsdom (headless text measurement is unavailable); render in a browser for exact layout`,
-    );
+  // Headless (jsdom) renders of layout-heavy types collapse to a blank/invalid
+  // SVG (TEST-004 / D9-A). Detect it and fail honestly with a clear FR5 error —
+  // never return the broken SVG to be written to a file or baked into HTML. In a
+  // real browser `headless` is false, so these types render normally there.
+  if (headless && isDegenerate(svg)) {
+    const message =
+      `'${detected}' cannot be rendered headlessly (jsdom): the layout is degenerate/blank. ` +
+      `It renders correctly in a browser / the library; use those for '${detected}'.`;
+    diagnostics.fallbackUnavailable(detected, message);
+    throw new FallbackUnavailableError(detected, message);
   }
 
-  return { svg, diagnostics: diagnostics.all(), degraded };
+  return { svg, diagnostics: diagnostics.all(), degraded: false };
 }

@@ -391,7 +391,10 @@ async function doFallbackRender(
       `ASCII/Markdown output is unavailable for '${detected}' (only flowchart + sequence render as ASCII); use -f svg|html|png`,
     );
     printRenderDiagnostics(diagnostics.all(), quiet);
-    return 1;
+    // D8-A: a warn-level capability loss is graceful (exit 0) by default for BOTH
+    // tiers, non-zero only under --strict — matching the native tier's precedent
+    // and FR5's "warn escalates only under --strict" model (TEST-005).
+    return strict ? 1 : 0;
   }
 
   let svg: string;
