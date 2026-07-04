@@ -52,6 +52,16 @@ export function sanitizeFontSize(value: number | string): string | null {
   return `${n}px`;
 }
 
+/** Escape `&`/`<`/`>` for safe embedding as SVG/XML text content. */
+export function escapeXml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Escape XML text plus `"` for safe embedding inside a double-quoted attribute. */
+export function escapeXmlAttr(s: string): string {
+  return escapeXml(s).replace(/"/g, "&quot;");
+}
+
 export interface ResolvedNodeStyle {
   fill: string;
   stroke: string;

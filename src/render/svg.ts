@@ -12,8 +12,11 @@ import type {
 } from "../model/index.js";
 import { n } from "../geometry/index.js";
 import type { Theme, PartialTokenSet } from "../theme/index.js";
+import { resolveTheme } from "../theme/index.js";
 import { resolveNodeStyle } from "./style.js";
 import { prepare, type RenderInput } from "./prepare.js";
+import { isSequenceLayout, type SequenceLayout } from "../model/sequence.js";
+import { renderSequenceSvg } from "../native/sequence/svg.js";
 
 export interface SvgRenderOptions {
   theme?: string | Theme | PartialTokenSet;
@@ -23,7 +26,13 @@ export interface SvgRenderOptions {
 }
 
 /** Render a diagram to a standalone SVG string. */
-export function renderSvg(input: RenderInput, opts: SvgRenderOptions = {}): string {
+export function renderSvg(
+  input: RenderInput | SequenceLayout,
+  opts: SvgRenderOptions = {},
+): string {
+  if (isSequenceLayout(input)) {
+    return renderSequenceSvg(input, resolveTheme(opts.theme), opts.background);
+  }
   const prepared = prepare(input, { theme: opts.theme, strict: opts.strict });
   return renderSvgFromModel(prepared.model, prepared.theme, opts.background);
 }
