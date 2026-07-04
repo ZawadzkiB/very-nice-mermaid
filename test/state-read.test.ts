@@ -64,4 +64,30 @@ describe("readStateModel (SVG → model, FR2/D3)", () => {
     },
     T,
   );
+
+  it(
+    "classifies pseudo-states structurally — a real state named end / *_start / *_end stays normal with its label (REV-005)",
+    async () => {
+      const model = await readStateModel(
+        [
+          "stateDiagram-v2",
+          "  [*] --> process_start",
+          "  process_start --> end",
+          "  end --> session_end",
+          "  session_end --> [*]",
+        ].join("\n"),
+      );
+
+      // Only the two `[*]` pseudo-states are start/end; the name-lookalikes are normal.
+      expect(model.states.filter((s) => s.kind === "start")).toHaveLength(1);
+      expect(model.states.filter((s) => s.kind === "end")).toHaveLength(1);
+      for (const name of ["process_start", "end", "session_end"]) {
+        expect(model.states.find((s) => s.id === name)).toMatchObject({
+          kind: "normal",
+          label: name,
+        });
+      }
+    },
+    T,
+  );
 });

@@ -58,10 +58,18 @@ function stateNameFromId(id: string): string | null {
   return m ? m[1]! : null;
 }
 
-/** Classify a state node as normal / start / end from its id + shape + label. */
-function classifyState(g: Element, name: string, label: string): StateNodeKind {
-  if (g.querySelector("circle.state-start") || /(^|_)start$/.test(name)) return "start";
-  if (/(^|_)end$/.test(name) || (label === "" && hasClass(g, "default"))) return "end";
+/**
+ * Classify a state node as normal / start / end from **structural signals only**
+ * (never its name — a user state literally named `end` / `process_start` /
+ * `session_end` is a normal state, REV-005): mermaid marks the `[*]` start
+ * pseudo-state with a `circle.state-start` descendant, and the `[*]` end
+ * pseudo-state as an empty-label node carrying the `default` class. A real state
+ * (even one named `end`) carries `statediagram-state` + a non-empty label, so it
+ * matches neither branch and stays `normal`.
+ */
+function classifyState(g: Element, label: string): StateNodeKind {
+  if (g.querySelector("circle.state-start")) return "start";
+  if (label === "" && hasClass(g, "default")) return "end";
   return "normal";
 }
 
@@ -77,7 +85,7 @@ function readNodes(doc: Document): ReadNode[] {
     const name = stateNameFromId(id);
     if (!name) continue;
     const label = (g.querySelector("text")?.textContent ?? "").trim();
-    const kind = classifyState(g, name, label);
+    const kind = classifyState(g, label);
     const center = parseTranslate(g.getAttribute("transform")) ?? { x: 0, y: 0 };
     nodes.push({ id: name, label: kind === "normal" ? label : "", kind, center });
   }
