@@ -322,6 +322,68 @@ describe("vnm CLI (child_process)", () => {
     });
   });
 
+  describe("native sequence tier (FR2/FR4)", () => {
+    const SEQ = join(fixtures, "order-sequence.mmd");
+
+    it(
+      "renders sequence to SVG natively (no fallback diagnostic)",
+      () => {
+        const r = cli(["render", SEQ, "-f", "svg"]);
+        expect(r.status).toBe(0);
+        expect(svgIsWellFormed(r.stdout)).toBe(true);
+        // native re-skin markers: our arrow marker + participant labels
+        expect(r.stdout).toContain('<marker id="vnm-arrow"');
+        expect(r.stdout).toContain(">User<");
+        // it is NATIVE — no fallback/degradation diagnostics on stderr
+        expect(r.stderr).not.toContain("fallback-tier");
+        expect(r.stderr).not.toContain("render-degraded");
+      },
+      60_000,
+    );
+
+    it(
+      "renders sequence to Markdown ASCII natively (FR4 — sequence gets ASCII)",
+      () => {
+        const r = cli(["render", SEQ, "-f", "md"]);
+        expect(r.status).toBe(0);
+        expect(r.stdout.startsWith("```")).toBe(true);
+        expect(r.stdout).toContain("User");
+        expect(r.stdout).toContain("│"); // lifelines
+        expect(r.stdout).toContain("▶"); // message arrow
+        // ASCII is available for sequence, so no capability-unavailable notice
+        expect(r.stderr).not.toContain("capability-unavailable");
+        expect(r.stderr).not.toContain("fallback-tier");
+      },
+      60_000,
+    );
+
+    it(
+      "renders sequence to a self-contained interactive HTML (zero external requests)",
+      () => {
+        const r = cli(["render", SEQ, "-f", "html", "--theme", "dark"]);
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain("<!doctype html>");
+        expect(r.stdout).toContain("var seqRuntime =");
+        expect(hasExternalRequest(r.stdout)).toBe(false);
+        expect(r.stderr).not.toContain("fallback-tier");
+      },
+      60_000,
+    );
+
+    it(
+      "themes sequence SVG (light/dark/fancy produce distinct output)",
+      () => {
+        const light = cli(["render", SEQ, "-f", "svg", "--theme", "light"]).stdout;
+        const dark = cli(["render", SEQ, "-f", "svg", "--theme", "dark"]).stdout;
+        const fancy = cli(["render", SEQ, "-f", "svg", "--theme", "fancy"]).stdout;
+        expect(light).not.toBe(dark);
+        expect(light).not.toBe(fancy);
+        expect(dark).not.toBe(fancy);
+      },
+      60_000,
+    );
+  });
+
   describe("fallback tier (mermaid.js)", () => {
     const PIE = 'pie title Pets\n "Dogs" : 386\n "Cats" : 85';
     const CLASS = "classDiagram\n Animal <|-- Dog";

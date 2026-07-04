@@ -16,6 +16,13 @@ import { renderPng, renderPngFromSvg } from "../export/png.js";
 import { classify } from "../mermaid/router.js";
 import { renderFallbackSvg } from "../mermaid/fallback.js";
 import {
+  readSequenceModel,
+  layoutSequence,
+  renderSequenceSvg,
+  renderSequenceMarkdown,
+  renderSequenceHtml,
+} from "../native/sequence/index.js";
+import {
   Diagnostics,
   formatRenderDiagnostic,
   type RenderDiagnostic,
@@ -116,7 +123,59 @@ async function doRender(input: string, opts: RenderOpts): Promise<number> {
     return doFallbackRender(dsl, classification.detected ?? classification.type, format, opts, theme);
   }
 
+  // Native sequence: re-skinned from mermaid's SVG into our themed engine (no
+  // fallback diagnostic — it renders natively, with ASCII support per FR4).
+  if (classification.renderer === "sequence") {
+    return doSequenceRender(dsl, format, opts, theme);
+  }
+
   return doNativeRender(dsl, format, opts, theme);
+}
+
+/**
+ * Native sequence path — read the structure from mermaid's SVG, lay it out with
+ * our own deterministic themed layout, and render SVG / ASCII / HTML / PNG. No
+ * fallback tier is involved, so no fallback/degradation diagnostic is emitted.
+ */
+async function doSequenceRender(
+  dsl: string,
+  format: Format,
+  opts: RenderOpts,
+  theme: Theme,
+): Promise<number> {
+  let layout;
+  try {
+    const model = await readSequenceModel(dsl);
+    if (model.participants.length === 0) {
+      process.stderr.write("error: no diagram found (input produced 0 participants)\n");
+      return 1;
+    }
+    layout = layoutSequence(model, { theme });
+  } catch (err) {
+    process.stderr.write(`error: ${(err as Error).message}\n`);
+    return 1;
+  }
+
+  try {
+    if (format === "png") {
+      const scale = opts.scale ? Number(opts.scale) : 1;
+      const svg = renderSequenceSvg(layout, theme, opts.background);
+      const bytes = await renderPngFromSvg(svg, scale);
+      if (opts.output) writeFileSync(opts.output, bytes);
+      else process.stdout.write(Buffer.from(bytes));
+      return 0;
+    }
+    let out: string;
+    if (format === "html") out = renderSequenceHtml(layout, theme, { title: opts.title });
+    else if (format === "md") out = renderSequenceMarkdown(layout);
+    else out = renderSequenceSvg(layout, theme, opts.background);
+    if (opts.output) writeFileSync(opts.output, out, "utf8");
+    else process.stdout.write(out.endsWith("\n") ? out : out + "\n");
+    return 0;
+  } catch (err) {
+    process.stderr.write(`error: ${(err as Error).message}\n`);
+    return 1;
+  }
 }
 
 /** Native flowchart path — unchanged behavior from v1. */

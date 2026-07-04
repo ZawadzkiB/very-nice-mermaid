@@ -51,6 +51,36 @@ export { mount } from "./render/dom/index.js";
 export type { MountOptions } from "./render/dom/index.js";
 export type { RuntimeHandle, LayoutData } from "./render/dom/runtime.js";
 
+// Native sequence renderer (FR2): read mermaid's SVG → our themed engine.
+// `readSequenceModel` loads mermaid lazily (same path as the fallback tier);
+// layout/SVG/ASCII/HTML are pure + sync and take the positioned layout.
+export {
+  readSequenceModel,
+  layoutSequence,
+  renderSequenceSvg,
+  renderSequenceAscii,
+  renderSequenceMarkdown,
+  buildSequencePayload,
+  mountSequence,
+  renderSequenceHtml,
+} from "./native/sequence/index.js";
+export type {
+  SequenceLayoutOptions,
+  SequenceInteractiveOptions,
+  SequenceHtmlOptions,
+} from "./native/sequence/index.js";
+export type { SeqRuntimeHandle } from "./render/dom/seq-runtime.js";
+export type {
+  SequenceModel,
+  SequenceParticipant,
+  SequenceMessage,
+  SequenceArrowKind,
+  SequenceLayout,
+  PositionedParticipant,
+  PositionedMessage,
+} from "./model/sequence.js";
+export { isSequenceLayout } from "./model/sequence.js";
+
 // Diagram-type router + mermaid.js fallback tier (mermaid/jsdom loaded lazily)
 export {
   classify,

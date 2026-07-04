@@ -19,7 +19,7 @@
 export type DiagramTier = "native" | "fallback";
 
 /** Which engine renders the diagram. */
-export type RendererId = "flowchart" | "mermaid";
+export type RendererId = "flowchart" | "sequence" | "mermaid";
 
 /** The result of classifying a DSL string. */
 export interface Classification {
@@ -40,12 +40,17 @@ export interface Classification {
 /** mermaid's `detectType` values for the flowchart family (all render natively). */
 const FLOWCHART_TYPES = new Set(["flowchart", "flowchart-v2", "graph"]);
 
+/** mermaid's `detectType` value for sequence diagrams (now a native renderer). */
+const SEQUENCE_TYPE = "sequence";
+
 /**
  * Types the task-1 spike found *feasible* to re-skin natively in a later round
- * (they still fall back for now). Journey is intentionally excluded — the spike
- * recommends it stays fallback (bespoke timeline visual, low re-skin value).
+ * but that still fall back for now (class + state land in the next rounds).
+ * Sequence has graduated to a real native renderer, so it's no longer here.
+ * Journey is intentionally excluded — the spike recommends it stays fallback
+ * (bespoke timeline visual, low re-skin value).
  */
-const NATIVE_PLANNED = new Set(["sequence", "class", "stateDiagram", "state"]);
+const NATIVE_PLANNED = new Set(["class", "stateDiagram", "state"]);
 
 let mermaidPromise: Promise<MermaidLike> | undefined;
 
@@ -175,6 +180,19 @@ export async function classify(dsl: string): Promise<Classification> {
   }
 
   if (FLOWCHART_TYPES.has(detected)) return nativeFlowchart(detected);
+
+  // Sequence is a native re-skinned renderer (read mermaid's SVG → our themed
+  // engine). It routes to the native tier — never the fallback SVG — so no
+  // fallback diagnostic is emitted for it.
+  if (detected === SEQUENCE_TYPE) {
+    return {
+      detected,
+      type: "sequence",
+      tier: "native",
+      renderer: "sequence",
+      nativePlanned: false,
+    };
+  }
 
   return {
     detected,

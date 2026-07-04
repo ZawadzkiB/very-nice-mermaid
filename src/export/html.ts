@@ -7,9 +7,11 @@
 
 import type { RenderInput } from "../render/prepare.js";
 import { prepare } from "../render/prepare.js";
-import type { Theme, PartialTokenSet } from "../theme/index.js";
+import { resolveTheme, type Theme, type PartialTokenSet } from "../theme/index.js";
 import { vnmRuntime } from "../render/dom/runtime.js";
 import { buildPayload, type InteractiveOptions } from "../render/dom/payload.js";
+import { isSequenceLayout, type SequenceLayout } from "../model/sequence.js";
+import { renderSequenceHtml } from "../native/sequence/interactive.js";
 
 export interface HtmlExportOptions extends InteractiveOptions {
   theme?: string | Theme | PartialTokenSet;
@@ -45,7 +47,19 @@ function embedJson(value: unknown): string {
  * **rounded card** (only the corner radius varies); full shape silhouettes are
  * in the static `renderSvg` / PNG output.
  */
-export function renderHtml(input: RenderInput, opts: HtmlExportOptions = {}): string {
+export function renderHtml(
+  input: RenderInput | SequenceLayout,
+  opts: HtmlExportOptions = {},
+): string {
+  if (isSequenceLayout(input)) {
+    return renderSequenceHtml(input, resolveTheme(opts.theme), {
+      title: opts.title,
+      minimap: opts.minimap,
+      fitPadding: opts.fitPadding,
+      minScale: opts.minScale,
+      maxScale: opts.maxScale,
+    });
+  }
   const { model, theme } = prepare(input, { theme: opts.theme, strict: opts.strict });
   const payload = buildPayload(model, theme, opts);
   const runtimeSrc = vnmRuntime.toString();

@@ -1,0 +1,9 @@
+sequenceDiagram
+  participant User
+  participant API
+  participant DB
+  User->>API: POST /orders
+  API->>DB: INSERT order
+  DB-->>API: order id
+  API->>API: validate stock
+  API-->>User: 201 Created

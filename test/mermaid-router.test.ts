@@ -21,24 +21,35 @@ describe("detectType router — classify (FR1)", () => {
   it(
     "routes a KNOWN non-flowchart type to fallback (silent-misparse bug fixed)",
     async () => {
-      // Before the fix, this was force-fed to the flowchart parser → garbage.
-      const seq = await classify("sequenceDiagram\n Alice->>Bob: hi");
-      expect(seq.tier).toBe("fallback");
-      expect(seq.renderer).toBe("mermaid");
-      expect(seq.detected).toBe("sequence");
-
+      // Before the fix, these were force-fed to the flowchart parser → garbage.
       const pie = await classify('pie title P\n "A" : 1');
       expect(pie.tier).toBe("fallback");
+      expect(pie.renderer).toBe("mermaid");
       expect(pie.detected).toBe("pie");
+
+      const gantt = await classify("gantt\n title G\n section S\n Task :a1, 2024-01-01, 3d");
+      expect(gantt.tier).toBe("fallback");
+      expect(gantt.detected).toBe("gantt");
     },
     T,
   );
 
   it(
-    "flags the spike's native-planned types (sequence/class/state) but still routes them to fallback for now",
+    "routes sequence to the NATIVE re-skinned renderer (no fallback tier)",
+    async () => {
+      const c = await classify("sequenceDiagram\n Alice->>Bob: hi");
+      expect(c.tier).toBe("native");
+      expect(c.renderer).toBe("sequence");
+      expect(c.detected).toBe("sequence");
+      expect(c.nativePlanned).toBe(false);
+    },
+    T,
+  );
+
+  it(
+    "flags the spike's still-planned native types (class/state) but routes them to fallback for now",
     async () => {
       for (const [dsl, det] of [
-        ["sequenceDiagram\n A->>B: x", "sequence"],
         ["classDiagram\n A <|-- B", "class"],
         ["stateDiagram-v2\n [*] --> A", "stateDiagram"],
       ] as const) {
