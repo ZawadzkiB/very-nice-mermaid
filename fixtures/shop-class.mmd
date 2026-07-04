@@ -1,0 +1,22 @@
+classDiagram
+  class Animal {
+    <<abstract>>
+    +String name
+    #int age
+    +makeSound() void
+    +move(int dist) bool
+  }
+  class Dog {
+    +String breed
+    +bark() void
+  }
+  class Owner {
+    +String name
+  }
+  class Collar
+  class Vet
+  Animal <|-- Dog : extends
+  Dog *-- Collar : has
+  Owner o-- Dog : owns
+  Dog --> Vet : visits
+  Dog ..> Vaccine : uses
