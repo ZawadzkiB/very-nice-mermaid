@@ -10,7 +10,7 @@
 
 import type { Theme } from "../theme/index.js";
 import { Diagnostics, type RenderDiagnostic } from "../diagnostics/index.js";
-import { loadMermaid, inNodeRuntime } from "./router.js";
+import { loadMermaid, usedHeadlessDom } from "./router.js";
 import { toMermaidTheme } from "./theme-map.js";
 
 export interface FallbackRenderOptions {
@@ -54,9 +54,12 @@ export async function renderFallbackSvg(
 ): Promise<FallbackRenderResult> {
   const diagnostics = opts.diagnostics ?? new Diagnostics();
   const detected = opts.detected ?? "unknown";
-  // In Node this also stands up the persistent jsdom DOM (before mermaid loads).
+  // In Node (with no host DOM) this also stands up the persistent jsdom DOM
+  // before mermaid loads; against a real/host DOM it uses that DOM as-is.
   const mermaid = await loadMermaid();
-  const inNode = inNodeRuntime();
+  // Geometry only degrades under our headless jsdom stubs — a host/browser DOM
+  // measures text for real (REV-003).
+  const headless = usedHeadlessDom();
 
   const themeConfig = opts.theme ? toMermaidTheme(opts.theme, diagnostics) : {};
   const config = {
@@ -88,7 +91,7 @@ export async function renderFallbackSvg(
   }
 
   let degraded = false;
-  if (inNode && viewBoxDegenerate(svg)) {
+  if (headless && viewBoxDegenerate(svg)) {
     degraded = true;
     diagnostics.degraded(
       "geometry",

@@ -66,6 +66,35 @@ export function inNodeRuntime(): boolean {
 }
 
 /**
+ * Do we need to stand up our own headless jsdom DOM? Only when there is **no
+ * usable DOM already** (REV-003). Keying jsdom setup on the *absence* of a DOM
+ * rather than merely on being in Node means a hybrid runtime that already has a
+ * real DOM — an Electron renderer, or a jsdom/happy-dom test env — is used as-is
+ * and never clobbered by a headless jsdom (which would overwrite window/document
+ * and shim SVGElement.prototype process-wide). A plain browser already returns
+ * false here (real `document`); combined with {@link inNodeRuntime} at the call
+ * site, jsdom is imported only when it's both needed and available.
+ */
+export function needsHeadlessDom(): boolean {
+  return (
+    typeof document === "undefined" ||
+    typeof (globalThis as { document?: { createElementNS?: unknown } }).document
+      ?.createElementNS !== "function"
+  );
+}
+
+let headlessDomInstalled = false;
+
+/**
+ * True once we have installed our own headless jsdom (vs. rendering against a
+ * host/browser DOM). Drives the "geometry is approximate under jsdom" diagnostic
+ * (FR5): a host DOM measures text for real, so its geometry is not degraded.
+ */
+export function usedHeadlessDom(): boolean {
+  return headlessDomInstalled;
+}
+
+/**
  * Lazily import mermaid and register its built-in diagram detectors exactly once.
  * `detectType` throws until `initialize` has run, so we always initialize here.
  *
@@ -78,8 +107,12 @@ export function inNodeRuntime(): boolean {
 export async function loadMermaid(): Promise<MermaidLike> {
   if (!mermaidPromise) {
     mermaidPromise = (async () => {
-      if (inNodeRuntime()) {
+      // Install jsdom only when in Node AND there is no usable DOM already —
+      // never overwrite a real/host DOM (REV-003). jsdom is Node-only, so the
+      // inNodeRuntime guard also keeps its import off the browser/worker path.
+      if (inNodeRuntime() && needsHeadlessDom()) {
         await (await import("./jsdom-env.js")).ensureNodeDom();
+        headlessDomInstalled = true;
       }
       const mod = (await import("mermaid")) as unknown as { default: MermaidLike };
       const mermaid = mod.default;
