@@ -321,4 +321,66 @@ describe("vnm CLI (child_process)", () => {
       expect(bg.stdout).not.toBe(def);
     });
   });
+
+  describe("fallback tier (mermaid.js)", () => {
+    const PIE = 'pie title Pets\n "Dogs" : 386\n "Cats" : 85';
+    const CLASS = "classDiagram\n Animal <|-- Dog";
+
+    it(
+      "renders a non-flowchart type to SVG AND logs that it took the fallback tier (FR5)",
+      () => {
+        const r = cli(["render", "-", "-f", "svg"], PIE);
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain("<svg");
+        expect(svgIsWellFormed(r.stdout)).toBe(true);
+        // greppable: `code severity tier … message`
+        expect(r.stderr).toMatch(/fallback-tier info fallback/);
+      },
+      60_000,
+    );
+
+    it(
+      "infers the fallback path from a .svg output file and writes the mermaid SVG",
+      () => {
+        const out = join(tmp, "pie.svg");
+        const r = cli(["render", "-", "-o", out], PIE);
+        expect(r.status).toBe(0);
+        expect(readFileSync(out, "utf8")).toContain("<svg");
+        expect(r.stderr).toContain("fallback-tier");
+      },
+      60_000,
+    );
+
+    it(
+      "--quiet mutes the info-level fallback notice (still renders)",
+      () => {
+        const r = cli(["render", "-", "-f", "svg", "--quiet"], PIE);
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain("<svg");
+        expect(r.stderr).not.toContain("fallback-tier");
+      },
+      60_000,
+    );
+
+    it(
+      "--strict escalates a degraded fallback render to a non-zero exit",
+      () => {
+        const r = cli(["render", "-", "-f", "svg", "--strict"], CLASS);
+        expect(r.status).toBe(1);
+        expect(r.stderr).toMatch(/render-degraded warn fallback/);
+      },
+      60_000,
+    );
+
+    it(
+      "reports ASCII/Markdown as unavailable for a fallback type (FR4)",
+      () => {
+        const r = cli(["render", "-", "-f", "md"], PIE);
+        expect(r.status).toBe(1);
+        expect(r.stderr).toContain("capability-unavailable");
+        expect(r.stderr).toMatch(/capability=ascii/);
+      },
+      60_000,
+    );
+  });
 });

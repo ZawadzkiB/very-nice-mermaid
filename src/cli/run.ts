@@ -12,7 +12,14 @@ import { resolveTheme, type Theme } from "../theme/index.js";
 import { renderSvg } from "../render/svg.js";
 import { renderMarkdown } from "../render/ascii.js";
 import { renderHtml } from "../export/html.js";
-import { renderPng } from "../export/png.js";
+import { renderPng, renderPngFromSvg } from "../export/png.js";
+import { classify } from "../mermaid/router.js";
+import { renderFallbackSvg } from "../mermaid/fallback.js";
+import {
+  Diagnostics,
+  formatRenderDiagnostic,
+  type RenderDiagnostic,
+} from "../diagnostics/index.js";
 import type { Diagnostic, PositionedModel } from "../model/index.js";
 
 type Format = "html" | "svg" | "png" | "md";
@@ -24,6 +31,7 @@ interface RenderOpts {
   format?: string;
   theme?: string;
   strict?: boolean;
+  quiet?: boolean;
   layout?: string;
   scale?: string;
   background?: string;
@@ -35,7 +43,7 @@ export async function run(argv: string[]): Promise<number> {
   const program = new Command();
   program
     .name("vnm")
-    .description("Render Mermaid flowcharts to HTML / SVG / PNG / Markdown (ASCII).")
+    .description("Render Mermaid diagrams to HTML / SVG / PNG / Markdown (ASCII).")
     .version(VERSION)
     .configureOutput({ writeErr: (s) => process.stderr.write(s) })
     .exitOverride();
@@ -45,11 +53,12 @@ export async function run(argv: string[]): Promise<number> {
   program
     .command("render")
     .argument("<input>", "input .mmd file, or - for stdin")
-    .description("render a flowchart")
+    .description("render a diagram (native flowchart, or the mermaid.js fallback tier)")
     .option("-o, --output <file>", "output file (default: stdout)")
     .option("-f, --format <fmt>", "html | svg | png | md (inferred from -o if omitted)")
     .option("-t, --theme <name|path>", "theme name (light|dark|fancy) or path to a theme .json", "light")
-    .option("--strict", "treat parser warnings as errors")
+    .option("--strict", "treat parser warnings AND fallback degradations as errors")
+    .option("--quiet", "mute info-level diagnostics (fallback notices) on stderr")
     .option("--layout <file>", "apply a portable layout.json (node positions)")
     .option("--scale <n>", "PNG scale factor (HiDPI)")
     .option("--background <color>", "background color, or 'transparent'")
@@ -98,28 +107,42 @@ async function doRender(input: string, opts: RenderOpts): Promise<number> {
     return 1;
   }
 
-  // 4. parse (diagnostics → stderr; strict throws)
+  // 4. route by diagram type (fixes the silent-misparse bug: a known
+  //    non-flowchart type goes to the mermaid.js fallback tier, not the
+  //    flowchart parser). Header-less / garbage falls through to native, where
+  //    the flowchart parser + the zero-node check (D6) still apply.
+  const classification = await classify(dsl);
+  if (classification.tier === "fallback") {
+    return doFallbackRender(dsl, classification.detected ?? classification.type, format, opts, theme);
+  }
+
+  return doNativeRender(dsl, format, opts, theme);
+}
+
+/** Native flowchart path — unchanged behavior from v1. */
+async function doNativeRender(
+  dsl: string,
+  format: Format,
+  opts: RenderOpts,
+  theme: Theme,
+): Promise<number> {
+  // parse (diagnostics → stderr; strict throws)
   let model;
   try {
     model = parse(dsl, { strict: opts.strict === true });
   } catch (err) {
     if (err instanceof ParseError) {
-      printDiagnostics(err.diagnostics);
+      printParseDiagnostics(err.diagnostics);
       return 1;
     }
     throw err;
   }
-  printDiagnostics(model.warnings);
+  printParseDiagnostics(model.warnings);
 
-  // 5. layout (+ optional sidecar)
   let positioned: PositionedModel = layout(model, { theme });
 
   // D6: rendering nothing is a silent failure. Input that yields zero renderable
-  // nodes is a CLI error in both lenient and strict modes — even when the parser
-  // only emitted warnings. (Unknown constructs *within* otherwise-valid mermaid
-  // still produce ≥1 node and stay lenient. The library API itself stays
-  // lenient: it returns the empty model without throwing; only the CLI escalates
-  // an empty render to a non-zero exit.)
+  // nodes is a CLI error in both lenient and strict modes.
   if (positioned.nodes.length === 0) {
     process.stderr.write("error: no diagram found (input produced 0 nodes)\n");
     return 1;
@@ -138,7 +161,6 @@ async function doRender(input: string, opts: RenderOpts): Promise<number> {
     }
   }
 
-  // 6. render + write
   try {
     if (format === "png") {
       const scale = opts.scale ? Number(opts.scale) : 1;
@@ -158,6 +180,91 @@ async function doRender(input: string, opts: RenderOpts): Promise<number> {
     process.stderr.write(`error: ${(err as Error).message}\n`);
     return 1;
   }
+}
+
+/**
+ * Fallback tier — mermaid.js renders the SVG; we surface a loud, greppable
+ * diagnostic that we took the fallback (FR5). `--quiet` mutes info; `--strict`
+ * escalates any degradation/capability loss to a non-zero exit.
+ */
+async function doFallbackRender(
+  dsl: string,
+  detected: string,
+  format: Format,
+  opts: RenderOpts,
+  theme: Theme,
+): Promise<number> {
+  const quiet = opts.quiet === true;
+  const strict = opts.strict === true;
+  const diagnostics = new Diagnostics();
+
+  diagnostics.fallbackTier(detected);
+
+  // FR4: ASCII/Markdown is only meaningful for flowchart + sequence.
+  if (format === "md") {
+    diagnostics.capabilityUnavailable(
+      "ascii",
+      "fallback",
+      `ASCII/Markdown output is unavailable for '${detected}' (only flowchart + sequence render as ASCII); use -f svg|html|png`,
+    );
+    printRenderDiagnostics(diagnostics.all(), quiet);
+    return 1;
+  }
+
+  let svg: string;
+  try {
+    const result = await renderFallbackSvg(dsl, { theme, diagnostics, detected });
+    svg = result.svg;
+  } catch (err) {
+    printRenderDiagnostics(diagnostics.all(), quiet);
+    process.stderr.write(`error: ${(err as Error).message}\n`);
+    return 1;
+  }
+
+  try {
+    if (format === "png") {
+      const scale = opts.scale ? Number(opts.scale) : 1;
+      const bytes = await renderPngFromSvg(svg, scale);
+      if (opts.output) writeFileSync(opts.output, bytes);
+      else process.stdout.write(Buffer.from(bytes));
+    } else {
+      const out = format === "html" ? wrapFallbackHtml(svg, opts.title ?? detected) : svg;
+      if (opts.output) writeFileSync(opts.output, out, "utf8");
+      else process.stdout.write(out.endsWith("\n") ? out : out + "\n");
+    }
+  } catch (err) {
+    printRenderDiagnostics(diagnostics.all(), quiet);
+    process.stderr.write(`error: ${(err as Error).message}\n`);
+    return 1;
+  }
+
+  printRenderDiagnostics(diagnostics.all(), quiet);
+
+  // --strict escalates a degradation / lost capability (warn+) to a non-zero exit.
+  if (strict && diagnostics.hasLoss()) return 1;
+  return 0;
+}
+
+/**
+ * Wrap a fallback SVG in a minimal, self-contained HTML document. (The richer
+ * pan/zoom/fit interactive shell is a later round; this keeps HTML output
+ * complete and dependency-free for round 1.)
+ */
+function wrapFallbackHtml(svg: string, title: string): string {
+  const safeTitle = title.replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${safeTitle}</title>
+<style>html,body{margin:0;height:100%}body{display:grid;place-items:center;background:#fff}svg{max-width:100%;max-height:100%;height:auto}</style>
+</head>
+<body>
+${svg}
+</body>
+</html>
+`;
 }
 
 function resolveFormat(explicit: string | undefined, output: string | undefined): Format | null {
@@ -184,8 +291,17 @@ function resolveThemeArg(value: string | undefined): Theme {
   return resolveTheme(value);
 }
 
-function printDiagnostics(diags: Diagnostic[]): void {
+/** Parser diagnostics (line/col form) — unchanged shape from v1. */
+function printParseDiagnostics(diags: Diagnostic[]): void {
   for (const d of diags) {
     process.stderr.write(`${d.severity} [${d.code}] ${d.line}:${d.col} ${d.message}\n`);
+  }
+}
+
+/** Render/fallback diagnostics (FR5) — greppable `code severity tier … message`. */
+function printRenderDiagnostics(diags: readonly RenderDiagnostic[], quiet: boolean): void {
+  for (const d of diags) {
+    if (quiet && d.severity === "info") continue;
+    process.stderr.write(`vnm: ${formatRenderDiagnostic(d)}\n`);
   }
 }
