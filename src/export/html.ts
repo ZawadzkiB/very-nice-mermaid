@@ -6,7 +6,7 @@
  */
 
 import type { RenderInput } from "../render/prepare.js";
-import { prepare } from "../render/prepare.js";
+import { prepare, ensureSyncRenderable } from "../render/prepare.js";
 import { resolveTheme, type Theme, type PartialTokenSet } from "../theme/index.js";
 import { vnmRuntime } from "../render/dom/runtime.js";
 import { buildPayload, type InteractiveOptions } from "../render/dom/payload.js";
@@ -68,6 +68,7 @@ export function renderHtml(
   if (isClassLayout(input) || isStateLayout(input)) {
     return renderHtml(input.model, opts);
   }
+  ensureSyncRenderable(input, "renderHtmlAsync");
   const { model, theme } = prepare(input, { theme: opts.theme, strict: opts.strict });
   const payload = buildPayload(model, theme, opts);
   const runtimeSrc = vnmRuntime.toString();

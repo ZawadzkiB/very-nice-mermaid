@@ -14,7 +14,7 @@ import { n } from "../geometry/index.js";
 import type { Theme, PartialTokenSet } from "../theme/index.js";
 import { resolveTheme } from "../theme/index.js";
 import { resolveNodeStyle } from "./style.js";
-import { prepare, type RenderInput } from "./prepare.js";
+import { prepare, ensureSyncRenderable, type RenderInput } from "./prepare.js";
 import { isSequenceLayout, type SequenceLayout } from "../model/sequence.js";
 import { renderSequenceSvg } from "../native/sequence/svg.js";
 import { isClassLayout, type ClassLayout } from "../model/class.js";
@@ -43,6 +43,7 @@ export function renderSvg(
   if (isStateLayout(input)) {
     return renderStateSvg(input, resolveTheme(opts.theme), opts.background);
   }
+  ensureSyncRenderable(input, "renderSvgAsync");
   const prepared = prepare(input, { theme: opts.theme, strict: opts.strict });
   return renderSvgFromModel(prepared.model, prepared.theme, opts.background);
 }

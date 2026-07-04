@@ -6,7 +6,7 @@
  */
 
 import type { PositionedModel, PositionedNode, Point } from "../model/index.js";
-import { prepare, type RenderInput, type PrepareOptions } from "./prepare.js";
+import { prepare, ensureSyncRenderable, type RenderInput, type PrepareOptions } from "./prepare.js";
 import { isSequenceLayout, type SequenceLayout } from "../model/sequence.js";
 import { renderSequenceAscii, renderSequenceMarkdown } from "../native/sequence/ascii.js";
 
@@ -97,6 +97,7 @@ class Grid {
 /** Render a diagram to unicode box-drawing text (no fence). */
 export function renderAscii(input: RenderInput | SequenceLayout, opts: AsciiOptions = {}): string {
   if (isSequenceLayout(input)) return renderSequenceAscii(input);
+  ensureSyncRenderable(input, "renderAsciiAsync");
   const { model } = prepare(input, opts);
   if (model.nodes.length === 0) return "";
   return draw(model, opts);
@@ -105,6 +106,7 @@ export function renderAscii(input: RenderInput | SequenceLayout, opts: AsciiOpti
 /** Render ASCII wrapped in a fenced code block (for `md` output). */
 export function renderMarkdown(input: RenderInput | SequenceLayout, opts: AsciiOptions = {}): string {
   if (isSequenceLayout(input)) return renderSequenceMarkdown(input);
+  ensureSyncRenderable(input, "renderMarkdownAsync");
   return "```\n" + renderAscii(input, opts) + "\n```\n";
 }
 

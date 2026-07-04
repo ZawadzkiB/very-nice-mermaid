@@ -90,7 +90,8 @@ Requires **Node ≥ 20**. ESM-only, with TypeScript types.
 import {
   parse, layout,
   renderSvg, renderAscii, renderMarkdown, renderHtml, renderPng,
-  mount, themes, defineTheme,
+  renderSvgAsync, renderHtmlAsync, renderMarkdownAsync, // type-routed (any diagram)
+  mount, mountAsync, themes, defineTheme,
 } from "very-nice-mermaid";
 
 const dsl = `
@@ -114,6 +115,36 @@ const positioned = layout(model, { theme: themes.light });
 Every renderer accepts a **DSL string**, a parsed **`DiagramModel`**, or an
 already-positioned **`PositionedModel`**.
 
+### Sync (flowchart) vs. async (every diagram type)
+
+The `renderSvg` / `renderAscii` / `renderMarkdown` / `renderHtml` functions above
+are **synchronous** and handle the **flowchart family** (they run the built-in,
+no-dependency parser + layout). Give one a raw **non-flowchart** string and it
+throws a clear error rather than misparsing it into a garbage flowchart.
+
+To render **any** Mermaid diagram type from a raw string, use the `…Async`
+twins. They run Mermaid's `detectType` router and dispatch: **flowchart** via the
+sync fast path, **sequence / class / state** re-skinned into our themed engine,
+and **everything else** (pie, gantt, ER, gitgraph, mindmap, …) via the bundled
+**mermaid.js fallback** engine. They are async because those tiers load mermaid
+(and, in Node, a jsdom DOM) lazily — so flowchart-only users never pay for it.
+
+```ts
+import { renderSvgAsync, renderHtmlAsync, renderMarkdownAsync } from "very-nice-mermaid";
+
+const svg  = await renderSvgAsync(`sequenceDiagram\n  A->>B: hi`);   // native sequence
+const svg2 = await renderSvgAsync(`pie title P\n  "A": 1\n  "B": 2`); // mermaid fallback
+const html = await renderHtmlAsync(`stateDiagram-v2\n  [*] --> On`);  // native state
+```
+
+> **Headless note:** in Node, layout-heavy fallback types (gantt/ER/gitgraph/…)
+> render degenerately under jsdom, so the CLI/async path reports a clear
+> `fallback-render-unavailable` error for them (they render correctly in a real
+> browser). Pie and the native tiers are unaffected.
+
+`mount()` and the `<very-nice-mermaid>` element route **every** type automatically
+(see below) — no need to pick sync vs. async yourself.
+
 ### Interactive `mount()`
 
 ```ts
@@ -135,6 +166,11 @@ handle.destroy();
 
 Drag a node and its edges re-route live off the card borders; the background
 pans, the wheel zooms at the cursor, and the layout auto-persists (debounced).
+
+`mount()` routes **every** diagram type: a flowchart mounts immediately, while a
+raw sequence / class / state / fallback string returns the handle **synchronously**
+and finishes rendering **asynchronously** (it loads mermaid, then swaps the render
+in). Prefer `await mountAsync(el, dsl, opts)` when you need the settled handle.
 
 ## Web component
 

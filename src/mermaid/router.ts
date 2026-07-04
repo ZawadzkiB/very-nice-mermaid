@@ -138,6 +138,68 @@ export async function loadMermaid(): Promise<MermaidLike> {
   return mermaidPromise;
 }
 
+/**
+ * Leading keywords (lowercased, hyphens kept) of mermaid diagram types that are
+ * NOT the flowchart family. Used only as a cheap *lexical* guard — the async
+ * router still runs mermaid's real `detectType`. Kept generously broad so the
+ * synchronous surface refuses (rather than misparses) any obvious non-flowchart
+ * input; an omission here just means the sync path misparses a rare type, never
+ * that the async path routes it wrong.
+ */
+const NON_FLOWCHART_HEADERS = new Set<string>([
+  "sequencediagram",
+  "classdiagram",
+  "classdiagram-v2",
+  "statediagram",
+  "statediagram-v2",
+  "erdiagram",
+  "gantt",
+  "pie",
+  "journey",
+  "gitgraph",
+  "mindmap",
+  "timeline",
+  "quadrantchart",
+  "requirementdiagram",
+  "requirement",
+  "c4context",
+  "c4container",
+  "c4component",
+  "c4dynamic",
+  "c4deployment",
+  "sankey-beta",
+  "sankey",
+  "xychart-beta",
+  "xychart",
+  "block-beta",
+  "block",
+  "packet-beta",
+  "packet",
+  "architecture-beta",
+  "architecture",
+  "kanban",
+  "radar",
+  "radar-beta",
+  "treemap",
+  "treemap-beta",
+  "info",
+  "zenuml",
+]);
+
+/**
+ * The explicit non-flowchart diagram-type keyword a DSL declares (lowercased),
+ * or `null` for the flowchart family, a header-less flowchart, or unrecognized
+ * input. Purely lexical (no mermaid load), so the **synchronous** renderers can
+ * reject a raw non-flowchart string with a clear "use the async API" error
+ * instead of silently misparsing it as a flowchart (FR1), and `mount()` can keep
+ * its flowchart fast path synchronous while routing non-flowchart strings through
+ * the full async {@link classify}.
+ */
+export function explicitNonFlowchartType(dsl: string): string | null {
+  const head = leadingKeyword(dsl);
+  return head && NON_FLOWCHART_HEADERS.has(head) ? head : null;
+}
+
 /** First non-empty, non-comment, non-directive keyword of a DSL, lowercased. */
 function leadingKeyword(dsl: string): string | null {
   for (const raw of dsl.split(/\r\n|\r|\n/)) {

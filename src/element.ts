@@ -11,11 +11,13 @@
  * ```
  */
 
-import { mount, type RuntimeHandle } from "./render/dom/index.js";
+import { mountAsync, type AnyRuntimeHandle } from "./render/dom/index.js";
 
 export class VeryNiceMermaidElement extends HTMLElement {
-  private handle: RuntimeHandle | null = null;
+  private handle: AnyRuntimeHandle | null = null;
   private source = "";
+  /** Guards against overlapping async renders (attribute changes during a render). */
+  private renderToken = 0;
 
   static get observedAttributes(): string[] {
     return ["theme", "src"];
@@ -51,13 +53,29 @@ export class VeryNiceMermaidElement extends HTMLElement {
       }
     }
     if (!dsl.trim()) return;
+    // Route EVERY diagram type through the async router (mountAsync), not just
+    // flowchart — a raw sequence/class/state renders natively and any other type
+    // via the mermaid.js fallback, instead of being misparsed as a flowchart.
+    const token = ++this.renderToken;
     this.handle?.destroy();
+    this.handle = null;
     this.textContent = "";
-    this.handle = mount(this, dsl, { theme });
+    try {
+      const handle = await mountAsync(this, dsl, { theme });
+      if (token !== this.renderToken) {
+        handle.destroy(); // a newer render superseded this one
+        return;
+      }
+      this.handle = handle;
+    } catch (err) {
+      if (typeof console !== "undefined") {
+        console.error("very-nice-mermaid:", (err as Error)?.message ?? err);
+      }
+    }
   }
 
   /** The live renderer handle (after mount). */
-  get diagram(): RuntimeHandle | null {
+  get diagram(): AnyRuntimeHandle | null {
     return this.handle;
   }
 }

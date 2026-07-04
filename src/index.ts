@@ -36,7 +36,9 @@ export type {
 // Geometry (advanced / reuse)
 export * as geometry from "./geometry/index.js";
 
-// Renderers
+// Renderers (synchronous — flowchart family + already-built native layouts only).
+// A raw non-flowchart string throws pointing at the async twin below (FR1: never
+// silently misparse it into a garbage flowchart).
 export { renderSvg, renderSvgFromModel } from "./render/svg.js";
 export type { SvgRenderOptions } from "./render/svg.js";
 export { renderAscii, renderMarkdown } from "./render/ascii.js";
@@ -46,9 +48,22 @@ export type { HtmlExportOptions } from "./export/html.js";
 export { renderPng, renderPngFromSvg } from "./export/png.js";
 export type { PngRenderOptions } from "./export/png.js";
 
-// Interactive renderer (browser)
-export { mount } from "./render/dom/index.js";
-export type { MountOptions } from "./render/dom/index.js";
+// Type-routed ASYNC renderers — the library twin of the CLI's dispatch. These
+// classify a raw DSL (detectType) and render EVERY diagram type: flowchart
+// (sync own-parser), sequence/class/state (native re-skin), everything else
+// (mermaid.js fallback). Async because the non-flowchart tiers load mermaid.
+export {
+  renderSvgAsync,
+  renderHtmlAsync,
+  renderAsciiAsync,
+  renderMarkdownAsync,
+} from "./render/route.js";
+
+// Interactive renderer (browser). `mount()` returns a handle synchronously and
+// finishes a non-flowchart render asynchronously; `mountAsync()` resolves with
+// the settled handle. Both route every diagram type through the router.
+export { mount, mountAsync } from "./render/dom/index.js";
+export type { MountOptions, AnyRuntimeHandle } from "./render/dom/index.js";
 export type { RuntimeHandle, LayoutData } from "./render/dom/runtime.js";
 
 // Native sequence renderer (FR2): read mermaid's SVG → our themed engine.
