@@ -1,0 +1,20 @@
+{
+  "name": "very-nice-mermaid",
+  "version": "0.2.0",
+  "description": "Render Mermaid diagrams from DSL into beautiful, themeable HTML / SVG / PNG / ASCII via the very-nice-mermaid CLI — no mermaid.js runtime, no headless browser. Teaches Claude how to render and view diagrams.",
+  "author": {
+    "name": "Bartlomiej Zawadzki"
+  },
+  "homepage": "https://github.com/ZawadzkiB/very-nice-mermaid#readme",
+  "repository": "https://github.com/ZawadzkiB/very-nice-mermaid.git",
+  "license": "MIT",
+  "keywords": [
+    "mermaid",
+    "diagram",
+    "flowchart",
+    "sequence",
+    "render",
+    "svg",
+    "cli"
+  ]
+}

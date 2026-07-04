@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "very-nice-mermaid",
+  "description": "The very-nice-mermaid diagram renderer plugin.",
+  "owner": {
+    "name": "Bartlomiej Zawadzki"
+  },
+  "plugins": [
+    {
+      "name": "very-nice-mermaid",
+      "description": "Render Mermaid DSL into beautiful HTML / SVG / PNG / ASCII diagrams (flowchart, sequence, class, state natively; every other type via a mermaid.js fallback). Teaches Claude to render and view diagrams with the vnm CLI.",
+      "author": {
+        "name": "Bartlomiej Zawadzki"
+      },
+      "category": "productivity",
+      "source": "."
+    }
+  ]
+}
