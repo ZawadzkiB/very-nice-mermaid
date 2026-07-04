@@ -384,9 +384,104 @@ describe("vnm CLI (child_process)", () => {
     );
   });
 
+  describe("native class tier (FR2/FR4)", () => {
+    const CLS = join(fixtures, "shop-class.mmd");
+
+    it(
+      "renders class to SVG natively with typed relation markers (no fallback diagnostic)",
+      () => {
+        const r = cli(["render", CLS, "-f", "svg"]);
+        expect(r.status).toBe(0);
+        expect(svgIsWellFormed(r.stdout)).toBe(true);
+        // compartmented cards + the UML relation markers
+        expect(r.stdout).toContain('id="vnm-cls-tri"'); // inheritance triangle
+        expect(r.stdout).toContain('id="vnm-cls-diamond-solid"'); // composition
+        expect(r.stdout).toContain("+String name");
+        // native → no fallback/degradation diagnostics
+        expect(r.stderr).not.toContain("fallback-tier");
+        expect(r.stderr).not.toContain("render-degraded");
+      },
+      60_000,
+    );
+
+    it(
+      "renders class to a self-contained interactive HTML via the flowchart runtime",
+      () => {
+        const r = cli(["render", CLS, "-f", "html", "--theme", "dark"]);
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain("<!doctype html>");
+        expect(r.stdout).toContain("var vnmRuntime ="); // reuses the draggable runtime
+        expect(hasExternalRequest(r.stdout)).toBe(false);
+        expect(r.stderr).not.toContain("fallback-tier");
+      },
+      60_000,
+    );
+
+    it(
+      "reports ASCII/Markdown as unavailable for class (FR4) — graceful, non-zero only under --strict",
+      () => {
+        const lenient = cli(["render", CLS, "-f", "md"]);
+        expect(lenient.status).toBe(0);
+        expect(lenient.stderr).toMatch(/capability-unavailable warn native capability=ascii/);
+        expect(lenient.stderr).not.toContain("fallback-tier");
+
+        const strict = cli(["render", CLS, "-f", "md", "--strict"]);
+        expect(strict.status).toBe(1);
+        expect(strict.stderr).toMatch(/capability-unavailable/);
+      },
+      60_000,
+    );
+  });
+
+  describe("native state tier (FR2/FR4)", () => {
+    const ST = join(fixtures, "order-state.mmd");
+
+    it(
+      "renders state to SVG natively (start/end circles, arrows; no fallback diagnostic)",
+      () => {
+        const r = cli(["render", ST, "-f", "svg"]);
+        expect(r.status).toBe(0);
+        expect(svgIsWellFormed(r.stdout)).toBe(true);
+        expect(r.stdout).toContain('<marker id="vnm-arrow"');
+        expect(r.stdout).toContain("<circle "); // start/end pseudo-states
+        expect(r.stdout).toContain(">Idle<");
+        expect(r.stderr).not.toContain("fallback-tier");
+        expect(r.stderr).not.toContain("render-degraded");
+      },
+      60_000,
+    );
+
+    it(
+      "renders state to a self-contained interactive HTML via the flowchart runtime",
+      () => {
+        const r = cli(["render", ST, "-f", "html"]);
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain("<!doctype html>");
+        expect(r.stdout).toContain("var vnmRuntime =");
+        expect(hasExternalRequest(r.stdout)).toBe(false);
+        expect(r.stderr).not.toContain("fallback-tier");
+      },
+      60_000,
+    );
+
+    it(
+      "reports ASCII/Markdown as unavailable for state (FR4)",
+      () => {
+        const r = cli(["render", ST, "-f", "md"]);
+        expect(r.status).toBe(0);
+        expect(r.stderr).toMatch(/capability-unavailable warn native capability=ascii/);
+        expect(r.stderr).not.toContain("fallback-tier");
+      },
+      60_000,
+    );
+  });
+
   describe("fallback tier (mermaid.js)", () => {
     const PIE = 'pie title Pets\n "Dogs" : 386\n "Cats" : 85';
-    const CLASS = "classDiagram\n Animal <|-- Dog";
+    // An ER diagram takes the mermaid.js fallback tier and its dagre/getBBox
+    // bounds are degenerate headless (spike-01.md) → a `render-degraded` warning.
+    // (class/state used to sit here but are now native re-skinned renderers.)
+    const ER = "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  ORDER ||--|{ LINE_ITEM : contains";
 
     it(
       "renders a non-flowchart type to SVG AND logs that it took the fallback tier (FR5)",
@@ -427,7 +522,7 @@ describe("vnm CLI (child_process)", () => {
     it(
       "--strict escalates a degraded fallback render to a non-zero exit",
       () => {
-        const r = cli(["render", "-", "-f", "svg", "--strict"], CLASS);
+        const r = cli(["render", "-", "-f", "svg", "--strict"], ER);
         expect(r.status).toBe(1);
         expect(r.stderr).toMatch(/render-degraded warn fallback/);
       },

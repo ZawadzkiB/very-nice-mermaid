@@ -22,6 +22,8 @@ import {
   renderSequenceMarkdown,
   renderSequenceHtml,
 } from "../native/sequence/index.js";
+import { readClassModel, layoutClass, renderClassSvg } from "../native/class/index.js";
+import { readStateModel, layoutState, renderStateSvg } from "../native/state/index.js";
 import {
   Diagnostics,
   formatRenderDiagnostic,
@@ -60,7 +62,7 @@ export async function run(argv: string[]): Promise<number> {
   program
     .command("render")
     .argument("<input>", "input .mmd file, or - for stdin")
-    .description("render a diagram (native flowchart, or the mermaid.js fallback tier)")
+    .description("render a diagram (native flowchart/sequence/class/state, or the mermaid.js fallback tier)")
     .option("-o, --output <file>", "output file (default: stdout)")
     .option("-f, --format <fmt>", "html | svg | png | md (inferred from -o if omitted)")
     .option("-t, --theme <name|path>", "theme name (light|dark|fancy) or path to a theme .json", "light")
@@ -128,8 +130,130 @@ async function doRender(input: string, opts: RenderOpts): Promise<number> {
   if (classification.renderer === "sequence") {
     return doSequenceRender(dsl, format, opts, theme);
   }
+  // Native class + state: node-graphs re-skinned from mermaid's SVG, re-laid out
+  // with our own dagre. Visual-only (FR4 excludes ASCII for them).
+  if (classification.renderer === "class") {
+    return doClassRender(dsl, format, opts, theme);
+  }
+  if (classification.renderer === "state") {
+    return doStateRender(dsl, format, opts, theme);
+  }
 
   return doNativeRender(dsl, format, opts, theme);
+}
+
+/**
+ * Report ASCII/Markdown as unavailable for a native visual-only type (class /
+ * state — FR4 keeps ASCII to flowchart + sequence). Reuses the FR5
+ * capability-unavailable diagnostic. Graceful (exit 0) unless `--strict`, which
+ * escalates the capability loss to a non-zero exit.
+ */
+function reportAsciiUnavailable(type: string, opts: RenderOpts): number {
+  const diagnostics = new Diagnostics();
+  diagnostics.capabilityUnavailable(
+    "ascii",
+    "native",
+    `ASCII/Markdown output is unavailable for '${type}' (only flowchart + sequence render as ASCII); use -f svg|html|png`,
+  );
+  printRenderDiagnostics(diagnostics.all(), opts.quiet === true);
+  return opts.strict === true ? 1 : 0;
+}
+
+/**
+ * Native class path — read the structure from mermaid's SVG, re-lay it out with
+ * our own dagre, and render SVG / HTML / PNG. No fallback tier is involved; `-f
+ * md` reports `ascii-unavailable` (FR4). Draggable-node interactivity + HTML
+ * export reuse the flowchart vnmRuntime path (the ClassLayout carries a
+ * flowchart PositionedModel).
+ */
+async function doClassRender(
+  dsl: string,
+  format: Format,
+  opts: RenderOpts,
+  theme: Theme,
+): Promise<number> {
+  let cls;
+  try {
+    const model = await readClassModel(dsl);
+    if (model.classes.length === 0) {
+      process.stderr.write("error: no diagram found (input produced 0 classes)\n");
+      return 1;
+    }
+    printParseDiagnostics(model.warnings);
+    cls = layoutClass(model, { theme });
+  } catch (err) {
+    process.stderr.write(`error: ${(err as Error).message}\n`);
+    return 1;
+  }
+
+  if (format === "md") return reportAsciiUnavailable("class", opts);
+
+  try {
+    if (format === "png") {
+      const scale = opts.scale ? Number(opts.scale) : 1;
+      const bytes = await renderPngFromSvg(renderClassSvg(cls, theme, opts.background), scale);
+      if (opts.output) writeFileSync(opts.output, bytes);
+      else process.stdout.write(Buffer.from(bytes));
+      return 0;
+    }
+    const out =
+      format === "html"
+        ? renderHtml(cls.model, { theme, title: opts.title })
+        : renderClassSvg(cls, theme, opts.background);
+    if (opts.output) writeFileSync(opts.output, out, "utf8");
+    else process.stdout.write(out.endsWith("\n") ? out : out + "\n");
+    return 0;
+  } catch (err) {
+    process.stderr.write(`error: ${(err as Error).message}\n`);
+    return 1;
+  }
+}
+
+/**
+ * Native state path — mirrors {@link doClassRender}: read structure, re-lay out
+ * with our dagre, render SVG / HTML / PNG; `-f md` reports `ascii-unavailable`.
+ */
+async function doStateRender(
+  dsl: string,
+  format: Format,
+  opts: RenderOpts,
+  theme: Theme,
+): Promise<number> {
+  let st;
+  try {
+    const model = await readStateModel(dsl);
+    if (model.states.length === 0) {
+      process.stderr.write("error: no diagram found (input produced 0 states)\n");
+      return 1;
+    }
+    printParseDiagnostics(model.warnings);
+    st = layoutState(model, { theme });
+  } catch (err) {
+    process.stderr.write(`error: ${(err as Error).message}\n`);
+    return 1;
+  }
+
+  if (format === "md") return reportAsciiUnavailable("state", opts);
+
+  try {
+    if (format === "png") {
+      const scale = opts.scale ? Number(opts.scale) : 1;
+      const bytes = await renderPngFromSvg(renderStateSvg(st, theme, opts.background), scale);
+      if (opts.output) writeFileSync(opts.output, bytes);
+      else process.stdout.write(Buffer.from(bytes));
+      return 0;
+    }
+    const out =
+      format === "html"
+        ? renderHtml(st.model, { theme, title: opts.title })
+        : renderStateSvg(st, theme, opts.background);
+    if (opts.output) writeFileSync(opts.output, out, "utf8");
+    else process.stdout.write(out.endsWith("\n") ? out : out + "\n");
+    return 0;
+  } catch (err) {
+    process.stderr.write(`error: ${(err as Error).message}\n`);
+    return 1;
+  }
 }
 
 /**

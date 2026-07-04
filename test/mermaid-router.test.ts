@@ -47,17 +47,19 @@ describe("detectType router — classify (FR1)", () => {
   );
 
   it(
-    "flags the spike's still-planned native types (class/state) but routes them to fallback for now",
+    "routes class + state to the NATIVE re-skinned renderers (no fallback tier)",
     async () => {
-      for (const [dsl, det] of [
-        ["classDiagram\n A <|-- B", "class"],
-        ["stateDiagram-v2\n [*] --> A", "stateDiagram"],
-      ] as const) {
-        const c = await classify(dsl);
-        expect(c.tier).toBe("fallback");
-        expect(c.detected).toBe(det);
-        expect(c.nativePlanned).toBe(true);
-      }
+      const cls = await classify("classDiagram\n A <|-- B");
+      expect(cls.tier).toBe("native");
+      expect(cls.renderer).toBe("class");
+      expect(cls.detected).toBe("class");
+      expect(cls.nativePlanned).toBe(false);
+
+      const st = await classify("stateDiagram-v2\n [*] --> A");
+      expect(st.tier).toBe("native");
+      expect(st.renderer).toBe("state");
+      expect(st.detected).toBe("stateDiagram");
+      expect(st.nativePlanned).toBe(false);
     },
     T,
   );

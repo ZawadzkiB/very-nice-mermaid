@@ -81,6 +81,47 @@ export type {
 } from "./model/sequence.js";
 export { isSequenceLayout } from "./model/sequence.js";
 
+// Native class renderer (FR2): read mermaid's SVG → our themed engine, re-laid
+// out with our own dagre. `readClassModel` loads mermaid lazily (same path as
+// the fallback tier); layout/SVG/interactive are pure + sync on the model.
+export {
+  readClassModel,
+  layoutClass,
+  renderClassSvg,
+  classCardLines,
+  buildClassPayload,
+  mountClass,
+} from "./native/class/index.js";
+export type { ClassLayoutOptions, ClassCardLines } from "./native/class/index.js";
+export type {
+  ClassModel,
+  ClassEntity,
+  ClassMember,
+  ClassRelation,
+  ClassRelationType,
+  ClassVisibility,
+  ClassLayout,
+} from "./model/class.js";
+export { isClassLayout } from "./model/class.js";
+
+// Native state renderer (FR2): same shape as class, simpler (no compartments).
+export {
+  readStateModel,
+  layoutState,
+  renderStateSvg,
+  buildStatePayload,
+  mountState,
+} from "./native/state/index.js";
+export type { StateLayoutOptions } from "./native/state/index.js";
+export type {
+  StateModel,
+  StateNode,
+  StateNodeKind,
+  StateTransition,
+  StateLayout,
+} from "./model/state.js";
+export { isStateLayout } from "./model/state.js";
+
 // Diagram-type router + mermaid.js fallback tier (mermaid/jsdom loaded lazily)
 export {
   classify,

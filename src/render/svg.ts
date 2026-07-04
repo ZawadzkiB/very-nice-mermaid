@@ -17,6 +17,10 @@ import { resolveNodeStyle } from "./style.js";
 import { prepare, type RenderInput } from "./prepare.js";
 import { isSequenceLayout, type SequenceLayout } from "../model/sequence.js";
 import { renderSequenceSvg } from "../native/sequence/svg.js";
+import { isClassLayout, type ClassLayout } from "../model/class.js";
+import { renderClassSvg } from "../native/class/svg.js";
+import { isStateLayout, type StateLayout } from "../model/state.js";
+import { renderStateSvg } from "../native/state/svg.js";
 
 export interface SvgRenderOptions {
   theme?: string | Theme | PartialTokenSet;
@@ -27,11 +31,17 @@ export interface SvgRenderOptions {
 
 /** Render a diagram to a standalone SVG string. */
 export function renderSvg(
-  input: RenderInput | SequenceLayout,
+  input: RenderInput | SequenceLayout | ClassLayout | StateLayout,
   opts: SvgRenderOptions = {},
 ): string {
   if (isSequenceLayout(input)) {
     return renderSequenceSvg(input, resolveTheme(opts.theme), opts.background);
+  }
+  if (isClassLayout(input)) {
+    return renderClassSvg(input, resolveTheme(opts.theme), opts.background);
+  }
+  if (isStateLayout(input)) {
+    return renderStateSvg(input, resolveTheme(opts.theme), opts.background);
   }
   const prepared = prepare(input, { theme: opts.theme, strict: opts.strict });
   return renderSvgFromModel(prepared.model, prepared.theme, opts.background);

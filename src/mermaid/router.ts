@@ -19,7 +19,7 @@
 export type DiagramTier = "native" | "fallback";
 
 /** Which engine renders the diagram. */
-export type RendererId = "flowchart" | "sequence" | "mermaid";
+export type RendererId = "flowchart" | "sequence" | "class" | "state" | "mermaid";
 
 /** The result of classifying a DSL string. */
 export interface Classification {
@@ -43,14 +43,20 @@ const FLOWCHART_TYPES = new Set(["flowchart", "flowchart-v2", "graph"]);
 /** mermaid's `detectType` value for sequence diagrams (now a native renderer). */
 const SEQUENCE_TYPE = "sequence";
 
+/** mermaid's `detectType` value for class diagrams (now a native renderer). */
+const CLASS_TYPE = "class";
+
+/** mermaid's `detectType` values for state diagrams (now a native renderer). */
+const STATE_TYPES = new Set(["stateDiagram", "state"]);
+
 /**
  * Types the task-1 spike found *feasible* to re-skin natively in a later round
- * but that still fall back for now (class + state land in the next rounds).
- * Sequence has graduated to a real native renderer, so it's no longer here.
- * Journey is intentionally excluded — the spike recommends it stays fallback
- * (bespoke timeline visual, low re-skin value).
+ * but that still fall back for now. Sequence, class and state have all graduated
+ * to real native renderers, so this is now empty. Journey is intentionally
+ * excluded — the spike recommends it stays fallback (bespoke timeline visual,
+ * low re-skin value).
  */
-const NATIVE_PLANNED = new Set(["class", "stateDiagram", "state"]);
+const NATIVE_PLANNED = new Set<string>([]);
 
 let mermaidPromise: Promise<MermaidLike> | undefined;
 
@@ -181,17 +187,17 @@ export async function classify(dsl: string): Promise<Classification> {
 
   if (FLOWCHART_TYPES.has(detected)) return nativeFlowchart(detected);
 
-  // Sequence is a native re-skinned renderer (read mermaid's SVG → our themed
-  // engine). It routes to the native tier — never the fallback SVG — so no
-  // fallback diagnostic is emitted for it.
+  // Sequence / class / state are native re-skinned renderers (read mermaid's SVG
+  // → our themed engine). They route to the native tier — never the fallback SVG
+  // — so no fallback diagnostic is emitted for them.
   if (detected === SEQUENCE_TYPE) {
-    return {
-      detected,
-      type: "sequence",
-      tier: "native",
-      renderer: "sequence",
-      nativePlanned: false,
-    };
+    return { detected, type: "sequence", tier: "native", renderer: "sequence", nativePlanned: false };
+  }
+  if (detected === CLASS_TYPE) {
+    return { detected, type: "class", tier: "native", renderer: "class", nativePlanned: false };
+  }
+  if (STATE_TYPES.has(detected)) {
+    return { detected, type: "state", tier: "native", renderer: "state", nativePlanned: false };
   }
 
   return {

@@ -12,6 +12,8 @@ import { vnmRuntime } from "../render/dom/runtime.js";
 import { buildPayload, type InteractiveOptions } from "../render/dom/payload.js";
 import { isSequenceLayout, type SequenceLayout } from "../model/sequence.js";
 import { renderSequenceHtml } from "../native/sequence/interactive.js";
+import { isClassLayout, type ClassLayout } from "../model/class.js";
+import { isStateLayout, type StateLayout } from "../model/state.js";
 
 export interface HtmlExportOptions extends InteractiveOptions {
   theme?: string | Theme | PartialTokenSet;
@@ -48,7 +50,7 @@ function embedJson(value: unknown): string {
  * in the static `renderSvg` / PNG output.
  */
 export function renderHtml(
-  input: RenderInput | SequenceLayout,
+  input: RenderInput | SequenceLayout | ClassLayout | StateLayout,
   opts: HtmlExportOptions = {},
 ): string {
   if (isSequenceLayout(input)) {
@@ -59,6 +61,12 @@ export function renderHtml(
       minScale: opts.minScale,
       maxScale: opts.maxScale,
     });
+  }
+  // Class + state are node-graphs: their ClassLayout/StateLayout already carry a
+  // flowchart PositionedModel, so the interactive HTML export is exactly the
+  // flowchart vnmRuntime path (full draggable nodes + live edge re-routing).
+  if (isClassLayout(input) || isStateLayout(input)) {
+    return renderHtml(input.model, opts);
   }
   const { model, theme } = prepare(input, { theme: opts.theme, strict: opts.strict });
   const payload = buildPayload(model, theme, opts);
