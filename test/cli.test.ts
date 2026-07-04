@@ -382,5 +382,24 @@ describe("vnm CLI (child_process)", () => {
       },
       60_000,
     );
+
+    it(
+      "keeps stderr to the structured FR5 channel on a hard-fail type — no raw jsdom trace (REV-002)",
+      () => {
+        // mindmap is cytoscape/canvas-backed → hard-fails headless. jsdom used to
+        // dump a raw multi-line 'Not implemented: …getContext' stack trace before
+        // our clean diagnostic; the virtualConsole now swallows it.
+        const MINDMAP = "mindmap\n  root((go))\n    A\n    B";
+        const r = cli(["render", "-", "-f", "svg"], MINDMAP);
+        expect(r.status).toBe(1);
+        // the clean, greppable diagnostic is still emitted
+        expect(r.stderr).toMatch(/render-failed error fallback/);
+        // …and the raw jsdom stack trace is NOT leaked to the FR5 channel
+        expect(r.stderr).not.toMatch(/Not implemented/);
+        expect(r.stderr).not.toMatch(/getContext/i);
+        expect(r.stderr).not.toMatch(/at Object\.|at JSDOM|at new/);
+      },
+      60_000,
+    );
   });
 });

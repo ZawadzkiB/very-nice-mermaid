@@ -97,9 +97,18 @@ let installed = false;
  */
 export async function ensureNodeDom(): Promise<void> {
   if (installed) return;
-  const { JSDOM } = (await import("jsdom")) as any;
+  const { JSDOM, VirtualConsole } = (await import("jsdom")) as any;
+  // jsdom forwards unimplemented-primitive failures (e.g. a canvas/getContext
+  // call from a cytoscape-backed type like mindmap/architecture) as raw,
+  // multi-line Node stack traces on stderr — printed *before* our clean
+  // `render-failed` diagnostic and polluting the structured FR5 channel
+  // (REV-002). Swallow jsdomError here so only our structured diagnostics reach
+  // stderr; the render still fails cleanly with the correct diagnostic + exit 1.
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on("jsdomError", () => {});
   const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", {
     pretendToBeVisual: true,
+    virtualConsole,
   });
   const { window } = dom;
 
