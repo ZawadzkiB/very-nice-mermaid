@@ -87,4 +87,20 @@ describe("renderStateSvg", () => {
       expect(Math.abs(ir.labelPos!.x - ri.labelPos!.x)).toBeGreaterThan(8);
     },
   );
+
+  it("anti-parallel transition LABEL plates do not overlap/clip (TEST-006)", () => {
+    const layout = layoutState(MODEL, { theme: themes.light! });
+    const f = themes.light!.tokens.font;
+    const plate = (label: string, cx: number, cy: number) => {
+      const w = label.length * f.size * 0.62 + 10;
+      const h = f.lineHeight + 4;
+      return { l: cx - w / 2, r: cx + w / 2, t: cy - h / 2, b: cy + h / 2 };
+    };
+    const start = layout.model.edges.find((e) => e.label === "start")!;
+    const stop = layout.model.edges.find((e) => e.label === "stop")!;
+    const a = plate("start", start.labelPos!.x, start.labelPos!.y);
+    const b = plate("stop", stop.labelPos!.x, stop.labelPos!.y);
+    // 'start' used to read as 'st' and 'stop' occluded it — the plates must clear.
+    expect(a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b).toBe(false);
+  });
 });

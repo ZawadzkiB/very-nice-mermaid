@@ -102,8 +102,10 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
   }
 
   // Spread edges that share a node border onto distinct channels so anti-parallel
-  // pairs don't fully occlude and a fan's start markers each sit on their own edge.
-  const ports = computePortOffsets(model.edges, nodeBoxes, model.direction);
+  // pairs don't fully occlude and a fan's start markers each sit on their own edge;
+  // the label plate sizes let it also stagger colliding labels (TEST-006).
+  const labelSizes = model.edges.map((e) => labelPlateSize(e.label, theme));
+  const ports = computePortOffsets(model.edges, nodeBoxes, model.direction, labelSizes);
 
   const edges: RoutedEdge[] = [];
   model.edges.forEach((edge, i) => {
@@ -120,7 +122,7 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
     const routed = routeEdge(from, to, model.direction, theme.edgeStyle, waypoints, port);
     const out: RoutedEdge = { ...edge, points: routed.points, path: routed.path };
     if (waypoints.length > 0) out.waypoints = waypoints;
-    if (port.source !== 0 || port.target !== 0) out.ports = port;
+    if (port.source !== 0 || port.target !== 0 || port.labelShift) out.ports = port;
     if (edge.label) out.labelPos = routed.labelPos;
     edges.push(out);
   });
@@ -208,6 +210,19 @@ function edgeWaypoints(
   const raw = (g.edge(from, to, name) as { points?: Array<{ x: number; y: number }> }).points;
   if (!raw || raw.length <= 3) return [];
   return raw.slice(1, -1).map((p) => ({ x: round(p.x), y: round(p.y) }));
+}
+
+/**
+ * Estimate an edge label's background-plate size — the SAME formula the SVG sink
+ * (`edgeLabel`) and the DOM runtime use, so the port spreader can stagger plates
+ * that would otherwise overlap. Returns `undefined` for an unlabelled edge.
+ */
+function labelPlateSize(label: string | undefined, theme: Theme): { w: number; h: number } | undefined {
+  if (!label) return undefined;
+  const f = theme.tokens.font;
+  const lines = label.split("\n");
+  const maxChars = lines.reduce((m, l) => Math.max(m, l.length), 0);
+  return { w: maxChars * f.size * 0.62 + 10, h: lines.length * f.lineHeight + 4 };
 }
 
 function toBox(node: PositionedNode): NodeBox {

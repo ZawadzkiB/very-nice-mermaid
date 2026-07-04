@@ -151,8 +151,10 @@ export interface RoutedEdge extends DiagramEdge {
    * one point — fixes anti-parallel edges fully occluding and a relation marker
    * bleeding onto sibling edges at a shared trunk. Kept on the edge so re-routing
    * (state pseudo-state shrink, `applyPositions`) reproduces the same channels.
+   * `labelShift` additionally staggers the label plate so several edges between
+   * the same node pair don't stack their labels (TEST-006).
    */
-  ports?: { source: number; target: number };
+  ports?: { source: number; target: number; labelShift?: Point };
   /** Where the edge label plate is centered, if there is a label. */
   labelPos?: Point;
 }

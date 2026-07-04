@@ -167,6 +167,37 @@ describe("anti-parallel edges are spread onto distinct paths (TEST-003)", () => 
   });
 });
 
+describe("anti-parallel edge LABELS don't clip each other (TEST-006)", () => {
+  const theme = themes.light!;
+
+  // Plate rect the SVG sink / DOM runtime draw for an edge label (same formula).
+  function plateRect(label: string, cx: number, cy: number) {
+    const f = theme.tokens.font;
+    const lines = label.split("\n");
+    const maxChars = lines.reduce((m, l) => Math.max(m, l.length), 0);
+    const w = maxChars * f.size * 0.62 + 10;
+    const h = lines.length * f.lineHeight + 4;
+    return { l: cx - w / 2, r: cx + w / 2, t: cy - h / 2, b: cy + h / 2 };
+  }
+  const intersects = (a: ReturnType<typeof plateRect>, b: ReturnType<typeof plateRect>): boolean =>
+    a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+
+  for (const dir of ["TD", "LR"] as const) {
+    it(`a ${dir} bidirectional labelled pair's two plates do not intersect`, () => {
+      const pos = layout(parse(`flowchart ${dir}\n A -->|go| B\n B -->|back| A`), { theme });
+      const go = pos.edges.find((e) => e.from === "A" && e.to === "B")!;
+      const back = pos.edges.find((e) => e.from === "B" && e.to === "A")!;
+      const ga = plateRect("go", go.labelPos!.x, go.labelPos!.y);
+      const bk = plateRect("back", back.labelPos!.x, back.labelPos!.y);
+      // the channel offset separates the LINES; the label stagger must separate
+      // the wider PLATES too, or one label's text is clipped (the original bug).
+      expect(intersects(ga, bk)).toBe(false);
+      // and the staggering actually fired (a labelShift rode along on the ports)
+      expect(go.ports?.labelShift ?? back.ports?.labelShift).toBeDefined();
+    });
+  }
+});
+
 describe("layout output shape", () => {
   it("routes every edge and computes bounds", () => {
     const pos = layout(parse(readFileSync(join(fixturesDir, "nested-subgraphs.mmd"), "utf8")));
