@@ -160,13 +160,17 @@ export async function classify(dsl: string): Promise<Classification> {
   const head = leadingKeyword(dsl);
   if (head === "flowchart" || head === "graph") return nativeFlowchart(head);
 
-  const mermaid = await loadMermaid();
   let detected: string;
   try {
+    // The mermaid load lives INSIDE the try so it can never abort routing: the
+    // native flowchart tier must not depend on mermaid being loadable. A loader
+    // failure (e.g. jsdom made optional per D7, or an import error) is treated
+    // exactly like an undetectable input — header-less flowchart (`A-->B`) or
+    // genuine garbage — and handed to the flowchart parser (which renders the
+    // former and zero-nodes the latter → the CLI's clear "no diagram found").
+    const mermaid = await loadMermaid();
     detected = mermaid.detectType(dsl);
   } catch {
-    // Undetectable: header-less flowchart (`A-->B`) or genuine garbage. Hand to
-    // the flowchart parser — it renders the former and zero-nodes the latter.
     return nativeFlowchart(null);
   }
 
