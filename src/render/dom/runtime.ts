@@ -287,11 +287,20 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     if (axis === "x") return dx >= 0 ? { exit: "right", entry: "left" } : { exit: "left", entry: "right" };
     return dy >= 0 ? { exit: "bottom", entry: "top" } : { exit: "top", entry: "bottom" };
   }
-  function anchor(b: { x: number; y: number; w: number; h: number }, side: string) {
-    if (side === "top") return { x: b.x, y: b.y - b.h / 2 };
-    if (side === "bottom") return { x: b.x, y: b.y + b.h / 2 };
-    if (side === "left") return { x: b.x - b.w / 2, y: b.y };
-    return { x: b.x + b.w / 2, y: b.y };
+  // mirrors geometry.clampOffset(): keep a spread anchor off the border corners.
+  function clampOff(off: number, half: number): number {
+    const max = Math.max(0, half - 6);
+    return Math.max(-max, Math.min(max, off));
+  }
+  // mirrors geometry.sidePoint(): border anchor, slid along the border by `off`
+  // (perpendicular to the side's normal) so shared-border edges get own channels.
+  function anchor(b: { x: number; y: number; w: number; h: number }, side: string, off = 0) {
+    const hw = b.w / 2;
+    const hh = b.h / 2;
+    if (side === "top") return { x: b.x + clampOff(off, hw), y: b.y - hh };
+    if (side === "bottom") return { x: b.x + clampOff(off, hw), y: b.y + hh };
+    if (side === "left") return { x: b.x - hw, y: b.y + clampOff(off, hh) };
+    return { x: b.x + hw, y: b.y + clampOff(off, hh) };
   }
   type Pt = { x: number; y: number };
   function offAlong(p: Pt, side: string, k: number): Pt {
@@ -389,15 +398,96 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       y: 0.125 * p[0]!.y + 0.375 * p[1]!.y + 0.375 * p[2]!.y + 0.125 * p[3]!.y,
     };
   }
+  type Ports = { source: number; target: number; labelShift?: Pt };
+  // mirrors geometry.computePortOffsets(): recompute the per-edge channel offsets
+  // (+ label stagger) from the LIVE positions every frame, so a drag keeps
+  // anti-parallel edges / fans on their own channels instead of collapsing them
+  // back onto one point. Aligned index-for-index with `edgeEls` / model.edges.
+  function computePorts(): Ports[] {
+    const res: Ports[] = edgeEls.map(() => ({ source: 0, target: 0 }));
+    const boxOf = (id: string): { x: number; y: number; w: number; h: number } => {
+      const p = positions[id]!;
+      const sz = sizes[id]!;
+      return { x: p.x, y: p.y, w: sz.w, h: sz.h };
+    };
+    const axisX = (side: string): boolean => side === "top" || side === "bottom";
+    // group endpoints by (node, border-side) and spread any 2+ onto channels
+    const groups: Record<string, Array<{ i: number; role: "source" | "target"; along: number }>> = {};
+    edgeEls.forEach((e, i) => {
+      const from = boxOf(e.from);
+      const to = boxOf(e.to);
+      if (from.x === to.x && from.y === to.y) return; // self-loop
+      const s = pickSides(from, to);
+      const gs = e.from + "|" + s.exit;
+      const gt = e.to + "|" + s.entry;
+      (groups[gs] || (groups[gs] = [])).push({ i, role: "source", along: axisX(s.exit) ? to.x : to.y });
+      (groups[gt] || (groups[gt] = [])).push({ i, role: "target", along: axisX(s.entry) ? from.x : from.y });
+    });
+    for (const key in groups) {
+      const recs = groups[key]!;
+      if (recs.length < 2) continue;
+      const side = key.slice(key.lastIndexOf("|") + 1);
+      const b = boxOf(key.slice(0, key.lastIndexOf("|")));
+      const borderLen = side === "top" || side === "bottom" ? b.w : b.h;
+      recs.sort((a, c) => a.along - c.along || a.i - c.i || a.role.localeCompare(c.role));
+      const k = recs.length;
+      const step = Math.min(20, (borderLen * 0.7) / (k - 1));
+      recs.forEach((r, slot) => {
+        res[r.i]![r.role] = (slot - (k - 1) / 2) * step;
+      });
+    }
+    // stagger labels of edges that share a node pair so their plates don't clip
+    const pairs: Record<string, number[]> = {};
+    edgeEls.forEach((e, i) => {
+      if (!e.label) return;
+      const from = boxOf(e.from);
+      const to = boxOf(e.to);
+      if (from.x === to.x && from.y === to.y) return;
+      const key = e.from < e.to ? e.from + " " + e.to : e.to + " " + e.from;
+      (pairs[key] || (pairs[key] = [])).push(i);
+    });
+    for (const key in pairs) {
+      const idxs = pairs[key]!;
+      if (idxs.length < 2) continue;
+      idxs.sort((a, c) => a - c);
+      const first = edgeEls[idxs[0]!]!;
+      const a = boxOf(first.from);
+      const b = boxOf(first.to);
+      const runX = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+      const extent = (i: number): number => {
+        const lbl = edgeEls[i]!.label!;
+        return runX ? lbl.length * (tokens.font.size * 0.62) + 10 : tokens.font.lineHeight + 4;
+      };
+      const pos: number[] = [0];
+      for (let s = 1; s < idxs.length; s++) {
+        pos.push(pos[s - 1]! + (extent(idxs[s - 1]!) + extent(idxs[s]!)) / 2 + 6);
+      }
+      const center = (pos[0]! + pos[pos.length - 1]!) / 2;
+      idxs.forEach((i, s) => {
+        const d = pos[s]! - center;
+        res[i]!.labelShift = runX ? { x: d, y: 0 } : { x: 0, y: d };
+      });
+    }
+    return res;
+  }
+
   // mirrors geometry.routeEdge(): recompute path + label from live positions,
-  // threading dagre's detour waypoints (kept fixed) when the edge has them.
-  function routeEdgePath(fromId: string, toId: string, waypoints?: Pt[]): { path: string; labelPos: Pt } {
+  // threading dagre's detour waypoints (kept fixed) when the edge has them, and
+  // applying the live per-edge channel offsets + label stagger from computePorts.
+  function routeEdgePath(
+    fromId: string,
+    toId: string,
+    waypoints?: Pt[],
+    ports?: Ports,
+  ): { path: string; labelPos: Pt } {
     const fp = positions[fromId]!;
     const tp = positions[toId]!;
     const fs = sizes[fromId]!;
     const ts = sizes[toId]!;
     const from = { x: fp.x, y: fp.y, w: fs.w, h: fs.h };
     const to = { x: tp.x, y: tp.y, w: ts.w, h: ts.h };
+    const shift = ports && ports.labelShift;
+    const withShift = (p: Pt): Pt => (shift ? { x: p.x + shift.x, y: p.y + shift.y } : p);
     if (fromId === toId) {
       const r = anchor(from, "right");
       const t = anchor(from, "top");
@@ -406,8 +496,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       return { path: pathPoly(pts), labelPos: labelPoly(pts) };
     }
     const s = pickSides(from, to);
-    const start = anchor(from, s.exit);
-    const end = anchor(to, s.entry);
+    const start = anchor(from, s.exit, ports ? ports.source : 0);
+    const end = anchor(to, s.entry, ports ? ports.target : 0);
     const horizontal = s.exit === "left" || s.exit === "right";
     const hasWps = !!(waypoints && waypoints.length > 0);
     if (edgeStyle === "curved" && !hasWps) {
@@ -415,7 +505,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const c1 = offAlong(start, s.exit, k);
       const c2 = offAlong(end, s.entry, k);
       const pts = [start, c1, c2, end];
-      return { path: pathBezier(pts), labelPos: labelBezier(pts) };
+      return { path: pathBezier(pts), labelPos: withShift(labelBezier(pts)) };
     }
     let pts: Pt[];
     if (hasWps) {
@@ -435,7 +525,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       pts = simplify([start, { x: start.x, y: midY }, { x: end.x, y: midY }, end]);
     }
     const path = edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts);
-    return { path, labelPos: labelPoly(pts) };
+    return { path, labelPos: withShift(labelPoly(pts)) };
   }
 
   // ================= style resolution (mirrors render/style) =================
@@ -517,8 +607,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     for (const id in cards) positionCard(id);
   }
   function renderEdges(): void {
-    for (const e of edgeEls) {
-      const routed = routeEdgePath(e.from, e.to, e.waypoints);
+    const ports = computePorts();
+    edgeEls.forEach((e, i) => {
+      const routed = routeEdgePath(e.from, e.to, e.waypoints, ports[i]);
       e.path.setAttribute("d", routed.path);
       if (e.plate && e.text && e.label) {
         const lp = routed.labelPos;
@@ -531,7 +622,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
         e.text.setAttribute("x", String(nAt(lp.x)));
         e.text.setAttribute("y", String(nAt(lp.y)));
       }
-    }
+    });
   }
   function applyTransform(): void {
     world.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
