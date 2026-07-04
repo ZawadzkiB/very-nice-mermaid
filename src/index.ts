@@ -43,13 +43,38 @@ export { renderAscii, renderMarkdown } from "./render/ascii.js";
 export type { AsciiOptions } from "./render/ascii.js";
 export { renderHtml } from "./export/html.js";
 export type { HtmlExportOptions } from "./export/html.js";
-export { renderPng } from "./export/png.js";
+export { renderPng, renderPngFromSvg } from "./export/png.js";
 export type { PngRenderOptions } from "./export/png.js";
 
 // Interactive renderer (browser)
 export { mount } from "./render/dom/index.js";
 export type { MountOptions } from "./render/dom/index.js";
 export type { RuntimeHandle, LayoutData } from "./render/dom/runtime.js";
+
+// Diagram-type router + mermaid.js fallback tier (mermaid/jsdom loaded lazily)
+export {
+  classify,
+  loadMermaid,
+  renderFallbackSvg,
+  toMermaidTheme,
+  UNMAPPED_TOKEN_GROUPS,
+} from "./mermaid/index.js";
+export type {
+  Classification,
+  DiagramTier,
+  RendererId,
+  FallbackRenderOptions,
+  FallbackRenderResult,
+  MermaidThemeConfig,
+} from "./mermaid/index.js";
+
+// Structured render/fallback diagnostics (FR5)
+export { Diagnostics, formatRenderDiagnostic } from "./diagnostics/index.js";
+export type {
+  RenderDiagnostic,
+  RenderSeverity,
+  RenderTier,
+} from "./diagnostics/index.js";
 
 // Model types
 export type {

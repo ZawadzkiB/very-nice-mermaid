@@ -33,9 +33,17 @@ async function loadResvg(): Promise<ResvgModule> {
 
 /** Render a diagram to PNG bytes. Throws a clear error if resvg is absent. */
 export async function renderPng(input: RenderInput, opts: PngRenderOptions = {}): Promise<Uint8Array> {
-  const svg = renderSvg(input, opts);
+  return renderPngFromSvg(renderSvg(input, opts), opts.scale);
+}
+
+/**
+ * Rasterize an already-rendered SVG string to PNG bytes. Used by the fallback
+ * tier, whose SVG comes straight from mermaid (not from our model). Throws the
+ * same clear error if the optional resvg dependency is absent.
+ */
+export async function renderPngFromSvg(svg: string, scale?: number): Promise<Uint8Array> {
   const { Resvg } = await loadResvg();
-  const scale = opts.scale && opts.scale > 0 ? opts.scale : 1;
-  const resvg = new Resvg(svg, { fitTo: { mode: "zoom", value: scale } });
+  const z = scale && scale > 0 ? scale : 1;
+  const resvg = new Resvg(svg, { fitTo: { mode: "zoom", value: z } });
   return resvg.render().asPng();
 }
