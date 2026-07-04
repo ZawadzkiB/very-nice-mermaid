@@ -51,6 +51,17 @@ function hasClass(el: Element, token: string): boolean {
   return cls.split(/\s+/).includes(token);
 }
 
+/**
+ * Normalize a captured label: strip zero-width characters (mermaid emits a lone
+ * U+200B as the "text" of an unlabeled message, which `String.trim()` does NOT
+ * remove) so an unlabeled message carries `""` and no stray label plate is drawn
+ * (REV-007).
+ */
+function cleanLabel(raw: string | null | undefined): string {
+  // U+200B ZWSP · U+200C ZWNJ · U+200D ZWJ · U+FEFF BOM
+  return (raw ?? "").replace(/[​‌‍﻿]/g, "").trim();
+}
+
 /** The numeric center x of each participant's lifeline, by participant id. */
 function lifelineCenters(doc: Document): Map<string, number> {
   const centers = new Map<string, number>();
@@ -95,7 +106,7 @@ function readMessages(doc: Document, ids: Set<string>): SequenceMessage[] {
   let order = 0;
   for (const el of Array.from(doc.querySelectorAll("*"))) {
     if (hasClass(el, "messageText")) {
-      pendingLabel = (el.textContent ?? "").trim();
+      pendingLabel = cleanLabel(el.textContent);
       continue;
     }
     if (el.getAttribute("data-et") !== "message") continue;

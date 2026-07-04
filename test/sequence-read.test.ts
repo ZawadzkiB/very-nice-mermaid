@@ -60,4 +60,20 @@ describe("readSequenceModel (SVG → model, FR2/D3)", () => {
     },
     T,
   );
+
+  it(
+    "an unlabeled message carries an empty label (mermaid's U+200B placeholder stripped, REV-007)",
+    async () => {
+      const model = await readSequenceModel(
+        ["sequenceDiagram", "  Alice->>Bob: ask", "  Bob-->>Alice: "].join("\n"),
+      );
+      const labels = model.messages.map((m) => m.label);
+      expect(labels).toEqual(["ask", ""]);
+      // the reply's label is exactly empty — no lone zero-width space left behind
+      const reply = model.messages.find((m) => m.from === "Bob" && m.to === "Alice")!;
+      expect(reply.label).toBe("");
+      expect(reply.label.length).toBe(0);
+    },
+    T,
+  );
 });
