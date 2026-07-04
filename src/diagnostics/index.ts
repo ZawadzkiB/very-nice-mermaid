@@ -84,6 +84,21 @@ export class Diagnostics {
     });
   }
 
+  /**
+   * A theme token failed the style allowlist and was dropped/replaced before
+   * reaching mermaid's `themeVariables` (FR5/FR7). warn-level: the render still
+   * succeeds, but the requested styling was not applied verbatim.
+   */
+  unsafeThemeValue(token: string, message: string): RenderDiagnostic {
+    return this.emit({
+      code: "unsafe-theme-value",
+      severity: "warn",
+      capability: "theme",
+      reason: token,
+      message,
+    });
+  }
+
   /** A tier could not produce any output at all (hard failure). */
   failed(reason: string, message: string): RenderDiagnostic {
     return this.emit({

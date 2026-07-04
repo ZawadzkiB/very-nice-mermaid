@@ -18,6 +18,7 @@ import type {
   StyleDef,
   Subgraph,
 } from "../model/index.js";
+import { isSafeColor } from "../render/style.js";
 
 export interface ParseOptions {
   /** Promote every warning to an error and throw {@link ParseError}. */
@@ -502,8 +503,10 @@ function normalizeDirection(dir: Direction): Direction {
  * HTML export (REV-002). The SVG sink additionally attribute-escapes as defense
  * in depth.
  */
-const SAFE_COLOR =
-  /^(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\([0-9.,%\s/]*\)|[a-zA-Z]+)$/;
+// The color allowlist lives in `render/style` ({@link isSafeColor}) as the one
+// source of truth shared with the mermaid fallback tier's `themeVariables`
+// sanitizer. Width/dash grammars are parser-local (only `style`/`classDef` reach
+// them).
 const SAFE_WIDTH = /^[0-9]*\.?[0-9]+(?:px|pt|em|rem|%)?$/;
 const SAFE_DASH = /^[0-9][0-9.,\s]*$/;
 
@@ -517,7 +520,7 @@ function isSafeStyleValue(key: string, value: string): boolean {
     case "fill":
     case "stroke":
     case "color":
-      return SAFE_COLOR.test(value);
+      return isSafeColor(value);
     default:
       // Unknown keys are preserved verbatim but never reach a render sink.
       return true;

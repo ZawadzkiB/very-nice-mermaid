@@ -58,7 +58,7 @@ export async function renderFallbackSvg(
   const mermaid = await loadMermaid();
   const inNode = inNodeRuntime();
 
-  const themeConfig = opts.theme ? toMermaidTheme(opts.theme) : {};
+  const themeConfig = opts.theme ? toMermaidTheme(opts.theme, diagnostics) : {};
   const config = {
     startOnLoad: false,
     securityLevel: "loose",

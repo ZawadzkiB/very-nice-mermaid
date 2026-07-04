@@ -7,6 +7,51 @@
 import type { DiagramNode, StyleDef } from "../model/index.js";
 import type { Theme } from "../theme/index.js";
 
+/**
+ * Style-value allowlists — the single source of truth for "is this CSS value
+ * safe to interpolate into a render sink" (SVG attributes, HTML-export CSS, the
+ * DOM runtime, AND mermaid's `themeVariables`). User-supplied `style`/`classDef`
+ * values (parser) and theme tokens mapped onto the mermaid fallback tier are all
+ * attacker-controllable, so a value outside these grammars — notably one holding
+ * `url(`, quotes, `<`/`>`, `;`, `{`/`}`, backslashes, parens or whitespace where
+ * the grammar forbids it — is DROPPED at the source rather than rendered raw
+ * (coding-rules.md: "Sanitize user style values at the source … Never
+ * interpolate them raw"). Browser-safe: pure regex/string, no Node/DOM.
+ */
+const SAFE_COLOR =
+  /^(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:rgb|rgba|hsl|hsla)\([0-9.,%\s/]*\)|[a-zA-Z]+)$/;
+
+/** A safe font-name charset: letters, digits, spaces, commas, hyphens, quotes. */
+const SAFE_FONT_FAMILY = /^[A-Za-z0-9 ,'"-]+$/;
+
+/** Is a CSS color a safe hex / `rgb()|rgba()|hsl()|hsla()` / bare-name form? */
+export function isSafeColor(value: string): boolean {
+  return SAFE_COLOR.test(value.trim());
+}
+
+/**
+ * Restrict a `font-family` to a safe name list. Anything with `;`, `{`, `}`,
+ * `(`/`)` (hence `url(`), `<`/`>`, `:`, `/`, backslashes or other punctuation is
+ * rejected (→ `null`) so a theme font can never break out of mermaid's `<style>`
+ * into a top-level rule or a network `url()`.
+ */
+export function sanitizeFontFamily(value: string): string | null {
+  const v = value.trim();
+  if (v === "" || v.length > 200) return null;
+  return SAFE_FONT_FAMILY.test(v) ? v : null;
+}
+
+/**
+ * Coerce a `font-size` to a finite, positive number re-emitted as `${n}px`.
+ * Non-numeric / out-of-range input (including anything a token JSON smuggled in
+ * as a string) is rejected (→ `null`).
+ */
+export function sanitizeFontSize(value: number | string): string | null {
+  const n = typeof value === "number" ? value : parseFloat(value);
+  if (!Number.isFinite(n) || n <= 0 || n > 512) return null;
+  return `${n}px`;
+}
+
 export interface ResolvedNodeStyle {
   fill: string;
   stroke: string;
