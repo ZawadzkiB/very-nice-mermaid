@@ -1,0 +1,10 @@
+{
+  "slug": "hybrid-diagram-engine",
+  "updated": "2026-07-04",
+  "note": "As-built set. before/ holds the plan-time flowchart-only baseline for the before/after compare.",
+  "diagrams": [
+    { "kind": "flow", "file": "flow.mmd", "title": "As-built hybrid pipeline: classify → flowchart/native/fallback → outputs + diagnostics" },
+    { "kind": "class", "file": "class.mmd", "title": "As-built modules: router, native readers/models, geometry (ports), renderers, diagnostics, theme-map" },
+    { "kind": "sequence", "file": "sequence.mmd", "title": "Runtime routing: classify → sync flowchart / native re-skin / mermaid fallback (with honest failure)" }
+  ]
+}

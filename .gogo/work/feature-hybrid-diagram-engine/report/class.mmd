@@ -1,0 +1,50 @@
+classDiagram
+  class Router {
+    +classify(dsl) Classification
+    +loadMermaid() lazy
+  }
+  class Classification {
+    +type: string
+    +tier: native|fallback
+    +renderer: flowchart|sequence|class|state|fallback
+  }
+  class Diagnostics {
+    +tookFallback()
+    +capabilityUnavailable()
+    +unsafeThemeValue()
+    +fallbackRenderUnavailable()
+  }
+  class NativeReader {
+    <<per type>>
+    +read(dsl) TypedModel
+  }
+  class SequenceModel
+  class ClassModel
+  class StateModel
+  class Geometry {
+    +computePortOffsets() channels + labelShift
+    +routeEdge()
+  }
+  class Renderers {
+    +renderSvg / renderSvgAsync
+    +renderAscii (flowchart+sequence)
+    +renderHtml / mount / mountAsync
+    +renderFallbackSvg
+  }
+  class vnmRuntime {
+    +interactive (drag · reroute · ports · pan/zoom)
+  }
+  class ThemeMap {
+    +toMermaidTheme() sanitized tokens → themeVariables
+  }
+
+  Router --> Classification
+  Router ..> Diagnostics
+  NativeReader --> SequenceModel
+  NativeReader --> ClassModel
+  NativeReader --> StateModel
+  Renderers ..> Geometry : routes edges (channels)
+  Renderers ..> vnmRuntime : class/state/flowchart interactive
+  Renderers ..> ThemeMap : fallback theming
+  Renderers ..> Diagnostics
+  vnmRuntime ..> Geometry : mirrors computePorts (parity-guarded)

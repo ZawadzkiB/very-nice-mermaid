@@ -1,0 +1,27 @@
+sequenceDiagram
+  actor Caller
+  participant API as renderSvgAsync / mountAsync
+  participant R as router.classify
+  participant M as mermaid (lazy)
+  participant N as native reader+renderer
+  participant D as diagnostics
+
+  Caller->>API: raw DSL string
+  API->>R: classify(dsl) via detectType
+  alt flowchart
+    R-->>API: tier=native (flowchart, sync path)
+    API-->>Caller: themed SVG / interactive (no mermaid loaded)
+  else sequence / class / state
+    R->>M: loadMermaid() + render to SVG (jsdom in Node)
+    M-->>N: mermaid SVG
+    N->>N: read model → our layout → themed render
+    N-->>Caller: native themed SVG / interactive (drag+reroute)
+  else other type (pie, gantt, …)
+    R->>M: render fallback SVG
+    alt renders cleanly (e.g. pie / browser)
+      M-->>Caller: mermaid SVG (themed via themeVariables)
+    else degenerate headless (gantt/ER/… under jsdom)
+      M->>D: fallback-render-unavailable (error)
+      D-->>Caller: clear diagnostic, no broken output
+    end
+  end

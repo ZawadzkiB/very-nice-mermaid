@@ -42,7 +42,19 @@ renderers`**; every output format is a renderer over the same positioned model.
   PNG via resvg not a browser (D3); single npm package (D4). Zero-node input is an
   error, not a silent empty render (D6). See the feature's `decisions.md`.
 
+## v2 — hybrid engine (feature `hybrid-diagram-engine`, 2026-07-04)
+The renderer is now **tiered**, dispatched by a `detectType` **router** (`src/mermaid/router`):
+- **flowchart** → the v1 own-parser + dagre path (sync, no mermaid).
+- **sequence / class / state** → **native re-skin** (`src/native/*`): mermaid renders once,
+  we read its SVG into a typed model and re-render with our themes + interactivity (class/
+  state reuse the flowchart `vnmRuntime` for full drag; class/state re-layout with our dagre).
+- **everything else** (pie, gantt, ER, gitgraph, mindmap, kanban, …) → **mermaid.js fallback**
+  (`src/mermaid/fallback`, render → SVG). Browser renders all; CLI/jsdom renders native+pie
+  and **hard-fails the rest with a clear diagnostic** (`src/diagnostics`, FR5).
+mermaid + jsdom are **lazy** so flowchart-only users pay nothing.
+
 ## gogo overrides
 <!-- gogo-specific notes not in the linked source. Preserved across re-runs. -->
-- First feature shipped: `feature-mermaid-render-toolkit` (the whole v1). Its
-  `report/report.md` is the definitive as-built account.
+- Features shipped: `feature-mermaid-render-toolkit` (v1, flowchart-only) and
+  `feature-hybrid-diagram-engine` (v2, all types). Each `report/report.md` is the
+  definitive as-built account.

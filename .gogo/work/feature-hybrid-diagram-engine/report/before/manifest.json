@@ -1,0 +1,8 @@
+{
+  "slug": "hybrid-diagram-engine",
+  "updated": "2026-07-04",
+  "note": "As-is baseline (copied into the report bundle): flowchart-only pipeline; non-flowchart input silently misparsed.",
+  "diagrams": [
+    { "kind": "flow", "file": "flow.mmd", "title": "Before: own parser, flowchart-only; other types misparsed" }
+  ]
+}

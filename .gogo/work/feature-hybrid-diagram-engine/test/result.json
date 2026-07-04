@@ -1,0 +1,30 @@
+{
+  "slug": "hybrid-diagram-engine",
+  "phase": "test",
+  "status": "ok",
+  "round": 2,
+  "inputs": [
+    ".gogo/work/feature-hybrid-diagram-engine/plan.md",
+    ".gogo/work/feature-hybrid-diagram-engine/state.md",
+    ".gogo/work/feature-hybrid-diagram-engine/test-01.md",
+    ".gogo/work/feature-hybrid-diagram-engine/test/issues.json",
+    ".gogo/knowledge/test-strategy.md",
+    ".gogo/knowledge/testing-tools.md",
+    ".gogo/knowledge/tech-stack.md",
+    ".gogo/knowledge/non-functional-requirements.md",
+    "fixtures/order-state.mmd",
+    "fixtures/shop-class.mmd",
+    "fixtures/order-sequence.mmd",
+    "fixtures/ci-pipeline.mmd"
+  ],
+  "outputs": [
+    ".gogo/work/feature-hybrid-diagram-engine/test/issues.json",
+    ".gogo/work/feature-hybrid-diagram-engine/test-02.md",
+    ".gogo/work/feature-hybrid-diagram-engine/test/result.json",
+    ".gogo/work/feature-hybrid-diagram-engine/test/screenshots/"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "open_issues": 2,
+  "summary": "Build/typecheck/258 unit/33 e2e all green. TEST-001 (blocker) CONFIRMED FIXED via a real Vite-bundled browser (not just Node/jsdom): raw sequence/class/state DSL render native shapes, pie renders via the mermaid fallback, hostile <script> label inert, zero console errors. TEST-002/004/005 confirmed fixed and verified. TEST-003 REOPENED: the anti-parallel/fan-trunk fix reaches the static SVG/PNG renderer but never the interactive DOM (mount/mountAsync/element/-f html export), which still fully reproduces the original occlusion/trunk-convergence via src/render/dom/runtime.ts ignoring edge.ports. New TEST-006 (major): the static-SVG fix that IS complete introduced a label-plate-overlap legibility gap for anti-parallel pairs. Routes back to implement with 2 open/new agent-fixable issues."
+}

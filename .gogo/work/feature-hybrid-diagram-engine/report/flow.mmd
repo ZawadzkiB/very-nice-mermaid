@@ -1,0 +1,37 @@
+flowchart LR
+  dsl["Mermaid DSL"]:::io
+  classify["classify()<br/>mermaid.detectType (src/mermaid/router)"]:::proc
+  fc["flowchart<br/>own parser + dagre (v1, sync)"]:::proc
+  nat["native re-skin<br/>sequence · class · state<br/>(src/native/*: mermaid SVG → model → our render)"]:::proc
+  fb["fallback<br/>mermaid.render() → SVG (src/mermaid/fallback)"]:::proc
+  diag["diagnostics (FR5)<br/>tier · reason · missing capability · unsafe-theme · fallback-render-unavailable"]:::art
+  svg["themed SVG"]:::out
+  ascii["ASCII (flowchart + sequence)"]:::out
+  dom["interactive DOM<br/>mount / mountAsync / element"]:::out
+  html["self-contained HTML export"]:::out
+  png["PNG (resvg)"]:::out
+  cli["vnm CLI<br/>stderr reports every fallback/degradation"]:::out
+
+  dsl --> classify
+  classify -->|flowchart| fc
+  classify -->|sequence/class/state| nat
+  classify -->|else| fb
+  fc --> svg
+  nat --> svg
+  nat --> ascii
+  fc --> ascii
+  nat --> dom
+  fc --> dom
+  fb --> dom
+  fb --> svg
+  dom --> html
+  svg --> png
+  svg --> cli
+  ascii --> cli
+  html --> cli
+  classify -.->|degrade / unsupported / unsafe| diag --> cli
+
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111

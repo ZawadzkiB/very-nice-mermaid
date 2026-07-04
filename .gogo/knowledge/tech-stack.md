@@ -14,10 +14,20 @@ Generated-by: /gogo:build (2026-07-03); refreshed by /gogo:report (2026-07-03)
 
 ## Stack
 - Language: TypeScript (ESM-only, `"type": "module"`), Node ≥ 20
-- Runtime deps: `@dagrejs/dagre` (layout), `commander` (CLI); `@resvg/resvg-js`
-  is an **optionalDependency** (PNG only, lazy-imported)
+- Runtime deps: `@dagrejs/dagre` (layout), `commander` (CLI), **`mermaid`** (fallback
+  engine + `detectType` router + native-reskin source, **lazy** `import()`), **`jsdom`**
+  (Node DOM for headless mermaid render, **lazy**; D7: to become optional);
+  `@resvg/resvg-js` is an **optionalDependency** (PNG, lazy)
 - Build: **tsup** (ESM + `.d.ts`); typecheck via `tsc --noEmit`
 - Package manager: npm
+
+## API (v2 sync vs async)
+- `renderSvg`/`renderAscii`/`renderMarkdown`/`renderHtml` are **sync, flowchart-only**
+  (throw a clear error on a non-flowchart string).
+- `renderSvgAsync`/`…Async` + `mountAsync` route **every** type (`detectType` →
+  flowchart-sync / sequence·class·state native / mermaid fallback). `mount()` returns
+  its handle sync and finishes non-flowchart renders async. The `<very-nice-mermaid>`
+  element routes everything automatically.
 
 ## Commands (run from repo root)
 - build:     `npm run build`     # tsup → dist/ (ESM + types)

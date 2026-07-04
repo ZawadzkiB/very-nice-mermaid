@@ -1,0 +1,29 @@
+{
+  "slug": "hybrid-diagram-engine",
+  "phase": "report",
+  "status": "ok",
+  "round": 1,
+  "inputs": [
+    ".gogo/work/feature-hybrid-diagram-engine/plan.md",
+    ".gogo/work/feature-hybrid-diagram-engine/decisions.md",
+    ".gogo/work/feature-hybrid-diagram-engine/review/issues.json",
+    ".gogo/work/feature-hybrid-diagram-engine/test/issues.json",
+    ".gogo/work/feature-hybrid-diagram-engine/charts/before/flow.mmd"
+  ],
+  "outputs": [
+    ".gogo/work/feature-hybrid-diagram-engine/report/report.md",
+    ".gogo/work/feature-hybrid-diagram-engine/report/flow.mmd",
+    ".gogo/work/feature-hybrid-diagram-engine/report/class.mmd",
+    ".gogo/work/feature-hybrid-diagram-engine/report/sequence.mmd",
+    ".gogo/work/feature-hybrid-diagram-engine/report/before/flow.mmd",
+    ".gogo/work/feature-hybrid-diagram-engine/report/manifest.json",
+    ".gogo/work/feature-hybrid-diagram-engine/report/diagrams.html",
+    ".gogo/knowledge/tech-stack.md",
+    ".gogo/knowledge/project-knowledge.md",
+    ".gogo/knowledge/code-review-standards.md"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "open_issues": 0,
+  "summary": "v2 hybrid engine shipped: detectType router + native re-skin (flowchart/sequence/class/state) + mermaid fallback for all other types + transparent diagnostics. 266 unit + 33 e2e green; 16 findings across review/test all fixed (incl. a security major, a blocker, and a static/runtime-parity reopen). D7 (jsdom→optional) + D9 (Chromium CLI) deferred to pre-publish."
+}

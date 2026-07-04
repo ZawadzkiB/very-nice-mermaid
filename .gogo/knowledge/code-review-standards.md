@@ -40,3 +40,25 @@ Generated-by: /gogo:build (scaffold)
   interactive UI with real pointer events or a toolbar/pan bug hides. (Was TEST-002.)
 - **Silent empty renders.** Input that yields zero nodes must error, not exit 0
   with an empty diagram. (Was TEST-004 / D6.)
+
+## Project-specific gotchas (verified — feature `hybrid-diagram-engine`, 2026-07-04)
+- **Theme-token injection at the mermaid `themeVariables` sink.** User theme values
+  (font.family/size, colors) interpolated raw into mermaid's `themeVariables` break
+  out of the fallback SVG `<style>` (CSS rule + `url()` fetch). Sanitize theme values
+  at the source (shared `isSafeColor`/`sanitizeFontFamily`/`sanitizeFontSize`), same
+  rule as DSL style values. (Was hybrid REV-001, major.)
+- **The inlined `vnmRuntime` silently diverges from shared geometry.** `src/render/dom/
+  runtime.ts` re-implements edge routing (it's `.toString()`-serialized into HTML
+  exports). A geometry fix (e.g. edge port channels) that lands in `src/geometry`/
+  `src/layout` but not the runtime ships a broken interactive/HTML-export view while
+  static SVG snapshots pass. The `dom-runtime-parity` guard MUST cover the changed
+  path (multi-edge/anti-parallel/ports), and there must be coverage that **executes
+  the exported HTML**, not just the static SVG. (Was hybrid TEST-003, reopened once.)
+- **The library surface must route, not just the CLI.** Public `mount`/`render*`/the
+  element must run `classify()` for raw DSL — a fix wired only into `cli/run.ts` leaves
+  the library misparsing non-flowchart DSL. Test `mount()`/the element with raw DSL in
+  a real bundled browser (mermaid can't `import()` over `file://`). (Was hybrid
+  TEST-001, blocker that evaded 260 tests.)
+- **jsdom is not a full browser.** Layout-heavy mermaid types render degenerately
+  headless — detect (zero/negative dims) and hard-fail with a clear diagnostic; never
+  emit broken SVG. (Was hybrid TEST-004.)

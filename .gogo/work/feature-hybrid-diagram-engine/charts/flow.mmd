@@ -1,0 +1,29 @@
+flowchart LR
+  dsl["Mermaid DSL"]:::io
+  router["detectType router"]:::proc
+  nat["native renderers<br/>flowchart · sequence · class · state · journey"]:::proc
+  fb["mermaid.js fallback<br/>render() to SVG"]:::proc
+  reskin["SVG to model to re-skin<br/>(our themes)"]:::proc
+  shell["pan / zoom / fit shell"]:::proc
+  diag["diagnostics channel<br/>tier · reason · missing capability"]:::art
+  outi["interactive DOM / HTML"]:::out
+  outs["SVG"]:::out
+  outp["PNG (jsdom, best-effort)"]:::out
+  outa["ASCII (flowchart + sequence)"]:::out
+  cli["vnm CLI<br/>stderr reports fallbacks"]:::out
+
+  dsl --> router
+  router -->|native| nat --> reskin
+  router -->|fallback| fb --> shell
+  reskin --> outi
+  reskin --> outs
+  reskin --> outa
+  shell --> outi
+  shell --> outs
+  outs --> outp
+  router -.->|fallback / missing cap / degrade| diag --> cli
+
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111

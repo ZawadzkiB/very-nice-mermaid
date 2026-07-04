@@ -1,0 +1,7 @@
+classDiagram
+  class Evil {
+    +String name
+    +xss() void
+  }
+  class Target
+  Evil --> Target : "<script>window.__vnm_xss=1</script>-link"

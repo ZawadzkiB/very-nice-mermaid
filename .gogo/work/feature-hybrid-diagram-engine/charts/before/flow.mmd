@@ -1,0 +1,19 @@
+flowchart LR
+  dsl["Mermaid DSL"]:::io
+  parser["own parser<br/>flowchart / graph ONLY"]:::proc
+  other["any other type"]:::io
+  misparse["misparsed as flowchart<br/>(garbage, silent)"]:::bad
+  model["DiagramModel"]:::art
+  layout["dagre layout"]:::proc
+  renderers["SVG · ASCII · DOM · HTML · PNG"]:::proc
+  out["outputs"]:::out
+
+  dsl --> parser --> model --> layout --> renderers --> out
+  other --> parser
+  parser -. missing-header .-> misparse
+
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111
+  classDef bad fill:#fde8e8,stroke:#d9534f,color:#611

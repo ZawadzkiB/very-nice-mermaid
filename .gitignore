@@ -19,6 +19,7 @@ e2e/.artifacts/
 # browser-automation scratch (Playwright MCP) + bulky, regenerable test renders
 .playwright-mcp/
 .gogo/work/*/test/artifacts/
+.gogo/work/*/test/renders/
 
 # gogo working state: keep the durable knowledge + work docs in the repo, but
 # ignore the vendored offline mermaid runtime (a ~3 MB binary blob).

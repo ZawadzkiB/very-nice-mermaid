@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo report diagrams — hybrid-diagram-engine</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo report diagrams — <code>hybrid-diagram-engine</code></h1>
+    <p class="hint">As-built UML set (v2) · offline viewer · mermaid vendored with the plugin.</p>
+  </header>
+
+  <h2>As-built hybrid pipeline (flow)</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  dsl["Mermaid DSL"]:::io
+  classify["classify()<br/>mermaid.detectType"]:::proc
+  fc["flowchart<br/>own parser + dagre (sync)"]:::proc
+  nat["native re-skin<br/>sequence · class · state"]:::proc
+  fb["fallback<br/>mermaid.render() → SVG"]:::proc
+  diag["diagnostics (FR5)"]:::art
+  out["SVG · ASCII* · interactive DOM · HTML · PNG · CLI"]:::out
+
+  dsl --> classify
+  classify -->|flowchart| fc --> out
+  classify -->|sequence/class/state| nat --> out
+  classify -->|else| fb --> out
+  classify -.->|degrade / unsupported / unsafe| diag --> out
+
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111
+  </pre></div>
+
+  <h2>As-built modules &amp; types (class)</h2>
+  <div class="diagram"><pre class="mermaid">
+classDiagram
+  class Router {
+    +classify(dsl) Classification
+    +loadMermaid() lazy
+  }
+  class Diagnostics {
+    +tookFallback()
+    +capabilityUnavailable()
+    +unsafeThemeValue()
+    +fallbackRenderUnavailable()
+  }
+  class NativeReader {
+    <<per type>>
+    +read(dsl) TypedModel
+  }
+  class Geometry {
+    +computePortOffsets() channels + labelShift
+    +routeEdge()
+  }
+  class vnmRuntime {
+    +interactive (drag · reroute · ports)
+  }
+  class ThemeMap {
+    +toMermaidTheme() sanitized → themeVariables
+  }
+  Router ..> Diagnostics
+  NativeReader --> Geometry
+  Geometry ..> vnmRuntime : mirrored (parity-guarded)
+  Router ..> ThemeMap
+  </pre></div>
+
+  <h2>Runtime routing (sequence)</h2>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  actor Caller
+  participant R as router.classify
+  participant M as mermaid (lazy)
+  participant N as native reader+renderer
+  participant D as diagnostics
+  Caller->>R: raw DSL (detectType)
+  alt flowchart
+    R-->>Caller: sync themed render (no mermaid)
+  else sequence/class/state
+    R->>M: render to SVG
+    M-->>N: mermaid SVG
+    N-->>Caller: native themed + interactive
+  else other type
+    R->>M: fallback render
+    alt clean (pie/browser)
+      M-->>Caller: mermaid SVG
+    else degenerate headless
+      M->>D: fallback-render-unavailable
+      D-->>Caller: clear diagnostic, no broken output
+    end
+  end
+  </pre></div>
+
+  <script src="../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from ../../../resources/mermaid.min.js</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

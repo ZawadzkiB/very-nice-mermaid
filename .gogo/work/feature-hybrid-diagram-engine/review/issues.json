@@ -1,0 +1,102 @@
+{
+  "slug": "hybrid-diagram-engine",
+  "track": "review",
+  "round": 2,
+  "updated": "2026-07-04",
+  "issues": [
+    {
+      "id": "REV-001",
+      "title": "Theme token values reach mermaid themeVariables unsanitized — CSS breakout + url() network-fetch in the fallback SVG <style>",
+      "description": "toMermaidTheme() (src/mermaid/theme-map.ts:27-59) copies theme tokens verbatim into mermaid's config/themeVariables: font.family (line 33 & 55), font.size (line 56), and every colors.* value (lines 36-53). renderFallbackSvg() (src/mermaid/fallback.ts:61-73) spreads that config into mermaid, which emits the values into the rendered SVG's <style> block. Theme tokens are NOT validated at the source — resolveTheme()/defineTheme() (src/theme/index.ts) deep-merge raw --theme JSON (or a caller-supplied Theme) with no allowlisting. Proven: a theme with font.family = \"sans; } body { display:none } .z { x:url(http://evil/y)\" produces an SVG whose <style> contains `font-family:sans;} body{display:none} .z{ ... url(http://evil/y)}` — i.e. it closes mermaid's scoped rule and injects a top-level `body{display:none}` rule plus a network-fetching url(). wrapFallbackHtml() (src/cli/run.ts:253-267) inlines that SVG straight into the HTML <body>, so the injected unscoped rules affect the whole document. Colors are only incidentally guarded (a bad color makes mermaid THROW 'Unsupported color format' → a hard render-failed crash, not the graceful allowlist-drop+diagnostic the rule requires); font-family and font-size have no guard at all. This violates coding-rules.md ('Sanitize user style values at the source ... allowlist ... drop url(, quotes, <> ... Never interpolate them raw') and the code-review-standards.md style-value-injection gotcha (prior REV-001 blocker + REV-002 major). Both toMermaidTheme and renderFallbackSvg are exported from the public `.` entry (src/index.ts), so a library consumer building a Theme from untrusted input (e.g. user-customizable SaaS themes) turns this into a stored-XSS/CSS-injection + SSRF-via-url() vector. Note: the primary attacker surface (diagram DSL labels) IS safe on this path — htmlLabels:false makes mermaid escape user label text (<script>/<img onerror> render as inert &lt;…&gt; text, no live handler attributes) — so this is scoped to the theme/config surface, hence major rather than blocker.",
+      "proposed_solution": "AGENT-FIXABLE. In toMermaidTheme(), allowlist/validate every token before handing it to mermaid, do not rely on mermaid throwing: colors → accept only hex/rgb()/rgba()/hsl()/hsla()/named-color forms (regex allowlist), drop+diagnose anything else; font.family → strip to a safe font-name charset (letters, digits, spaces, commas, single quotes) and reject values containing ; { } ( ) < > : or the substring 'url'; font.size → coerce to a finite number and re-emit as `${n}px`. Emit an FR5 diagnostic (theme-token-dropped, warn) listing any dropped/rewritten token instead of silently passing or hard-crashing. (Optionally also scope wrapFallbackHtml's inlined SVG so a stray <style> cannot escape into the host doc, as defense-in-depth.)",
+      "severity": "major",
+      "priority": "P1",
+      "status": "verified",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fix_summary": "Factored the color allowlist into a shared browser-safe helper (src/render/style.ts: isSafeColor, reused by the v1 parser as the one source of truth) plus sanitizeFontFamily/sanitizeFontSize. toMermaidTheme now allowlists every value before it reaches mermaid's themeVariables: unsafe colors are dropped, an unsafe font family is replaced with a safe default (sans-serif), a non-numeric font size is dropped, and each emits an unsafe-theme-value (warn) FR5 diagnostic instead of silently passing or hard-crashing. Added regression tests reproducing BOTH the CSS-rule breakout and the url() fetch and asserting the rendered fallback SVG carries neither the injected rule nor 'evil'; v1 flowchart style-sanitization + zero-network HTML tests re-verified green. Browser-safe-core boundary confirmed unchanged. (commit a094657). Round-2 re-verify: test/mermaid-fallback.test.ts injection + url() regressions and test/export-html.test.ts zero-network/style tests all pass on the current build; the same isSafeColor/escapeXml sink helpers are the ones the new native SVG renderers reuse."
+    },
+    {
+      "id": "REV-002",
+      "title": "jsdom virtualConsole leaks raw 'Not implemented' stack traces to stderr, polluting the structured FR5 channel",
+      "description": "ensureNodeDom() (src/mermaid/jsdom-env.ts:98-103) constructs `new JSDOM(...)` without a virtualConsole. On a hard-fail fallback type (mindmap/architecture — cytoscape needs a real canvas), jsdom forwards its 'Error: Not implemented: HTMLCanvasElement.prototype.getContext ...' jsdomError to stderr as a multi-line raw Node stack trace, printed BEFORE our clean `vnm: render-failed error fallback ...` diagnostic. FR5/D5 promised a structured, greppable stderr channel; this raw trace undermines that (a script grepping the `code severity tier message` shape gets noise, and users see an internal jsdom/cytoscape stack). The render still fails cleanly with the correct structured diagnostic and exit 1, so it is cosmetic, not a functional break.",
+      "proposed_solution": "AGENT-FIXABLE. Pass a jsdom `virtualConsole` to the JSDOM constructor that swallows or redirects jsdomError, e.g. `import { VirtualConsole } from 'jsdom'; const vc = new VirtualConsole(); vc.on('jsdomError', () => {});` (or route it into our Diagnostics), so only the structured FR5 diagnostics reach stderr.",
+      "severity": "minor",
+      "priority": "P2",
+      "status": "verified",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fix_summary": "Passed a jsdom VirtualConsole to ensureNodeDom() (src/mermaid/jsdom-env.ts) with a jsdomError handler that swallows the raw 'Not implemented: …getContext' stack traces, so only the structured FR5 diagnostics reach stderr. The render still fails cleanly with the render-failed diagnostic + exit 1. CLI test asserts a mindmap (canvas/cytoscape hard-fail) emits 'render-failed error fallback' but no raw jsdom trace. (commit 9f507e9). Round-2 re-verify: the CLI 'no raw jsdom trace (REV-002)' test passes."
+    },
+    {
+      "id": "REV-003",
+      "title": "Node detection can clobber a real DOM in hybrid runtimes (Electron renderer / jsdom test env)",
+      "description": "inNodeRuntime() (src/mermaid/router.ts:64-66) keys only on `process.versions.node`. loadMermaid() then calls ensureNodeDom() (src/mermaid/jsdom-env.ts), which stands up a fresh headless jsdom and overwrites window/document/navigator/Element/Node/HTMLElement/CSSStyleSheet on globalThis process-wide (defineGlobal, lines 77-121) and mutates SVGElement.prototype. In a plain browser this path is unreachable (no `process`), so the standard browser case is safe (verified). But in an Electron renderer or a jsdom/happy-dom-based test environment — where `process.versions.node` is present AND a real window/document already exist — a single fallback render replaces the live DOM with a headless jsdom and shims its prototypes for the whole process, corrupting the host's real DOM.",
+      "proposed_solution": "AGENT-FIXABLE. Gate the jsdom setup on the ABSENCE of a usable DOM rather than on being in Node: in loadMermaid()/ensureNodeDom(), only import jsdom + install shims when `typeof window === 'undefined' || !globalThis.document?.createElementNS`. When a real/host DOM already exists, use it as-is and never overwrite globals.",
+      "severity": "minor",
+      "priority": "P2",
+      "status": "verified",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fix_summary": "Added needsHeadlessDom() (src/mermaid/router.ts) — true only when there is no usable DOM — and gated ensureNodeDom() on inNodeRuntime() && needsHeadlessDom(), so a real/host DOM is used as-is and never overwritten by a headless jsdom. The degraded-geometry diagnostic now keys on usedHeadlessDom(). Unit test drives the gate across no-DOM / real-DOM / partial-stub cases. (commit 8a4597e). Round-2 re-verify: the new class/state readers route through this SAME needsHeadlessDom()-gated loadMermaid() path (no new DOM-setup code), and test/mermaid-jsdom-gate.test.ts passes."
+    },
+    {
+      "id": "REV-004",
+      "title": "classify() couples the native (no-mermaid) route to a successful mermaid load",
+      "description": "classify() (src/mermaid/router.ts:130) ran `const mermaid = await loadMermaid();` OUTSIDE the try/catch, which guarded only `mermaid.detectType(dsl)`. A rejection from loadMermaid therefore escaped classify() and aborted routing even for inputs that should land on the native flowchart tier with no mermaid at all — header-less `A-->B` and genuine garbage both rely on detectType being reachable. Latent today (mermaid + jsdom are full deps) but would surface once the loader can fail (jsdom made optional per D7).",
+      "proposed_solution": "AGENT-FIXABLE. Wrap `await loadMermaid()` (or the whole detect block) so any rejection returns nativeFlowchart(null), keeping the native path independent of mermaid being loadable.",
+      "severity": "nit",
+      "priority": "P3",
+      "status": "verified",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fix_summary": "Moved await loadMermaid() INSIDE classify()'s try/catch (src/mermaid/router.ts:174-186) so a loader rejection is treated exactly like an undetectable input and returns nativeFlowchart(null). Test mocks mermaid to throw on import and asserts a KNOWN non-flowchart input still routes native. (commit 0545453). Round-2 re-verify: confirmed in the current router.ts source (the loader await now sits within the try) and test/mermaid-loader-failure.test.ts passes."
+    },
+    {
+      "id": "REV-005",
+      "title": "State reader misclassifies a user state named start/end (or *_start/*_end) as a [*] pseudo-state — drops its label and renders it as a marker",
+      "description": "classifyState() (src/native/state/read.ts:62-66) classifies a state node from its recovered NAME with two regexes: `if (g.querySelector('circle.state-start') || /(^|_)start$/.test(name)) return 'start'` and `if (/(^|_)end$/.test(name) || (label === '' && hasClass(g,'default'))) return 'end'`. The name-based branches produce false positives on legitimate user states. Verified against the built CLI: `stateDiagram-v2` with states `process_start` and `session_end` (rendered from fixtures probed via `node dist/cli/index.js render`) — BOTH labels are dropped from the SVG and the states are drawn as a start disc / end double-ring instead of labeled rounded cards (readNodes line 82 sets `label: kind==='normal' ? label : ''`, so a misclassified state loses its text). A state literally named `end` reproduces the same. Root cause confirmed by dumping mermaid's actual node structure: the REAL pseudo-states are structurally distinguishable WITHOUT the name regex — the start pseudo carries `circle.state-start` and class `default`; the end pseudo carries class `node default` with empty text; a normal state (even one named `end`) carries class `statediagram-state` and non-empty text. So the `/(^|_)start$/` and `/(^|_)end$/` clauses add nothing but false positives (silent label loss + wrong shape) for the plausible naming patterns `*_start`/`*_end`/`start`/`end`. Not covered by tests — state-read.test.ts only uses PascalCase names + `[*]`, and state-svg.test.ts feeds the renderer pre-classified pseudo nodes, so the classifier's false positive is untested.",
+      "proposed_solution": "AGENT-FIXABLE. Drop the name-based regex branches and classify purely on the reliable structural signals the probe confirmed: start = has a `circle.state-start` descendant; end = `hasClass(g,'default') && label===''` (the empty-text `default`-classed node with no start circle); everything else = normal. If a name fallback is kept at all, gate it behind the `default` class (never on a `statediagram-state` node). Add a regression test: a state diagram whose normal states are named `process_start`/`session_end`/`end` must keep them `kind:'normal'` with their labels intact.",
+      "severity": "minor",
+      "priority": "P2",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 2,
+      "fixed_in_round": 5,
+      "commit": "52e8e5b",
+      "fix_summary": "classifyState() (src/native/state/read.ts) no longer keys on the state name; it classifies purely on structural signals: start = a `circle.state-start` descendant, end = an empty-label node carrying the `default` class, everything else normal. A real state named end / process_start / session_end now stays kind:'normal' with its label intact. Regression test added (test/state-read.test.ts)."
+    },
+    {
+      "id": "REV-006",
+      "title": "Class relation endpoint recovery can silently mis-pair when underscore-heavy class names create an ambiguous data-id split",
+      "description": "splitEnds() (src/native/class/read.ts:118-129) recovers a relation's (from,to) by stripping the `id_`/`_<index>` affixes from the relation's data-id and trying every left-to-right underscore split, returning the FIRST split where both halves are known class names. When class names contain underscores, more than one split can be valid and the leftmost-wins choice can be wrong. Verified against the built API: with classes `A`, `A_B`, `B_C`, `C` all present and the real relation `A_B --> C : real` (mermaid data-id `id_A_B_C_1`), readClassModel returns `{from:'A', to:'B_C', ... label:'real'}` — the relation is silently attached to the WRONG two classes, with `warnings: []` (no diagnostic). The arrowhead/type/label are then rendered between the wrong nodes. Likelihood is low (needs a specific set of colliding underscore names) but the failure is silent-wrong-data, not a crash or a visible degrade, so it can't be caught by eye. Mermaid's `id_From_To_n` is undelimited, so the id alone cannot disambiguate.",
+      "proposed_solution": "AGENT-FIXABLE. Disambiguate using geometry the way the state reader already does: match the relation path's first/last point (read-util.pathPoints) to the nearest class-node center (node transform), and use that to choose among the candidate underscore splits (or as the primary from/to source, with the data-id split only as a tiebreaker). When splitEnds finds MORE THAN ONE valid split and geometry can't disambiguate, emit the existing class-relation-unrecoverable warning rather than silently picking the leftmost. Add a regression test with the A / A_B / B_C / C collision above.",
+      "severity": "minor",
+      "priority": "P2",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 2,
+      "fixed_in_round": 5,
+      "commit": "50f8774",
+      "fix_summary": "splitEnds() (src/native/class/read.ts) replaced by candidateEnds() (every valid underscore split) + resolveEnds(): a single candidate is used directly (common case, no regression), an ambiguous split is disambiguated via the edge-path endpoint geometry (nearest class-node center, the same technique the state reader uses), and if geometry can't decide the relation is dropped with the existing class-relation-unrecoverable warning rather than silently mis-paired. Regression test with classes A/A_B/B_C/C and relation A_B --> C asserts it recovers as A_B->C, not A->B_C."
+    },
+    {
+      "id": "REV-007",
+      "title": "Sequence reader keeps mermaid's zero-width-space placeholder as an unlabeled message's label, drawing a stray label plate",
+      "description": "readMessages() (src/native/sequence/read.ts:97-99,111-120) takes the label from the preceding `text.messageText` via `(el.textContent ?? '').trim()`. For a message with no label, mermaid emits a single U+200B (zero-width space) as the messageText, and String.prototype.trim() does NOT strip U+200B — so the message's `label` becomes `\"\\u200b\"` (length 1, truthy) instead of `\"\"`. Verified via readSequenceModel on `Bob->>Alice: ` (empty label): message.label is a one-codepoint 8203 string. Because every sink guards on `if (m.label)` / truthiness (svg.ts:119 renderMessage, ascii.ts:146, layout.ts labelBox), an effectively-empty label still renders a label-background <rect> plate (edgeLabelBg fill, ~18px wide) plus an invisible <text>, and nudges the column-gap width in layout. Confirmed the rendered SVG draws extra edge-label-bg plates for the unlabeled message. This is a cosmetic artifact but hits a very common case (unlabeled return/reply arrows). No data loss.",
+      "proposed_solution": "AGENT-FIXABLE. Normalize the captured label in readMessages: strip zero-width characters and treat a whitespace/zero-width-only result as empty, e.g. `const t = (el.textContent ?? '').replace(/[\\u200b\\u200c\\u200d\\ufeff]/g,'').trim(); pendingLabel = t;` so unlabeled messages carry `\"\"` and no plate/text is emitted. Add a test asserting an unlabeled message yields `label === ''` and the SVG has exactly one edge-label plate per genuinely-labeled message.",
+      "severity": "nit",
+      "priority": "P3",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 2,
+      "fixed_in_round": 5,
+      "commit": "a263c3c",
+      "fix_summary": "readMessages() (src/native/sequence/read.ts) normalizes the captured label through cleanLabel(), which strips zero-width chars (U+200B/U+200C/U+200D/U+FEFF) that String.trim() leaves behind, so an unlabeled message carries '' and no stray edge-label plate is drawn. Regression test asserts an unlabeled reply yields label === '' (length 0)."
+    }
+  ]
+}

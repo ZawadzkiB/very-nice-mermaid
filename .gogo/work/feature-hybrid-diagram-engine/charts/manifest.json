@@ -1,0 +1,8 @@
+{
+  "slug": "hybrid-diagram-engine",
+  "updated": "2026-07-04",
+  "note": "Plan-phase intended design. charts/before/ captures today's flowchart-only pipeline for the report before/after compare.",
+  "diagrams": [
+    { "kind": "flow", "file": ".gogo/work/feature-hybrid-diagram-engine/charts/flow.mmd", "title": "Intended hybrid pipeline: detectType router → native re-skin / mermaid fallback → outputs + diagnostics" }
+  ]
+}
