@@ -17,7 +17,9 @@ export default defineConfig({
   // dagre is pure JS and must run in the browser (mount + custom element need
   // parse→layout), so bundle it into every entry. commander is CLI-only and
   // @resvg/resvg-js is a native, lazily dynamic-imported optional dep — keep
-  // both external so they are never pulled into the browser-safe core.
+  // both external so they are never pulled into the browser-safe core. mermaid
+  // and jsdom are the fallback tier: dynamic-imported only in the render/export
+  // path (D4/FR8), so keep them external too — never in the browser-safe core.
   noExternal: ["@dagrejs/dagre"],
-  external: ["commander", "@resvg/resvg-js"],
+  external: ["commander", "@resvg/resvg-js", "mermaid", "jsdom"],
 });
