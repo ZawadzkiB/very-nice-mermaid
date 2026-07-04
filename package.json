@@ -57,20 +57,20 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@dagrejs/dagre": "^1.1.4",
-    "commander": "^12.1.0",
-    "jsdom": "^25.0.1",
-    "mermaid": "^11.16.0"
+    "@dagrejs/dagre": "1.1.8",
+    "commander": "12.1.0",
+    "jsdom": "25.0.1",
+    "mermaid": "11.16.0"
   },
   "optionalDependencies": {
-    "@resvg/resvg-js": "^2.6.2"
+    "@resvg/resvg-js": "2.6.2"
   },
   "devDependencies": {
-    "@playwright/test": "^1.48.0",
-    "@types/node": "^22.7.0",
-    "fast-xml-parser": "^4.5.7",
-    "tsup": "^8.3.0",
-    "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "@playwright/test": "1.61.1",
+    "@types/node": "22.20.0",
+    "fast-xml-parser": "4.5.7",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "vitest": "2.1.9"
   }
 }
