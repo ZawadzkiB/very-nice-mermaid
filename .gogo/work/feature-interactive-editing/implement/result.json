@@ -1,0 +1,23 @@
+{
+  "slug": "interactive-editing",
+  "phase": "implement",
+  "status": "ok",
+  "round": 6,
+  "inputs": [
+    ".gogo/work/feature-interactive-editing/plan.md",
+    ".gogo/work/feature-interactive-editing/test/issues.json",
+    ".gogo/work/feature-interactive-editing/test/result.json",
+    ".gogo/knowledge/coding-rules.md",
+    ".gogo/knowledge/tech-stack.md"
+  ],
+  "outputs": [
+    "src/render/dom/runtime.ts",
+    "e2e/interactive-editing.spec.ts",
+    "test/interactive-subgraph-drag.test.ts",
+    ".gogo/work/feature-interactive-editing/test/issues.json",
+    ".gogo/work/feature-interactive-editing/charts/manifest.json"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "summary": "Fix-round 4 (test round 03 finding). TEST-002 (major/P1, agent-fixable): edge-handle (.vnm-edge-handle) visibility did not track selection in a real browser — selectNode()/deselect() in src/render/dom/runtime.ts only positioned/hid the resize corners, never the edge-endpoint handles, so a plain select never revealed a node's edge handles (they appeared only as an incidental side effect of a later renderEdges() from a drag/resize/reset/import) and deselecting left an already-shown handle lingering as a stale floating dot. Fix mirrors the resize-handle pattern: selectNode() now calls positionEdgeHandles(computePorts()) right after positionHandles(), and deselect() calls it right after hideHandles(), so edge-handle visibility refreshes synchronously with every selection change. Flows into the standalone HTML export via the .toString()-serialized runtime. De-annotated the two test.fail() repro tests in e2e/interactive-editing.spec.ts (now normal passing regression tests: select-reveals-handles-immediately + deselect-hides-handle-immediately) and refreshed the stale describe/comment text (no test.fail() remains). Tightened the FR7 fake-DOM unit test in test/interactive-subgraph-drag.test.ts: removed the masking no-op importLayout() so it now asserts the SOURCE handle is display:block right after the select-click with NO intervening layout call, and added a dedicated unit test asserting select-shows / deselect-hides with no intervening render — so the unit suite would also have caught this. Tests: 300 -> 301 unit (+1 new). Green: npm run build, npm run typecheck, npm test (301 unit), npm run test:e2e (62, both de-annotated TEST-002 tests passing normally). Determinism (no Date.now/Math.random/performance.now), zero-network, NUL-free sources unchanged. No commits. No forks to escalate."
+}

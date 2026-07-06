@@ -35,6 +35,39 @@ Generated-by: /gogo:build (scaffold)
 - **"Looks right":** diagrams must beat mermaid-cli — no edges through node boxes
   (overlap scan), readable labels, flush arrowheads, good theme contrast (light/dark/fancy).
 
+## Key user journeys (added — feature `interactive-editing`, 2026-07-05)
+- **Edit + export journey** (`e2e/interactive-editing.spec.ts`): select a node →
+  drag a corner resize handle with **real pointer events** (unit tests simulate via
+  `importLayout()` and never execute the pointer math) → edges re-anchor around the
+  perimeter (hub: anchors pairwise distinct, spread on both axes) → reload keeps
+  size AND position → **Save SVG** (valid XML incl. subgraphs + every node shape)
+  and **Save PNG** (real rasterize: PNG magic bytes, no canvas taint) → **⟲ Reset
+  layout** restores the computed layout, survives reload, leaves pan/zoom alone —
+  then **edit again after reset and confirm it persists** (the one path a naive
+  suite misses). Zero console errors + zero network throughout, PNG click included.
+- **Rasterization needs a real browser.** jsdom can't draw an SVG image into a
+  canvas — any `Image`/`<canvas>`/download path gets its only real coverage in
+  Playwright e2e; don't count unit tests as covering it.
+- **Sequence diagrams are the negative case:** no resize handles, no reset button
+  (hidden, not a dead control) — assert absence + no console errors.
+
+## Key user journeys (added — v0.4.0 UAT delta, 2026-07-05)
+- **Subgraph group-drag:** grab the container's dashed border/title band → ALL
+  members move together, edges re-route, box follows, persists; the open interior
+  pans instead; dragging a member far OUT re-hugs the box (never a stranded empty
+  container); nested (depth>1) containers re-hug too.
+- **Edge-pin:** select a node → `.vnm-edge-handle` grabs appear IMMEDIATELY (and
+  vanish immediately on deselect — TEST-002 regression tests guard this); drag a
+  handle to another border → pin sticks, the other end keeps auto-distributing,
+  reload persists, ⟲ Reset clears; pin-then-resize re-clamps (no detach).
+- **Sidecar robustness at the CLI:** feed `vnm render --layout` a stale/reordered/
+  parallel-edge `layout.json` → correct edge pinned or pin dropped gracefully,
+  exit 0, never a crash.
+- **Fake-DOM unit tests need a real `closest()`/parent-chain contract** to reach
+  `target.closest(...)` interaction branches — a bare `target:{}` silently bypasses
+  them; and never let an incidental render call (e.g. a no-op `importLayout()`)
+  mask show/hide timing — assert visibility with NO intervening call.
+
 ## Deployment checks
 Library, not a service: `npm run build` clean, `npm pack` ships `dist/` + types +
 the `vnm` shebang bin, and the built `.` entry imports cleanly in Node.

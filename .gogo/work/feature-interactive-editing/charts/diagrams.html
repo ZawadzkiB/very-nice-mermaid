@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo diagrams — interactive-editing</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo diagrams — <code>interactive-editing</code></h1>
+    <p class="hint">Offline viewer · mermaid is vendored with the plugin (no network, no CLI) · regenerate via the gogo-mermaid skill.</p>
+  </header>
+
+  <h2>As-built flow (v0.4.0): node / group / anchor edits → perimeter re-anchor + auto-contain → re-route → persist / export</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  drag["drag node"]:::io
+  sel["select node"]:::io
+  resize["drag corner handle<br/>(min-size clamp)"]:::proc
+  grpgrab["grab subgraph<br/>border / title band"]:::io
+  grpmove["move all members<br/>(group drag)"]:::proc
+  contain["auto-contain box<br/>computeSubgraphBoxes (shared)"]:::proc
+  epdrag["drag edge endpoint<br/>handle (.vnm-edge-handle)"]:::io
+  pin["pin {side,offset}<br/>anchorsOv (override)"]:::proc
+  ports["computePerimeterPorts<br/>raySide + spread + overrides"]:::proc
+  reroute["live re-route edges<br/>(routeEdge, offset-removed coords)"]:::proc
+  persist["exportLayout + localStorage<br/>(positions + sizes + anchors)"]:::art
+  svgstr["toSvgString() inlined<br/>(byte-parity with render/svg)"]:::proc
+  savesvg["Save SVG<br/>(data-URI download)"]:::out
+  savepng["Save PNG<br/>(canvas &rarr; toDataURL)"]:::out
+  reset["Reset layout (&#8635;)<br/>discard moves + resizes + pins"]:::io
+  restore["restore computed<br/>positions + sizes; clear pins"]:::proc
+  clearp["clear persisted layout<br/>(localStorage.removeItem)"]:::art
+
+  drag --> ports
+  drag --> contain
+  sel --> resize --> ports
+  resize --> contain
+  grpgrab --> grpmove --> contain
+  grpmove --> ports
+  sel --> epdrag --> pin --> ports
+  contain --> reroute
+  ports --> reroute --> persist
+  reroute --> svgstr
+  svgstr --> savesvg
+  svgstr --> savepng
+  reset --> restore
+  restore --> ports
+  restore --> contain
+  restore --> clearp
+
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111
+  </pre></div>
+
+  <script src="../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from: ../../../resources/mermaid.min.js\n' +
+          'Re-run the gogo-mermaid skill, or read the .mmd source files directly.</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

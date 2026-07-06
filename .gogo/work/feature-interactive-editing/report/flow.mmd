@@ -1,0 +1,40 @@
+flowchart LR
+  drag["drag node"]:::io
+  sel["select node"]:::io
+  resize["drag corner handle<br/>(min-size clamp)"]:::proc
+  grpgrab["grab subgraph<br/>border / title band"]:::io
+  grpmove["move all members<br/>(group drag)"]:::proc
+  contain["auto-contain box<br/>computeSubgraphBoxes (shared)"]:::proc
+  epdrag["drag edge endpoint<br/>handle (.vnm-edge-handle)"]:::io
+  pin["pin {side,offset}<br/>anchorsOv (override)"]:::proc
+  ports["computePerimeterPorts<br/>raySide + spread + overrides"]:::proc
+  reroute["live re-route edges<br/>(routeEdge, offset-removed coords)"]:::proc
+  persist["exportLayout + localStorage<br/>(positions + sizes + anchors)"]:::art
+  svgstr["toSvgString() inlined<br/>(byte-parity with render/svg)"]:::proc
+  savesvg["Save SVG<br/>(data-URI download)"]:::out
+  savepng["Save PNG<br/>(canvas → toDataURL)"]:::out
+  reset["Reset layout (⟲)<br/>discard moves + resizes + pins"]:::io
+  restore["restore computed<br/>positions + sizes; clear pins"]:::proc
+  clearp["clear persisted layout<br/>(localStorage.removeItem)"]:::art
+
+  drag --> ports
+  drag --> contain
+  sel --> resize --> ports
+  resize --> contain
+  grpgrab --> grpmove --> contain
+  grpmove --> ports
+  sel --> epdrag --> pin --> ports
+  contain --> reroute
+  ports --> reroute --> persist
+  reroute --> svgstr
+  svgstr --> savesvg
+  svgstr --> savepng
+  reset --> restore
+  restore --> ports
+  restore --> contain
+  restore --> clearp
+
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111

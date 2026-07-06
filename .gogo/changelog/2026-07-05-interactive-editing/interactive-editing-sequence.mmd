@@ -1,0 +1,57 @@
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant RT as vnmRuntime (inlined)
+  participant G as shared geometry (twin)
+  participant LS as localStorage
+  participant DL as browser download
+
+  rect rgb(232, 236, 255)
+    note over U,LS: resize (FR1) + live re-anchor (FR2)
+    U->>RT: select node → drag corner handle
+    RT->>RT: clamp to min-size, pin opposite corner
+    RT->>G: computePorts(raySide + spread + overrides)
+    G-->>RT: EdgePorts per edge (perimeter-distributed)
+    RT->>RT: re-route + re-hug subgraph boxes + repaint (each frame)
+    RT->>LS: debounced persist {positions, sizes, anchors}
+  end
+
+  rect rgb(226, 240, 250)
+    note over U,LS: subgraph group-drag + auto-contain (FR6, D6=C)
+    U->>RT: grab container border / title band
+    RT->>RT: subgraphHit → move ALL member nodes together
+    RT->>G: computeSubgraphBoxes(members + padding + title band)
+    G-->>RT: hugged container boxes (nested too)
+    RT->>RT: re-route edges, box follows (child dragged out → re-hug, never strand)
+    RT->>LS: persist member positions
+  end
+
+  rect rgb(250, 236, 244)
+    note over U,LS: pin an edge endpoint (FR7, D7=A)
+    U->>RT: select node → grab .vnm-edge-handle → drag along border
+    RT->>RT: anchorFromPointer → {side, offset} override (clamped)
+    RT->>G: computePorts(… overrides) — pinned end verbatim, other end auto
+    RT->>LS: persist anchors[edge] {side, offset, from, to}
+    note over RT,LS: import re-validates: bounds-guard + from/to re-map
+  end
+
+  rect rgb(230, 244, 234)
+    note over U,DL: export the edited state (FR3, D4)
+    U->>RT: click Save SVG / Save PNG
+    RT->>RT: toSvgString() — live model → themed SVG (byte-parity, pins + hugged boxes honored)
+    alt Save SVG
+      RT->>DL: data-URI download (.svg)
+    else Save PNG
+      RT->>RT: SVG data-URI → Image → canvas → toDataURL (failure-guarded)
+      RT->>DL: PNG download
+    end
+  end
+
+  rect rgb(255, 243, 214)
+    note over U,LS: reset layout (D5=A)
+    U->>RT: click ⟲ Reset layout
+    RT->>RT: cancel pending persist; restore computed positions + baseSizes; clear pins
+    RT->>G: computePorts + computeSubgraphBoxes (recompute all)
+    RT->>RT: re-route + repaint (pan/zoom untouched)
+    RT->>LS: removeItem(persistKey) — reload stays reset
+  end

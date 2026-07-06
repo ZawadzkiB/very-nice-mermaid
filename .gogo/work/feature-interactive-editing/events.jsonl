@@ -1,0 +1,44 @@
+{"ts":"2026-07-04T21:40:54Z","event":"plan-accepted","phase":"plan","status":"plan-accepted","note":"plan accepted; D1=A auto-distribute confirmed, D2-D4 resolved by acceptance","slug":"interactive-editing"}
+{"ts":"2026-07-04T22:05:00Z","event":"phase-started","phase":"implement","status":"implementing","slug":"interactive-editing"}
+{"ts":"2026-07-05T00:35:00Z","event":"phase-done","phase":"implement","status":"implementing","slug":"interactive-editing"}
+{"ts":"2026-07-05T00:45:00Z","event":"round-opened","phase":"review","status":"reviewing","round":1,"slug":"interactive-editing"}
+{"ts":"2026-07-05T00:46:00Z","event":"issues-found","phase":"review","status":"reviewing","round":1,"note":"1 major, 2 minor, 2 nit","slug":"interactive-editing"}
+{"ts":"2026-07-05T01:05:00Z","event":"fix-round","phase":"implement","status":"implementing","round":1,"slug":"interactive-editing"}
+{"ts":"2026-07-05T01:06:00Z","event":"phase-done","phase":"implement","status":"implementing","slug":"interactive-editing"}
+{"ts":"2026-07-05T01:10:00Z","event":"round-opened","phase":"review","status":"reviewing","round":2,"slug":"interactive-editing"}
+{"ts":"2026-07-05T01:11:00Z","event":"phase-done","phase":"review","status":"reviewing","slug":"interactive-editing"}
+{"ts":"2026-07-05T01:15:00Z","event":"round-opened","phase":"test","status":"testing","round":1,"slug":"interactive-editing"}
+{"ts":"2026-07-05T01:30:00Z","event":"issues-found","phase":"test","status":"testing","round":1,"note":"1 minor (plan/D2 accuracy — no reset-layout control exists)","slug":"interactive-editing"}
+{"ts":"2026-07-04T23:30:32Z","event":"gate-opened","phase":"test","status":"waiting-for-user","note":"D5","slug":"interactive-editing"}
+{"ts":"2026-07-04T23:31:27Z","event":"gate-resolved","phase":"test","status":"implementing","note":"D5","slug":"interactive-editing"}
+{"ts":"2026-07-05T01:42:00Z","event":"fix-round","phase":"implement","status":"implementing","round":2,"slug":"interactive-editing"}
+{"ts":"2026-07-05T01:45:00Z","event":"phase-done","phase":"implement","status":"implementing","slug":"interactive-editing"}
+{"ts":"2026-07-05T01:50:00Z","event":"round-opened","phase":"review","status":"reviewing","round":3,"slug":"interactive-editing"}
+{"ts":"2026-07-05T01:52:00Z","event":"phase-done","phase":"review","status":"reviewing","slug":"interactive-editing"}
+{"ts":"2026-07-05T02:00:00Z","event":"round-opened","phase":"test","status":"testing","round":2,"slug":"interactive-editing"}
+{"ts":"2026-07-05T02:20:00Z","event":"phase-done","phase":"test","status":"testing","slug":"interactive-editing"}
+{"ts":"2026-07-04T23:58:30Z","event":"phase-started","phase":"report","status":"testing","slug":"interactive-editing"}
+{"ts":"2026-07-05T00:02:19Z","event":"phase-done","phase":"report","status":"awaiting-uat","slug":"interactive-editing"}
+{"ts":"2026-07-05T00:09:11Z","event":"uat-opened","phase":"report","status":"waiting-for-user","note":"UAT round 1: subgraph container not draggable; edge lines not manually adjustable","slug":"interactive-editing"}
+{"ts":"2026-07-05T00:19:09Z","event":"plan-accepted","phase":"plan","status":"plan-accepted","note":"UAT round 1 re-acceptance: FR6 (D6=C subgraph follow+draggable) + FR7 (D7=A per-anchor edge drag) -> v0.4.0","slug":"interactive-editing"}
+{"ts":"2026-07-05T00:19:09Z","event":"uat-failed","phase":"report","status":"plan-accepted","note":"UAT round 1: subgraph container inert/stranded + no manual edge control -> FR6/FR7 accepted, rerun 2-5","slug":"interactive-editing"}
+{"ts":"2026-07-05T00:00:00Z","event":"phase-started","phase":"implement","status":"implementing","slug":"interactive-editing"}
+{"ts":"2026-07-05T00:00:01Z","event":"phase-done","phase":"implement","status":"implementing","slug":"interactive-editing"}
+{"ts":"2026-07-05T02:40:00Z","event":"round-opened","phase":"review","status":"reviewing","round":4,"slug":"interactive-editing"}
+{"ts":"2026-07-05T02:42:00Z","event":"issues-found","phase":"review","status":"reviewing","round":4,"note":"1 major (FR6/FR7 no real-pointer-event coverage), 2 minor","slug":"interactive-editing"}
+{"ts":"2026-07-05T03:25:00Z","event":"fix-round","phase":"implement","status":"implementing","round":3,"slug":"interactive-editing"}
+{"ts":"2026-07-05T03:26:00Z","event":"phase-done","phase":"implement","status":"implementing","slug":"interactive-editing"}
+{"ts":"2026-07-05T03:40:00Z","event":"round-opened","phase":"review","status":"reviewing","round":5,"slug":"interactive-editing"}
+{"ts":"2026-07-05T03:42:00Z","event":"phase-done","phase":"review","status":"reviewing","slug":"interactive-editing"}
+{"ts":"2026-07-05T04:00:00Z","event":"round-opened","phase":"test","status":"testing","round":3,"slug":"interactive-editing"}
+{"ts":"2026-07-05T04:20:00Z","event":"issues-found","phase":"test","status":"testing","round":3,"note":"1 major (TEST-002 - edge-handle visibility does not track selection, reopens REV-006)","slug":"interactive-editing"}
+{"ts":"2026-07-05T04:30:00Z","event":"fix-round","phase":"implement","status":"implementing","round":4,"slug":"interactive-editing"}
+{"ts":"2026-07-05T04:31:00Z","event":"phase-done","phase":"implement","status":"implementing","slug":"interactive-editing"}
+{"ts":"2026-07-05T04:40:00Z","event":"round-opened","phase":"review","status":"reviewing","round":6,"slug":"interactive-editing"}
+{"ts":"2026-07-05T04:41:00Z","event":"issues-found","phase":"review","status":"reviewing","round":6,"note":"1 nit (stale e2e comments); TEST-002 fix verified, REV-006 fully closed","slug":"interactive-editing"}
+{"ts":"2026-07-05T04:42:00Z","event":"phase-done","phase":"review","status":"reviewing","slug":"interactive-editing"}
+{"ts":"2026-07-05T04:50:00Z","event":"round-opened","phase":"test","status":"testing","round":4,"slug":"interactive-editing"}
+{"ts":"2026-07-05T05:05:00Z","event":"phase-done","phase":"test","status":"testing","slug":"interactive-editing"}
+{"ts":"2026-07-05T02:25:05Z","event":"phase-started","phase":"report","status":"testing","slug":"interactive-editing"}
+{"ts":"2026-07-06T06:09:30Z","event":"uat-passed","phase":"done","status":"awaiting-uat","note":"accepted via /gogo:done (UAT round 2)","slug":"interactive-editing"}
+{"ts":"2026-07-06T06:09:30Z","event":"shipped","phase":"done","status":"shipped","note":".gogo/changelog/2026-07-05-interactive-editing/","slug":"interactive-editing"}

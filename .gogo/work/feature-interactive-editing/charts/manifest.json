@@ -1,0 +1,12 @@
+{
+  "slug": "interactive-editing",
+  "updated": "2026-07-05T04:10:00Z",
+  "note": "As-built (v0.4.0, UAT round 1 delta on top of v0.3.0). FR6 (D6=C): subgraph containers auto-contain — computeSubgraphBoxes recomputes each box from its members' live boxes (+ padding + title band) in shared geometry on every drag/resize/reset, honored by the static SVG (layout/applyPositions) and the live runtime for parity; the border/title band is also a group-drag target that moves every member together (open interior still pans). FR7 (D7=A): endpoint grab handles (.vnm-edge-handle, shown on a selected node's incident edges) pin a {side,offset} override (anchorsOv) that computePerimeterPorts honors verbatim (excluded from the auto-distribute spread) while the other end keeps auto-distributing; overrides persist in the sidecar/localStorage (LayoutData.anchors, keyed by edge index) + layout.json + CLI --layout, byte-parity in toSvgString, cleared by resetLayout. Only a flow chart carries signal; the model/type shape is unchanged so no class diagram is redrawn. Fix-round 3 (review round 04): FR7 edge-pin interaction now has genuine pointer-event unit coverage; anchor pins carry from/to endpoint identity and are bounds-guarded + re-mapped on import (runtime importLayout + a shared resolveAnchorOverrides() in applyPositions) so a stale layout.json never mis-pins a different edge — a guard on the existing load→re-anchor flow already diagrammed, so no chart change was warranted. Fix-round 4 (test round 03 / TEST-002): edge-handle visibility now tracks selection synchronously — selectNode() calls positionEdgeHandles(computePorts()) after positionHandles(), and deselect() after hideHandles() — so a plain select reveals the node's .vnm-edge-handle elements immediately and deselect hides them at once (no stale floating dot). Pure timing correction on the already-diagrammed sel->epdrag edge (select exposes edge handles), so no chart change was warranted.",
+  "diagrams": [
+    {
+      "kind": "flow",
+      "file": ".gogo/work/feature-interactive-editing/charts/flow.mmd",
+      "title": "As-built flow (v0.4.0): node / group / anchor edits -> perimeter re-anchor + auto-contain -> re-route -> persist / export"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "slug": "interactive-editing",
+  "updated": "2026-07-05",
+  "note": "As-built set for v0.4.0 (report ⑤, re-run after UAT round 1). Flow = the shipped interaction/data flow incl. the UAT additions (subgraph group-drag + auto-contain, edge-endpoint pinning) alongside resize/drag → perimeter re-anchor → re-route → persist, export, reset. Sequence = the five runtime interactions (resize+persist, subgraph group-drag/auto-contain, edge-pin, Save SVG/PNG, reset). Class = the changed types (EdgeAnchor/EdgePorts +from/to, geometry subgraphBox/computeSubgraphBoxes + overrides, LayoutData.anchors, RoutedEdge.ports 0.3.0 breaking shape, RuntimeHandle, DeferredHandle delegation). No activity/use-case kind — no new state machine, and the flow chart already carries the user-capability signal. No charts/before/ baseline existed at plan time, so the bundle has no before set.",
+  "diagrams": [
+    {
+      "kind": "flow",
+      "file": ".gogo/work/feature-interactive-editing/report/flow.mmd",
+      "title": "As-built flow: select → resize/drag → perimeter re-anchor → re-route → persist/export/reset"
+    },
+    {
+      "kind": "sequence",
+      "file": ".gogo/work/feature-interactive-editing/report/sequence.mmd",
+      "title": "As-built sequence: resize → re-anchor → persist · export SVG/PNG · reset layout"
+    },
+    {
+      "kind": "class",
+      "file": ".gogo/work/feature-interactive-editing/report/class.mmd",
+      "title": "As-built structure: EdgeAnchor/EdgePorts · RoutedEdge.ports · RuntimeHandle"
+    }
+  ]
+}

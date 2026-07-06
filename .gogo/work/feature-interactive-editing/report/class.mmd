@@ -1,0 +1,64 @@
+classDiagram
+  direction LR
+
+  class EdgeAnchor {
+    <<interface>> src/geometry
+    +side: Side
+    +offset: number
+    +from?: string  «pin identity, 0.4.0»
+    +to?: string
+  }
+  class EdgePorts {
+    <<interface>> src/geometry
+    +source: EdgeAnchor
+    +target: EdgeAnchor
+  }
+  class geometry {
+    <<module>> shared by SVG + runtime
+    +raySide(box, dx, dy) Side
+    +computePerimeterPorts(nodes, edges, overrides?) EdgePorts[]
+    +subgraphBox(members, pad, titleBand) Box  «0.4.0»
+    +computeSubgraphBoxes(...) Box[]  «0.4.0, recursive»
+    +routeEdge(..., ports?) path
+  }
+  class RoutedEdge {
+    <<model>> src/model
+    +ports?: EdgePorts  «0.3.0 breaking: was scalar offsets»
+  }
+  class LayoutData {
+    <<sidecar>> layout.json + localStorage
+    +positions
+    +sizes  «0.3.0»
+    +anchors  «0.4.0: index-keyed {side,offset,from,to}; bounds-guard + re-map on import»
+  }
+  class RuntimeHandle {
+    <<interface>> src/render/dom
+    +resetLayout() void  «clears pins too»
+    +exportLayout() LayoutData
+    +importLayout(data) void
+    +toSvgString() string
+  }
+  class vnmRuntime {
+    <<serialized twin>> runtime.ts
+    -resize handles (4 corners, min-clamp)
+    -subgraphHit → group drag  «0.4.0»
+    -renderSubgraphs (auto-contain)  «0.4.0»
+    -.vnm-edge-handle → anchorFromPointer  «0.4.0»
+    -computePorts «mirrors geometry, incl. overrides»
+    -toSvgString «byte-parity with render/svg.ts»
+    -⟲ / Save SVG / Save PNG toolbar
+  }
+  class DeferredHandle {
+    src/render/dom/index.ts
+    +delegates resetLayout / exportLayout / toSvgString
+    («in r» guard — sequence shells no-op)
+  }
+
+  EdgePorts *-- EdgeAnchor : source / target
+  geometry ..> EdgePorts : produces
+  RoutedEdge ..> EdgePorts : carries
+  LayoutData ..> EdgeAnchor : anchors[]
+  vnmRuntime ..> geometry : mirrors (parity-guarded)
+  vnmRuntime ..> LayoutData : persist / import
+  DeferredHandle ..|> RuntimeHandle
+  vnmRuntime ..|> RuntimeHandle : returned handle

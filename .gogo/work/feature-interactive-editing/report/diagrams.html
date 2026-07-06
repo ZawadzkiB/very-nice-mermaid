@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo diagrams — interactive-editing (as-built report)</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo diagrams — <code>interactive-editing</code> (as-built, v0.4.0)</h1>
+    <p class="hint">Offline viewer · mermaid is vendored with the plugin (no network, no CLI) · regenerate via the gogo-mermaid skill.</p>
+  </header>
+  <h2>As-built flow: drag / resize / group-drag / pin → perimeter+override anchors → re-route → persist / export / reset</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  drag[&quot;drag node&quot;]:::io
+  sel[&quot;select node&quot;]:::io
+  resize[&quot;drag corner handle&lt;br/&gt;(min-size clamp)&quot;]:::proc
+  grpgrab[&quot;grab subgraph&lt;br/&gt;border / title band&quot;]:::io
+  grpmove[&quot;move all members&lt;br/&gt;(group drag)&quot;]:::proc
+  contain[&quot;auto-contain box&lt;br/&gt;computeSubgraphBoxes (shared)&quot;]:::proc
+  epdrag[&quot;drag edge endpoint&lt;br/&gt;handle (.vnm-edge-handle)&quot;]:::io
+  pin[&quot;pin {side,offset}&lt;br/&gt;anchorsOv (override)&quot;]:::proc
+  ports[&quot;computePerimeterPorts&lt;br/&gt;raySide + spread + overrides&quot;]:::proc
+  reroute[&quot;live re-route edges&lt;br/&gt;(routeEdge, offset-removed coords)&quot;]:::proc
+  persist[&quot;exportLayout + localStorage&lt;br/&gt;(positions + sizes + anchors)&quot;]:::art
+  svgstr[&quot;toSvgString() inlined&lt;br/&gt;(byte-parity with render/svg)&quot;]:::proc
+  savesvg[&quot;Save SVG&lt;br/&gt;(data-URI download)&quot;]:::out
+  savepng[&quot;Save PNG&lt;br/&gt;(canvas → toDataURL)&quot;]:::out
+  reset[&quot;Reset layout (⟲)&lt;br/&gt;discard moves + resizes + pins&quot;]:::io
+  restore[&quot;restore computed&lt;br/&gt;positions + sizes; clear pins&quot;]:::proc
+  clearp[&quot;clear persisted layout&lt;br/&gt;(localStorage.removeItem)&quot;]:::art
+
+  drag --&gt; ports
+  drag --&gt; contain
+  sel --&gt; resize --&gt; ports
+  resize --&gt; contain
+  grpgrab --&gt; grpmove --&gt; contain
+  grpmove --&gt; ports
+  sel --&gt; epdrag --&gt; pin --&gt; ports
+  contain --&gt; reroute
+  ports --&gt; reroute --&gt; persist
+  reroute --&gt; svgstr
+  svgstr --&gt; savesvg
+  svgstr --&gt; savepng
+  reset --&gt; restore
+  restore --&gt; ports
+  restore --&gt; contain
+  restore --&gt; clearp
+
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111
+  </pre></div>
+
+  <h2>As-built sequence: resize · subgraph group-drag + auto-contain · edge-pin · export · reset</h2>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant RT as vnmRuntime (inlined)
+  participant G as shared geometry (twin)
+  participant LS as localStorage
+  participant DL as browser download
+
+  rect rgb(232, 236, 255)
+    note over U,LS: resize (FR1) + live re-anchor (FR2)
+    U-&gt;&gt;RT: select node → drag corner handle
+    RT-&gt;&gt;RT: clamp to min-size, pin opposite corner
+    RT-&gt;&gt;G: computePorts(raySide + spread + overrides)
+    G--&gt;&gt;RT: EdgePorts per edge (perimeter-distributed)
+    RT-&gt;&gt;RT: re-route + re-hug subgraph boxes + repaint (each frame)
+    RT-&gt;&gt;LS: debounced persist {positions, sizes, anchors}
+  end
+
+  rect rgb(226, 240, 250)
+    note over U,LS: subgraph group-drag + auto-contain (FR6, D6=C)
+    U-&gt;&gt;RT: grab container border / title band
+    RT-&gt;&gt;RT: subgraphHit → move ALL member nodes together
+    RT-&gt;&gt;G: computeSubgraphBoxes(members + padding + title band)
+    G--&gt;&gt;RT: hugged container boxes (nested too)
+    RT-&gt;&gt;RT: re-route edges, box follows (child dragged out → re-hug, never strand)
+    RT-&gt;&gt;LS: persist member positions
+  end
+
+  rect rgb(250, 236, 244)
+    note over U,LS: pin an edge endpoint (FR7, D7=A)
+    U-&gt;&gt;RT: select node → grab .vnm-edge-handle → drag along border
+    RT-&gt;&gt;RT: anchorFromPointer → {side, offset} override (clamped)
+    RT-&gt;&gt;G: computePorts(… overrides) — pinned end verbatim, other end auto
+    RT-&gt;&gt;LS: persist anchors[edge] {side, offset, from, to}
+    note over RT,LS: import re-validates: bounds-guard + from/to re-map
+  end
+
+  rect rgb(230, 244, 234)
+    note over U,DL: export the edited state (FR3, D4)
+    U-&gt;&gt;RT: click Save SVG / Save PNG
+    RT-&gt;&gt;RT: toSvgString() — live model → themed SVG (byte-parity, pins + hugged boxes honored)
+    alt Save SVG
+      RT-&gt;&gt;DL: data-URI download (.svg)
+    else Save PNG
+      RT-&gt;&gt;RT: SVG data-URI → Image → canvas → toDataURL (failure-guarded)
+      RT-&gt;&gt;DL: PNG download
+    end
+  end
+
+  rect rgb(255, 243, 214)
+    note over U,LS: reset layout (D5=A)
+    U-&gt;&gt;RT: click ⟲ Reset layout
+    RT-&gt;&gt;RT: cancel pending persist; restore computed positions + baseSizes; clear pins
+    RT-&gt;&gt;G: computePorts + computeSubgraphBoxes (recompute all)
+    RT-&gt;&gt;RT: re-route + repaint (pan/zoom untouched)
+    RT-&gt;&gt;LS: removeItem(persistKey) — reload stays reset
+  end
+  </pre></div>
+
+  <h2>As-built structure: geometry (subgraph boxes, overrides) · LayoutData.anchors · RuntimeHandle</h2>
+  <div class="diagram"><pre class="mermaid">
+classDiagram
+  direction LR
+
+  class EdgeAnchor {
+    &lt;&lt;interface&gt;&gt; src/geometry
+    +side: Side
+    +offset: number
+    +from?: string  «pin identity, 0.4.0»
+    +to?: string
+  }
+  class EdgePorts {
+    &lt;&lt;interface&gt;&gt; src/geometry
+    +source: EdgeAnchor
+    +target: EdgeAnchor
+  }
+  class geometry {
+    &lt;&lt;module&gt;&gt; shared by SVG + runtime
+    +raySide(box, dx, dy) Side
+    +computePerimeterPorts(nodes, edges, overrides?) EdgePorts[]
+    +subgraphBox(members, pad, titleBand) Box  «0.4.0»
+    +computeSubgraphBoxes(...) Box[]  «0.4.0, recursive»
+    +routeEdge(..., ports?) path
+  }
+  class RoutedEdge {
+    &lt;&lt;model&gt;&gt; src/model
+    +ports?: EdgePorts  «0.3.0 breaking: was scalar offsets»
+  }
+  class LayoutData {
+    &lt;&lt;sidecar&gt;&gt; layout.json + localStorage
+    +positions
+    +sizes  «0.3.0»
+    +anchors  «0.4.0: index-keyed {side,offset,from,to}; bounds-guard + re-map on import»
+  }
+  class RuntimeHandle {
+    &lt;&lt;interface&gt;&gt; src/render/dom
+    +resetLayout() void  «clears pins too»
+    +exportLayout() LayoutData
+    +importLayout(data) void
+    +toSvgString() string
+  }
+  class vnmRuntime {
+    &lt;&lt;serialized twin&gt;&gt; runtime.ts
+    -resize handles (4 corners, min-clamp)
+    -subgraphHit → group drag  «0.4.0»
+    -renderSubgraphs (auto-contain)  «0.4.0»
+    -.vnm-edge-handle → anchorFromPointer  «0.4.0»
+    -computePorts «mirrors geometry, incl. overrides»
+    -toSvgString «byte-parity with render/svg.ts»
+    -⟲ / Save SVG / Save PNG toolbar
+  }
+  class DeferredHandle {
+    src/render/dom/index.ts
+    +delegates resetLayout / exportLayout / toSvgString
+    («in r» guard — sequence shells no-op)
+  }
+
+  EdgePorts *-- EdgeAnchor : source / target
+  geometry ..&gt; EdgePorts : produces
+  RoutedEdge ..&gt; EdgePorts : carries
+  LayoutData ..&gt; EdgeAnchor : anchors[]
+  vnmRuntime ..&gt; geometry : mirrors (parity-guarded)
+  vnmRuntime ..&gt; LayoutData : persist / import
+  DeferredHandle ..|&gt; RuntimeHandle
+  vnmRuntime ..|&gt; RuntimeHandle : returned handle
+  </pre></div>
+
+  <script src="../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from: ../../../resources/mermaid.min.js\n' +
+          'Re-run the gogo-mermaid skill, or read the .mmd source files directly.</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

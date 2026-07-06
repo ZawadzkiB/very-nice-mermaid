@@ -62,3 +62,39 @@ Generated-by: /gogo:build (scaffold)
 - **jsdom is not a full browser.** Layout-heavy mermaid types render degenerately
   headless — detect (zero/negative dims) and hard-fail with a clear diagnostic; never
   emit broken SVG. (Was hybrid TEST-004.)
+
+## Project-specific gotchas (verified — feature `interactive-editing`, 2026-07-05)
+- **Parity guards must cover EVERY branch of a serialized twin.** The inlined
+  `toSvgString()` duplicates `render/svg.ts`; a byte-parity test that only drives
+  rect/diamond/stadium/cylinder leaves rounded/subroutine/circle/hexagon/
+  parallelogram(-alt) and `svgSubgraph()` unguarded — the exact drift class that
+  reopened twice before. Enumerate shapes + a titled subgraph, light AND fancy.
+  (Was interactive REV-001, major.)
+- **Never dodge a test guard — tighten it.** Product code calling
+  `canvas["toDataURL"]` via bracket-notation to slip past the export's `/url\(/i`
+  zero-network regex is guard-evasion; the fix is a sharper guard (require a
+  non-identifier char before `url(`, flag only external `http(s)`/protocol-relative
+  `src=`) so the plain call passes honestly. A same-document `data:` URI makes no
+  network request and is fine. (Was interactive REV-002.)
+- **Literal NUL bytes make a source file "binary".** Two `"\0"` delimiter literals
+  shipped in v0.2.0 made git/grep treat `geometry/index.ts` AND `runtime.ts` as
+  binary blobs (diffs unreviewable; one reviewer's viewer rendered NUL as a space
+  and missed it). Use printable ID-safe delimiters (`|`) and keep twins lockstep.
+  (Was interactive REV-005 — the premise itself was half-wrong until re-checked.)
+- **A plan's cited mitigation must exist in code.** D2 justified "no re-layout on
+  resize" with "the existing reset-layout control" — which didn't exist (only
+  pan/zoom reset). Review/test must verify claimed escape hatches, not assume them.
+  (Was interactive TEST-001 → D5.)
+- **Companion UI elements must be wired into EVERY lifecycle path.** The edge-pin
+  handles were rendered by drag/layout paths but `selectNode()`/`deselect()` never
+  refreshed them — handles stayed hidden on a plain select and lingered as a
+  floating dot after deselect. When adding a select-dependent element, audit every
+  select/deselect/reset call site (mirror the existing resize-handle pattern), and
+  demand a real-browser e2e for show/hide timing — a fake-DOM unit test masked this
+  via an incidental layout call. (Was interactive TEST-002, major, v0.4.0.)
+- **Index-keyed sidecar entries need identity validation on import.** `layout.json`
+  anchors keyed by edge index silently mis-pin when the diagram is edited/reordered;
+  the fix stores `from`/`to` node ids alongside and bounds-guards + re-maps on
+  import (first-unclaimed match, stored-index preferred — parallel edges can't
+  swap). Apply the same rule to any future index-keyed persistence. (Was
+  interactive REV-007.)

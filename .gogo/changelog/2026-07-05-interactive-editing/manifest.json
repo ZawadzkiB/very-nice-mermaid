@@ -1,0 +1,11 @@
+{
+  "slug": "interactive-editing",
+  "updated": "2026-07-05",
+  "members": ["interactive-editing"],
+  "note": "v0.4.0 — interactive diagram editing. Single-member entry. Resize, perimeter-distributed + pinnable edge anchors, subgraph auto-contain + group-drag, in-browser Save SVG/PNG, reset layout. No before/ set (no plan-time baseline was drawn).",
+  "diagrams": [
+    { "kind": "flow", "file": "interactive-editing-flow.mmd", "title": "interactive-editing: drag/resize/group-drag/pin → shared geometry → re-route → persist/export/reset" },
+    { "kind": "sequence", "file": "interactive-editing-sequence.mmd", "title": "interactive-editing: resize · subgraph group-drag + auto-contain · edge-pin · export · reset" },
+    { "kind": "class", "file": "interactive-editing-class.mmd", "title": "interactive-editing: geometry (subgraph boxes, overrides) · LayoutData.anchors · RuntimeHandle" }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "slug": "interactive-editing",
+  "phase": "review",
+  "status": "ok",
+  "round": 6,
+  "inputs": [
+    ".gogo/work/feature-interactive-editing/plan.md",
+    ".gogo/work/feature-interactive-editing/decisions.md",
+    ".gogo/work/feature-interactive-editing/review/issues.json",
+    ".gogo/knowledge/code-review-standards.md",
+    ".gogo/knowledge/coding-rules.md",
+    ".gogo/knowledge/non-functional-requirements.md"
+  ],
+  "outputs": [
+    ".gogo/work/feature-interactive-editing/review/issues.json",
+    ".gogo/work/feature-interactive-editing/review-06.md",
+    ".gogo/work/feature-interactive-editing/review/result.json"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "open_issues": 1,
+  "summary": "Review round 6 (verify fix-round 4, TEST-002): selectNode/deselect now refresh edge-pin handles via positionEdgeHandles(computePorts()) — correct, null-safe on deselect, not a hot path (discrete events; computePorts already per-frame during drags), guarded by 1 new unit test + 2 de-annotated e2e regressions. REV-006 fully closed cross-track (real-browser FR6 group-drag + FR7 pin e2e delivered, incl. parallel-edge REV-007 tests). All 8 prior REV verified; 1 new nit (REV-009: stale e2e comments). 301 unit + 62 e2e green. Verdict clean."
+}

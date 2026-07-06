@@ -1,0 +1,9 @@
+# Adjustments — feature `interactive-editing`
+
+Running log of user-requested changes / clarifications during planning.
+
+- 2026-07-04: user asked for (1) resizable shapes, (2) fixing "many connections all from one point on a shape", (3) saving the edited HTML diagram as PNG/SVG.
+- 2026-07-04: connection-points fork — user away; orchestrator defaulted to **auto-distribute around the perimeter** (D1=A), manual per-anchor drag deferred.
+- 2026-07-05: **UAT round 1** (verbatim: "im still not able to move background warehous and still im not able to move arrows connections lines"; screenshot: children dragged out of the "Warehouse" subgraph leave a stranded empty box). Analysed vs plan+code (code = source of truth). Both are code-confirmed as un-shipped in v0.3.0, not regressions: subgraph rects are static backgrounds that never track children (`runtime.ts:129-151`, drag `:898-903`), and the edge layer is auto-routed + `pointer-events:none` (`:118`) per D1=A. Proposed plan delta (PENDING RE-ACCEPTANCE): **FR6** subgraph containers track their children (recommend D6=A auto-contain), **FR7** manual edge placement (recommend D7=A per-anchor drag). New forks **D6** (auto-contain vs draggable-group vs both) and **D7** (anchor-drag vs waypoints vs both), both OPEN — resolve at re-acceptance. Works-as-designed parts (auto-distribute is intended; static-subgraph in the plan's letter) recorded in `uat.md`, kept out of the delta except the FR-quality fix (stranded empty container → FR6). If accepted → v0.4.0, `/gogo:go` reruns ②→⑤ on the same item; if declined → v0.3.0 ships as-is.
+
+- **2026-07-05 (UAT round 1 re-acceptance):** user resolved D6=**C** (subgraph auto-contains children AND is itself draggable as a group) and D7=**A** (per-anchor edge drag; waypoints stay deferred). FR6/FR7 pinned to those shapes; plan re-accepted; ②→⑤ rerun as v0.4.0.
