@@ -210,6 +210,10 @@ class DeferredHandle implements RuntimeHandle {
   resetView(): void {
     this.real?.resetView();
   }
+  resetLayout(): void {
+    const r = this.real;
+    if (r && "resetLayout" in r) r.resetLayout();
+  }
   exportLayout(): LayoutData {
     const r = this.real;
     return r && "exportLayout" in r ? r.exportLayout() : { version: 1, positions: {} };
@@ -227,6 +231,10 @@ class DeferredHandle implements RuntimeHandle {
   getPositions(): Record<string, { x: number; y: number }> {
     const r = this.real;
     return r && "getPositions" in r ? r.getPositions() : {};
+  }
+  toSvgString(): string {
+    const r = this.real;
+    return r && "toSvgString" in r ? r.toSvgString() : "";
   }
 }
 

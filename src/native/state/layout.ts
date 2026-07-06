@@ -17,8 +17,8 @@ import type {
 } from "../../model/index.js";
 import type { StateModel, StateLayout } from "../../model/state.js";
 import { themes, type Theme } from "../../theme/index.js";
-import { layout } from "../../layout/index.js";
-import { routeEdge, contentBounds, type NodeBox } from "../../geometry/index.js";
+import { layout, labelPlateSize } from "../../layout/index.js";
+import { routeEdge, computePerimeterPorts, contentBounds, type NodeBox } from "../../geometry/index.js";
 
 export interface StateLayoutOptions {
   theme?: Theme;
@@ -78,14 +78,21 @@ export function layoutState(model: StateModel, opts: StateLayoutOptions = {}): S
     return { ...nd, width: box.width, height: box.height };
   });
 
-  const routed: RoutedEdge[] = positioned.edges.map((e) => {
+  // Recompute the perimeter port channels against the shrunk pseudo-state boxes
+  // (matching the live runtime / applyPositions) so transitions re-distribute
+  // around the small markers cleanly.
+  const labelSizes = positioned.edges.map((e) => labelPlateSize(e.label, theme));
+  const ports = computePerimeterPorts(positioned.edges, boxes, labelSizes);
+  const routed: RoutedEdge[] = positioned.edges.map((e, i) => {
     const from = boxes.get(e.from);
     const to = boxes.get(e.to);
     if (!from || !to) return e;
-    const r = routeEdge(from, to, positioned.direction, theme.edgeStyle, e.waypoints ?? [], e.ports);
+    const port = ports[i]!;
+    const r = routeEdge(from, to, positioned.direction, theme.edgeStyle, e.waypoints ?? [], port);
     const out: RoutedEdge = { ...e, points: r.points, path: r.path };
     if (e.waypoints) out.waypoints = e.waypoints;
-    if (e.ports) out.ports = e.ports;
+    if (port.source.offset !== 0 || port.target.offset !== 0 || port.labelShift) out.ports = port;
+    else delete out.ports;
     if (e.label) out.labelPos = r.labelPos;
     return out;
   });

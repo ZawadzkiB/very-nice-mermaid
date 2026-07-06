@@ -145,16 +145,22 @@ export interface RoutedEdge extends DiagramEdge {
    */
   waypoints?: Point[];
   /**
-   * Per-endpoint anchor offsets (in user units, perpendicular to the border) that
-   * spread multiple edges sharing the same node-border so their arrowheads /
-   * relation markers / labels stay individually legible instead of stacking on
-   * one point — fixes anti-parallel edges fully occluding and a relation marker
-   * bleeding onto sibling edges at a shared trunk. Kept on the edge so re-routing
-   * (state pseudo-state shrink, `applyPositions`) reproduces the same channels.
-   * `labelShift` additionally staggers the label plate so several edges between
-   * the same node pair don't stack their labels (TEST-006).
+   * Resolved **perimeter anchors** for the two endpoints: which border `side`
+   * each end attaches to (chosen by the direction to the other node) and the
+   * `offset` that slides it along that side so multiple edges sharing a border
+   * stay on distinct channels — fixes anti-parallel edges fully occluding and a
+   * relation marker bleeding onto sibling edges at a shared trunk, and lets a
+   * hub's connections fan out across the whole perimeter (FR2). Baked at layout
+   * time; re-routers (`applyPositions`, the state pseudo-state shrink) and the
+   * live DOM runtime **recompute** it from the current node boxes so a drag /
+   * resize re-distributes cleanly. `labelShift` additionally staggers the label
+   * plate so several edges between the same node pair don't stack (TEST-006).
    */
-  ports?: { source: number; target: number; labelShift?: Point };
+  ports?: {
+    source: { side: "top" | "bottom" | "left" | "right"; offset: number };
+    target: { side: "top" | "bottom" | "left" | "right"; offset: number };
+    labelShift?: Point;
+  };
   /** Where the edge label plate is centered, if there is a label. */
   labelPos?: Point;
 }

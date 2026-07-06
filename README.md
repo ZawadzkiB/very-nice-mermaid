@@ -14,7 +14,7 @@ runtime and no headless browser**.
   <img src="./assets/example-fancy.png" alt="A microservices flowchart rendered in the fancy theme" width="600">
 </p>
 
-- **Library** — parse DSL and `mount()` an **interactive** diagram (drag nodes,
+- **Library** — parse DSL and `mount()` an **interactive** diagram (drag + resize nodes,
   edges re-route live, pan / wheel-zoom / fit, minimap, layout persistence) in
   any app, plus a `<very-nice-mermaid>` **web component**.
 - **CLI** (`vnm`) — render a `.mmd` file (or stdin) to a **self-contained
@@ -158,14 +158,65 @@ const handle = mount(document.getElementById("diagram")!, dsl, {
 
 handle.fit();                       // fit-to-view
 handle.zoomIn(); handle.zoomOut();
-const layoutJson = handle.exportLayout();   // portable { positions, transform }
-handle.importLayout(layoutJson);            // restore a saved layout
+handle.resetLayout();               // discard manual moves + resizes + anchor pins → computed
+const layoutJson = handle.exportLayout();   // portable { positions, sizes, anchors, transform }
+handle.importLayout(layoutJson);            // restore a saved layout (positions + sizes + anchors)
+const svg = handle.toSvgString();           // the current edited diagram as themed SVG
 handle.setTheme(themes.fancy, themes.fancy.cssVars());
 handle.destroy();
 ```
 
-Drag a node and its edges re-route live off the card borders; the background
-pans, the wheel zooms at the cursor, and the layout auto-persists (debounced).
+Drag a node and its edges re-route live off the card borders; **select a node and
+drag a corner handle to resize it** (the card and every connected edge follow, with
+a minimum-size clamp). Edges **auto-distribute around the whole node perimeter** by
+the direction to their other end, so hubs with many connections stay readable. The
+background pans, the wheel zooms at the cursor, and the layout — **positions *and*
+sizes** — auto-persists (debounced) to `localStorage`, so a reload keeps every edit.
+Changed your mind? The toolbar's **Reset layout** button (⟲) discards every manual
+move, resize **and anchor pin**, returns the diagram to the computed layout, and clears
+the persisted layout so a reload stays reset (pan/zoom is left as-is — that's
+`resetView()`'s job). `handle.resetLayout()` does the same from code.
+
+**Subgraph containers are interactive (0.4.0).** A `subgraph` box **auto-contains**
+its members — it recomputes its outline from its children's live positions and sizes
+on every drag / resize / reset, so it hugs the cluster and is never left stranded when
+you pull a child out. Grab the container's **dashed border or title band** to **drag
+the whole cluster** as a group (every member moves together and edges re-route live —
+the open interior still pans the canvas). Membership is fixed by the DSL: dragging a
+child out doesn't un-group it, the box just re-hugs. The static SVG honors the same
+recompute, so `vnm render -f svg` and **Save SVG** match.
+
+**Pin an edge where you want it (0.4.0).** Select a node to reveal small **anchor
+handles** at its incident edge endpoints; drag one along the border to **pin that end**
+to a `{ side, offset }` of your choice, overriding the auto-distribute for that end only
+(the other end keeps auto-distributing). Pins **persist** in the layout sidecar +
+`localStorage`, are honored by the static SVG (parity), and are cleared by **Reset layout**.
+
+In the portable `layout.json`, pins live under an **`anchors`** map **keyed by edge
+index** (`positions`/`sizes` are keyed by stable node id; edges have no ids to key on).
+Each entry is `{ source?: {side,offset}, target?: {side,offset}, from, to }` — the
+`from`/`to` node ids record which edge the index referred to when it was saved. Because
+the map is index-based it is **diagram-version-specific**: on import (both `importLayout`
+and the CLI `--layout`) an out-of-range index is dropped, and a stored `from`/`to` is
+used to **re-map a pin to its edge if the diagram's edges were reordered** (or drop it if
+that edge is gone) — so a stale sidecar never silently pins a *different* edge. Sidecars
+written before this validation (no `from`/`to`) still import, bounds-checked only.
+
+**Save the edited diagram** from the toolbar: **SVG** downloads the current
+positioned + resized model serialized to our themed SVG (identical to
+`vnm render -f svg` of the same state), and **PNG** rasterizes that SVG in-browser
+via a `<canvas>` — no server, no headless browser. Both controls ship in the
+standalone HTML export, and `handle.toSvgString()` returns the same SVG string. The
+portable `exportLayout()` sidecar (and the CLI's `--layout`) now carries per-node
+size overrides alongside positions.
+
+> **0.3.0 breaking change (model API).** To support perimeter distribution,
+> `RoutedEdge.ports` changed shape: `source`/`target` are now perimeter anchors
+> `{ side, offset }` (`side` is `"top" | "bottom" | "left" | "right"`), not the old
+> scalar offsets. Code that read `edge.ports.source` / `edge.ports.target` as a
+> number must now read `.offset` (and may read `.side`). The persisted `layout.json`
+> sidecar is unaffected — it carries positions, sizes, **edge anchor pins** (0.4.0,
+> keyed by edge index), and the view transform.
 
 `mount()` routes **every** diagram type: a flowchart mounts immediately, while a
 raw sequence / class / state / fallback string returns the handle **synchronously**
@@ -201,7 +252,7 @@ vnm render <file|-> [options]
   -f, --format <fmt>        html | svg | png | md   (inferred from -o if omitted)
   -t, --theme <name|path>   light | dark | fancy, or a theme .json file
       --strict              treat parser warnings as errors
-      --layout <file>       apply a portable layout.json (node positions)
+      --layout <file>       apply a portable layout.json (node positions + sizes)
       --scale <n>           PNG scale factor (HiDPI)
       --background <color>  background color, or 'transparent'
       --title <title>       HTML document <title>

@@ -16,7 +16,14 @@ import type {
   Point,
 } from "../model/index.js";
 import { themes, type Theme } from "../theme/index.js";
-import { contentBounds, routeEdge, computePortOffsets, type NodeBox } from "../geometry/index.js";
+import {
+  contentBounds,
+  routeEdge,
+  computePerimeterPorts,
+  computeSubgraphBoxes,
+  type NodeBox,
+  type EdgeAnchorOverride,
+} from "../geometry/index.js";
 import { measureNode } from "./measure.js";
 
 // Interop: dagre ships CJS; under ESM the namespace may nest the real exports
@@ -90,22 +97,43 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
   });
 
   const positionedSubgraphs: PositionedSubgraph[] = [];
-  const subgraphBoxes: NodeBox[] = [];
   for (const sg of model.subgraphs) {
     const sd = g.node(sg.id) as
       | { x: number; y: number; width: number; height: number }
       | undefined;
     if (!sd || !Number.isFinite(sd.x) || !Number.isFinite(sd.width)) continue;
-    const box: NodeBox = { x: round(sd.x), y: round(sd.y), width: sd.width, height: sd.height };
-    subgraphBoxes.push(box);
-    positionedSubgraphs.push({ ...sg, x: box.x, y: box.y, width: box.width, height: box.height });
+    positionedSubgraphs.push({
+      ...sg,
+      x: round(sd.x),
+      y: round(sd.y),
+      width: sd.width,
+      height: sd.height,
+    });
   }
+  // Auto-contain (FR6): tighten each container to hug its member nodes' boxes
+  // (shared geometry, so the static SVG matches the live runtime's live recompute).
+  const sgBoxes = computeSubgraphBoxes(positionedSubgraphs, nodeBoxes);
+  for (const sg of positionedSubgraphs) {
+    const b = sgBoxes.get(sg.id)!;
+    sg.x = b.x;
+    sg.y = b.y;
+    sg.width = b.width;
+    sg.height = b.height;
+  }
+  const subgraphBoxes: NodeBox[] = positionedSubgraphs.map((sg) => ({
+    x: sg.x,
+    y: sg.y,
+    width: sg.width,
+    height: sg.height,
+  }));
 
-  // Spread edges that share a node border onto distinct channels so anti-parallel
-  // pairs don't fully occlude and a fan's start markers each sit on their own edge;
-  // the label plate sizes let it also stagger colliding labels (TEST-006).
+  // Distribute each edge's anchors around the node perimeter by direction and
+  // spread edges that still share a border onto distinct channels, so a hub fans
+  // out (FR2), anti-parallel pairs don't fully occlude, and a fan's start markers
+  // each sit on their own edge; the label plate sizes let it also stagger
+  // colliding labels (TEST-006).
   const labelSizes = model.edges.map((e) => labelPlateSize(e.label, theme));
-  const ports = computePortOffsets(model.edges, nodeBoxes, model.direction, labelSizes);
+  const ports = computePerimeterPorts(model.edges, nodeBoxes, labelSizes);
 
   const edges: RoutedEdge[] = [];
   model.edges.forEach((edge, i) => {
@@ -122,7 +150,7 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
     const routed = routeEdge(from, to, model.direction, theme.edgeStyle, waypoints, port);
     const out: RoutedEdge = { ...edge, points: routed.points, path: routed.path };
     if (waypoints.length > 0) out.waypoints = waypoints;
-    if (port.source !== 0 || port.target !== 0 || port.labelShift) out.ports = port;
+    if (port.source.offset !== 0 || port.target.offset !== 0 || port.labelShift) out.ports = port;
     if (edge.label) out.labelPos = routed.labelPos;
     edges.push(out);
   });
@@ -145,42 +173,115 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
 }
 
 /**
- * Apply an externally-supplied set of node positions (a portable
- * `layout.json` sidecar) over an already-positioned model: move the matching
- * nodes, re-route every edge, and recompute bounds. Subgraph boxes are kept.
+ * Validate the index-keyed anchor pins (FR7 / REV-007) from a portable
+ * `layout.json` against the model's *current* edges, returning an override array
+ * aligned index-for-index with `edges` (mirrors the runtime's `importLayout`).
+ *
+ * A pin is placed at edge index `i` when: its key is in range and (it carries no
+ * endpoint identity, or its `from`/`to` still match `edges[i]`). Otherwise, if it
+ * carries identity, it is re-mapped to the first still-unclaimed edge with that
+ * `from`/`to` (so a reordered edge keeps its pin). A pin that is out of range with
+ * no identity, or whose endpoints no longer exist, is dropped — never silently
+ * applied to a different edge, and never re-persisted as a dangling entry.
+ */
+function resolveAnchorOverrides(
+  edges: PositionedModel["edges"],
+  anchors: Record<string, EdgeAnchorOverride>,
+): Array<EdgeAnchorOverride | undefined> {
+  const out: Array<EdgeAnchorOverride | undefined> = edges.map(() => undefined);
+  const claimed = new Set<number>();
+  for (const key of Object.keys(anchors)) {
+    const entry = anchors[key];
+    if (!entry || (!entry.source && !entry.target)) continue;
+    const idx = Number(key);
+    const inRange = Number.isInteger(idx) && idx >= 0 && idx < edges.length;
+    const hasId = entry.from !== undefined && entry.to !== undefined;
+    let ti = -1;
+    if (inRange && (!hasId || (edges[idx]!.from === entry.from && edges[idx]!.to === entry.to))) {
+      ti = idx;
+    } else if (hasId) {
+      ti = edges.findIndex((e, i) => !claimed.has(i) && e.from === entry.from && e.to === entry.to);
+    }
+    if (ti < 0 || claimed.has(ti)) continue; // out of range / edge gone / duplicate → drop
+    claimed.add(ti);
+    out[ti] = { source: entry.source, target: entry.target };
+  }
+  return out;
+}
+
+/**
+ * Apply an externally-supplied set of node positions (and optional **size
+ * overrides** — FR1/FR4) from a portable `layout.json` sidecar over an
+ * already-positioned model: move / resize the matching nodes, re-route every
+ * edge, and recompute bounds. Subgraph boxes are kept. Edge anchors are
+ * **recomputed** from the moved/resized boxes (matching the live DOM runtime),
+ * so a repositioned or resized layout re-distributes its connectors cleanly.
  */
 export function applyPositions(
   model: PositionedModel,
   positions: Record<string, { x: number; y: number }>,
-  opts: { theme?: Theme } = {},
+  opts: {
+    theme?: Theme;
+    sizes?: Record<string, { width: number; height: number }>;
+    /** Per-anchor overrides (FR7), keyed by edge index; pins one/both ends. */
+    anchors?: Record<string, EdgeAnchorOverride>;
+  } = {},
 ): PositionedModel {
   const theme = opts.theme ?? themes.light!;
+  const sizeOverrides = opts.sizes;
   const nodeBoxes = new Map<string, NodeBox>();
   const nodes: PositionedNode[] = model.nodes.map((node) => {
     const p = positions[node.id];
+    const sz = sizeOverrides?.[node.id];
     const x = p ? p.x : node.x;
     const y = p ? p.y : node.y;
-    nodeBoxes.set(node.id, { x, y, width: node.width, height: node.height });
-    return { ...node, x, y };
+    const width = sz ? sz.width : node.width;
+    const height = sz ? sz.height : node.height;
+    nodeBoxes.set(node.id, { x, y, width, height });
+    return { ...node, x, y, width, height };
   });
 
-  const edges: RoutedEdge[] = model.edges.map((edge) => {
+  // Keep the original detour waypoints so a sidecar/repositioned layout still
+  // routes multi-rank edges around intervening ranks (matching the live DOM
+  // runtime, which keeps them while dragging), but recompute the perimeter port
+  // channels from the moved/resized boxes so a spread anti-parallel pair / fan /
+  // hub stays legible after repositioning. Manually pinned anchors (FR7) override
+  // the auto-distribute for that end only.
+  const labelSizes = model.edges.map((e) => labelPlateSize(e.label, theme));
+  // Resolve the index-keyed anchor pins (FR7) against the *current* edges before
+  // handing them to the geometry: a portable layout.json can outlive the diagram
+  // it was captured from, so drop any pin whose index is out of range and — when
+  // the pin carries endpoint identity (REV-007) — re-map it to the edge that still
+  // has that `from`/`to` (so a reordered edge keeps its pin) or drop it if that
+  // edge is gone. Pins without identity (pre-REV-007 sidecars) are bounds-checked
+  // only. Prevents a stale pin from silently mis-anchoring a *different* edge.
+  const anchorOverrides = opts.anchors
+    ? resolveAnchorOverrides(model.edges, opts.anchors)
+    : undefined;
+  const ports = computePerimeterPorts(model.edges, nodeBoxes, labelSizes, anchorOverrides);
+
+  const edges: RoutedEdge[] = model.edges.map((edge, i) => {
     const from = nodeBoxes.get(edge.from);
     const to = nodeBoxes.get(edge.to);
     if (!from || !to) return edge;
-    // Keep the original detour waypoints so a sidecar/repositioned layout still
-    // routes multi-rank edges around intervening ranks (matching the live DOM
-    // runtime, which keeps them while dragging), and the same port channels so a
-    // spread anti-parallel pair / fan stays legible after repositioning.
-    const routed = routeEdge(from, to, model.direction, theme.edgeStyle, edge.waypoints ?? [], edge.ports);
+    const port = ports[i]!;
+    const routed = routeEdge(from, to, model.direction, theme.edgeStyle, edge.waypoints ?? [], port);
     const out: RoutedEdge = { ...edge, points: routed.points, path: routed.path };
     if (edge.waypoints) out.waypoints = edge.waypoints;
-    if (edge.ports) out.ports = edge.ports;
+    if (port.source.offset !== 0 || port.target.offset !== 0 || port.labelShift) out.ports = port;
+    else delete out.ports;
     if (edge.label) out.labelPos = routed.labelPos;
     return out;
   });
 
-  const subgraphBoxes: NodeBox[] = model.subgraphs.map((sg) => ({
+  // Auto-contain (FR6): re-hug every subgraph to its (possibly moved/resized)
+  // members via the shared recompute, matching the live runtime for parity.
+  const sgBoxes = computeSubgraphBoxes(model.subgraphs, nodeBoxes);
+  const subgraphs: PositionedSubgraph[] = model.subgraphs.map((sg) => {
+    const b = sgBoxes.get(sg.id)!;
+    return { ...sg, x: b.x, y: b.y, width: b.width, height: b.height };
+  });
+  const subgraphBoxes: NodeBox[] = subgraphs.map((sg) => ({
     x: sg.x,
     y: sg.y,
     width: sg.width,
@@ -191,7 +292,7 @@ export function applyPositions(
     edges.flatMap((e) => e.points),
     BOUNDS_PADDING,
   );
-  return { ...model, nodes, edges, bounds };
+  return { ...model, nodes, edges, subgraphs, bounds };
 }
 
 /**
@@ -217,7 +318,7 @@ function edgeWaypoints(
  * (`edgeLabel`) and the DOM runtime use, so the port spreader can stagger plates
  * that would otherwise overlap. Returns `undefined` for an unlabelled edge.
  */
-function labelPlateSize(label: string | undefined, theme: Theme): { w: number; h: number } | undefined {
+export function labelPlateSize(label: string | undefined, theme: Theme): { w: number; h: number } | undefined {
   if (!label) return undefined;
   const f = theme.tokens.font;
   const lines = label.split("\n");

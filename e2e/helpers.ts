@@ -31,6 +31,21 @@ export function exportHtml(fixture: string, theme = "light", name = "exported.ht
 }
 
 /**
+ * Render raw ad-hoc DSL (not part of the committed fixtures/ corpus, so it
+ * doesn't get swept into the parser/layout corpus-wide unit tests) to a
+ * standalone HTML artifact via the built CLI — same path a real `vnm render
+ * -o out.html` user gets. Useful for e2e-only diagrams (a hub node, a
+ * subgraph + every shape) that exist purely to drive the browser.
+ */
+export function exportHtmlFromDsl(dsl: string, theme = "light", name = "exported-adhoc.html"): string {
+  const dslPath = join(artifactsDir, name.replace(/\.html$/, ".mmd"));
+  writeFileSync(dslPath, dsl, "utf8");
+  const out = join(artifactsDir, name);
+  execFileSync("node", [cliPath, "render", dslPath, "-o", out, "--theme", theme]);
+  return pathToFileURL(out).href;
+}
+
+/**
  * Write a bare page with the built custom element **inlined** (Chromium blocks
  * external ES modules over file://, so the module source is embedded directly).
  * Pass raw `dsl` to control the diagram; the element exposes its live renderer

@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   sidePoint,
   pickSides,
+  raySide,
   routeElbow,
   routeCurved,
   toPath,
   labelPoint,
   routeEdge,
   contentBounds,
-  computePortOffsets,
+  computePerimeterPorts,
   type NodeBox,
 } from "../src/geometry/index.js";
 
@@ -99,44 +100,70 @@ describe("sidePoint spreads with an offset (TEST-002/003)", () => {
   });
 });
 
-describe("computePortOffsets spreads shared-border edges (TEST-002/003)", () => {
+describe("raySide picks the perimeter side by direction (aspect-aware, FR2)", () => {
+  const square: NodeBox = { x: 0, y: 0, width: 80, height: 80 };
+  it("returns the border the ray from the center exits", () => {
+    expect(raySide(square, 0, 10)).toBe("bottom");
+    expect(raySide(square, 0, -10)).toBe("top");
+    expect(raySide(square, 10, 0)).toBe("right");
+    expect(raySide(square, -10, 0)).toBe("left");
+  });
+  it("is aspect-aware: a wide node sends a near-diagonal ray out its long side", () => {
+    const wide: NodeBox = { x: 0, y: 0, width: 400, height: 40 };
+    // a 45° direction on a square is a corner tie → top/bottom; on a wide node it
+    // clearly exits the top/bottom, not the short side.
+    expect(raySide(wide, 100, -100)).toBe("top");
+    const tall: NodeBox = { x: 0, y: 0, width: 40, height: 400 };
+    expect(raySide(tall, 100, -100)).toBe("right");
+  });
+});
+
+describe("computePerimeterPorts distributes anchors around the perimeter (FR2 / TEST-002/003)", () => {
   const boxes = new Map<string, NodeBox>([
     ["A", { x: 100, y: 100, width: 80, height: 40 }],
     ["B", { x: 100, y: 300, width: 80, height: 40 }],
   ]);
 
   it("gives an anti-parallel pair opposite offsets so they don't fully occlude", () => {
-    const offsets = computePortOffsets([{ from: "A", to: "B" }, { from: "B", to: "A" }], boxes, "TB");
-    // each edge keeps the same sign at both ends → a straight, distinct channel
-    expect(Math.sign(offsets[0]!.source)).toBe(Math.sign(offsets[0]!.target));
-    expect(Math.sign(offsets[1]!.source)).toBe(Math.sign(offsets[1]!.target));
+    const ports = computePerimeterPorts([{ from: "A", to: "B" }, { from: "B", to: "A" }], boxes);
+    // both ends attach by direction: down out of A (bottom), up into B (top)
+    expect(ports[0]!.source.side).toBe("bottom");
+    expect(ports[0]!.target.side).toBe("top");
+    // each edge keeps the same offset sign at both ends → a straight, distinct channel
+    expect(Math.sign(ports[0]!.source.offset)).toBe(Math.sign(ports[0]!.target.offset));
+    expect(Math.sign(ports[1]!.source.offset)).toBe(Math.sign(ports[1]!.target.offset));
     // and the two edges land on opposite channels
-    expect(Math.sign(offsets[0]!.source)).not.toBe(Math.sign(offsets[1]!.source));
-    expect(offsets[0]!.source).not.toBe(0);
+    expect(Math.sign(ports[0]!.source.offset)).not.toBe(Math.sign(ports[1]!.source.offset));
+    expect(ports[0]!.source.offset).not.toBe(0);
   });
 
-  it("leaves a single edge unspread (ordinary flowchart routing unchanged)", () => {
-    const offsets = computePortOffsets([{ from: "A", to: "B" }], boxes, "TB");
-    expect(offsets[0]).toEqual({ source: 0, target: 0 });
+  it("leaves a single edge unspread (attaches at the direction-chosen side center)", () => {
+    const ports = computePerimeterPorts([{ from: "A", to: "B" }], boxes);
+    expect(ports[0]).toEqual({ source: { side: "bottom", offset: 0 }, target: { side: "top", offset: 0 } });
   });
 
-  it("fans several edges leaving one node onto distinct source anchors", () => {
+  it("fans several edges leaving one node onto N distinct, spaced source anchors", () => {
     const fan = new Map<string, NodeBox>([
       ["S", { x: 200, y: 100, width: 120, height: 40 }],
       ["L", { x: 80, y: 300, width: 60, height: 40 }],
       ["M", { x: 200, y: 300, width: 60, height: 40 }],
       ["R", { x: 320, y: 300, width: 60, height: 40 }],
     ]);
-    const offsets = computePortOffsets(
+    const ports = computePerimeterPorts(
       [{ from: "S", to: "L" }, { from: "S", to: "M" }, { from: "S", to: "R" }],
       fan,
-      "TB",
     );
-    const sources = offsets.map((o) => o.source);
+    const sources = ports.map((o) => o.source.offset);
     expect(new Set(sources).size).toBe(3); // three distinct source channels
     // ordered by the target's x: left target gets the leftmost anchor
     expect(sources[0]).toBeLessThan(sources[1]!);
     expect(sources[1]).toBeLessThan(sources[2]!);
+  });
+
+  it("is deterministic: same inputs → identical anchors", () => {
+    const call = () =>
+      computePerimeterPorts([{ from: "A", to: "B" }, { from: "B", to: "A" }], boxes);
+    expect(JSON.stringify(call())).toBe(JSON.stringify(call()));
   });
 });
 

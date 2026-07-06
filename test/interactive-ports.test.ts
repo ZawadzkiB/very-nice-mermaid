@@ -17,7 +17,7 @@ import { JSDOM } from "jsdom";
 import { renderHtml } from "../src/export/html.js";
 import { layoutState } from "../src/native/state/layout.js";
 import { layoutClass } from "../src/native/class/layout.js";
-import { routeEdge, computePortOffsets, type NodeBox } from "../src/geometry/index.js";
+import { routeEdge, computePerimeterPorts, type NodeBox } from "../src/geometry/index.js";
 import { themes, type Theme } from "../src/theme/index.js";
 import type { PositionedModel } from "../src/model/index.js";
 import type { StateModel } from "../src/model/state.js";
@@ -44,7 +44,7 @@ function expectedPaths(model: PositionedModel, theme: Theme): string[] {
   for (const nd of model.nodes) {
     boxes.set(nd.id, { x: nd.x - off.x, y: nd.y - off.y, width: nd.width, height: nd.height });
   }
-  const ports = computePortOffsets(model.edges, boxes, model.direction);
+  const ports = computePerimeterPorts(model.edges, boxes);
   return model.edges.map((e, i) => {
     const wps = (e.waypoints ?? []).map((p) => ({ x: p.x - off.x, y: p.y - off.y }));
     return routeEdge(boxes.get(e.from)!, boxes.get(e.to)!, model.direction, theme.edgeStyle, wps, ports[i]).path;

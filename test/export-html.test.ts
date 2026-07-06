@@ -27,10 +27,15 @@ describe("renderHtml: self-contained", () => {
     expect(withoutNs).not.toMatch(/https?:\/\//);
     expect(html).not.toMatch(/<link\b/i);
     expect(html).not.toMatch(/<img\b/i);
-    expect(html).not.toMatch(/src\s*=/i);
+    // an EXTERNAL resource src (http(s) or protocol-relative) is forbidden; a
+    // same-document data: URI (e.g. the PNG rasterizer's `img.src = "data:…"`) is
+    // fine and must not trip this guard (REV-002)
+    expect(html).not.toMatch(/\bsrc\s*=\s*['"]?\s*(?:https?:)?\/\//i);
     expect(html).not.toMatch(/@import/i);
-    // internal SVG fragment refs like url(#vnm-arrow) are fine; external ones are not
-    expect(html).not.toMatch(/url\(\s*['"]?[^#'")]/i);
+    // internal SVG fragment refs (url(#vnm-arrow)) and JS APIs whose name merely
+    // ends in "URL" (e.g. canvas.toDataURL()) are fine — only a real CSS url(
+    // token, one NOT preceded by an identifier char, is an external fetch (REV-002)
+    expect(html).not.toMatch(/(^|[^\w-])url\(\s*['"]?[^#'")]/i);
     // no external <script src>; only the inline module
     expect(html).not.toMatch(/<script[^>]+src=/i);
   });
@@ -55,7 +60,7 @@ describe("renderHtml: self-contained", () => {
     );
     expect(hostile).not.toContain("evil.example");
     // reuse the zero-network external-url guard: no fetchable url() may appear
-    expect(hostile).not.toMatch(/url\(\s*['"]?[^#'")]/i);
+    expect(hostile).not.toMatch(/(^|[^\w-])url\(\s*['"]?[^#'")]/i);
     const stripped = hostile.replace(/https?:\/\/www\.w3\.org\/[^"' )]*/g, "");
     expect(stripped).not.toMatch(/https?:\/\//);
   });

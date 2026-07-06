@@ -8,6 +8,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { extname } from "node:path";
 import { parse, ParseError } from "../parser/index.js";
 import { layout, applyPositions } from "../layout/index.js";
+import type { EdgeAnchorOverride } from "../geometry/index.js";
 import { resolveTheme, type Theme } from "../theme/index.js";
 import { renderSvg } from "../render/svg.js";
 import { renderMarkdown } from "../render/ascii.js";
@@ -33,7 +34,7 @@ import type { Diagnostic, PositionedModel } from "../model/index.js";
 
 type Format = "html" | "svg" | "png" | "md";
 
-const VERSION = "0.2.0";
+const VERSION = "0.4.0";
 
 interface RenderOpts {
   output?: string;
@@ -68,7 +69,7 @@ export async function run(argv: string[]): Promise<number> {
     .option("-t, --theme <name|path>", "theme name (light|dark|fancy) or path to a theme .json", "light")
     .option("--strict", "treat parser warnings AND fallback degradations as errors")
     .option("--quiet", "mute info-level diagnostics (fallback notices) on stderr")
-    .option("--layout <file>", "apply a portable layout.json (node positions)")
+    .option("--layout <file>", "apply a portable layout.json (node positions, sizes, edge anchors)")
     .option("--scale <n>", "PNG scale factor (HiDPI)")
     .option("--background <color>", "background color, or 'transparent'")
     .option("--title <title>", "HTML document title")
@@ -335,9 +336,20 @@ async function doNativeRender(
     try {
       const data = JSON.parse(readFileSync(opts.layout, "utf8")) as {
         positions?: Record<string, { x: number; y: number }>;
+        sizes?: Record<string, { w: number; h: number }>;
+        anchors?: Record<string, EdgeAnchorOverride>;
       };
       const positions = data.positions ?? (data as Record<string, { x: number; y: number }>);
-      positioned = applyPositions(positioned, positions, { theme });
+      // A layout.json may carry per-node size overrides (FR1/FR4) — normalize the
+      // runtime's `{ w, h }` sidecar shape to the model's `{ width, height }`.
+      const sizes = data.sizes
+        ? Object.fromEntries(
+            Object.entries(data.sizes).map(([id, s]) => [id, { width: s.w, height: s.h }]),
+          )
+        : undefined;
+      // Per-anchor overrides (FR7) pin an edge end's {side,offset}; honored so a
+      // `vnm render -f svg --layout …` reproduces the pinned anchors (parity).
+      positioned = applyPositions(positioned, positions, { theme, sizes, anchors: data.anchors });
     } catch (err) {
       process.stderr.write(`error: cannot apply layout '${opts.layout}': ${(err as Error).message}\n`);
       return 1;
