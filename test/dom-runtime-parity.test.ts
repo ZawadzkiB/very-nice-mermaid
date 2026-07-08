@@ -191,6 +191,7 @@ function worldBoxes(
       y: (ov ? ov.y : nd.y) - off.y,
       width: sz ? sz.w : nd.width,
       height: sz ? sz.h : nd.height,
+      shape: nd.shape,
     });
   }
   return boxes;
@@ -242,7 +243,7 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     const off = model.bounds;
     const box = (id: string) => {
       const nd = model.nodes.find((n) => n.id === id)!;
-      return { x: nd.x - off.x, y: nd.y - off.y, width: nd.width, height: nd.height };
+      return { x: nd.x - off.x, y: nd.y - off.y, width: nd.width, height: nd.height, shape: nd.shape };
     };
     const expected = routeEdge(box("A"), box("B"), model.direction, theme.edgeStyle).path;
 
@@ -282,7 +283,7 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     const off = model.bounds;
     const box = (id: string) => {
       const nd = model.nodes.find((n) => n.id === id)!;
-      return { x: nd.x - off.x, y: nd.y - off.y, width: nd.width, height: nd.height };
+      return { x: nd.x - off.x, y: nd.y - off.y, width: nd.width, height: nd.height, shape: nd.shape };
     };
 
     // A->C is the skip-level detour: it must carry dagre waypoints and, under the
@@ -367,6 +368,38 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     // all three edges leave S at three DISTINCT start points (no shared trunk)
     const starts = got.map((d) => d.slice(0, d.indexOf(" L ") >= 0 ? d.indexOf(" L ") : d.length));
     expect(new Set(starts).size).toBe(3);
+  });
+
+  // ---- shape-aware anchoring (v0.4.1 bugfix): a channel-spread anchor on a
+  // NON-rect node must be projected onto the drawn outline, and the runtime must
+  // reproduce the shared geometry point-for-point. Before the fix the runtime's
+  // inlined anchor ignored shape, so the interactive + exported-HTML view floated
+  // an arrowhead beside a diamond / circle exactly like the static SVG did.
+  it("projects a spread anchor onto a DIAMOND + CIRCLE outline, matching computePerimeterPorts (v0.4.1)", () => {
+    // Anti-parallel edges between a diamond and a circle → offset != 0 at both
+    // ends, on both non-rect shapes.
+    const { model, theme } = prepare("flowchart TD\nB{Choice} --> C((Round))\nC --> B", { theme: "light" });
+    const boxes = worldBoxes(model);
+    const expected = expectedPaths(model, boxes, theme);
+    const got = edgePaths(mountFake(buildPayload(model, theme, { minimap: false, persist: false })));
+    // runtime == geometry for every edge, including the projected shape anchors
+    expect(got).toEqual(expected);
+
+    // the pair genuinely spread (a non-zero channel offset really is in play)
+    const ports = computePerimeterPorts(model.edges, boxes);
+    expect(ports.some((p) => p.source.offset !== 0 || p.target.offset !== 0)).toBe(true);
+
+    // and the projection is genuinely active: the B->C start on the diamond B is
+    // inset from B's bounding-box bottom (it rides the diamond edge, not the box).
+    const B = boxes.get("B")!;
+    const bc = model.edges.findIndex((e) => e.from === "B" && e.to === "C");
+    const start = got[bc]!.match(/^M\s+([-\d.]+)\s+([-\d.]+)/)!;
+    const sx = Number(start[1]);
+    const sy = Number(start[2]);
+    expect(sx).not.toBe(B.x); // spread off the side center
+    expect(sy).toBeLessThan(B.y + B.height / 2 - 0.5); // inset above the box bottom
+    // the point lies on the diamond outline: |dx|/hw + |dy|/hh == 1 (tolerance)
+    expect(Math.abs(sx - B.x) / (B.width / 2) + Math.abs(sy - B.y) / (B.height / 2)).toBeCloseTo(1, 2);
   });
 
   it("keeps a dragged node's anti-parallel edges on distinct channels (live re-route)", () => {
