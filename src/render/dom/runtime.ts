@@ -104,10 +104,14 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   const sizes: Record<string, { w: number; h: number }> = {};
   // the layout's measured sizes — used to persist only nodes the user resized.
   const baseSizes: Record<string, { w: number; h: number }> = {};
+  // node shape by id — lets the anchor projection (mirrors geometry.sidePoint)
+  // land a channel-spread endpoint on the node's real outline, not its bbox.
+  const shapeById: Record<string, string> = {};
   for (const nd of model.nodes) {
     positions[nd.id] = { x: nd.x - offsetX, y: nd.y - offsetY };
     sizes[nd.id] = { w: nd.width, h: nd.height };
     baseSizes[nd.id] = { w: nd.width, h: nd.height };
+    shapeById[nd.id] = nd.shape;
   }
   // Manual per-anchor overrides (FR7 / D7=A), keyed by edge index → pinned end(s).
   // A pinned end is used verbatim and skips the auto-distribute spread; cleared by
@@ -410,7 +414,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const p = positions[nodeId]!;
       const s = sizes[nodeId]!;
       const a = ports[eh.ei]![eh.end];
-      const pt = anchor({ x: p.x, y: p.y, w: s.w, h: s.h }, a.side, a.offset);
+      const pt = anchor({ x: p.x, y: p.y, w: s.w, h: s.h, shape: shapeById[nodeId] }, a.side, a.offset);
       eh.el.style.left = pt.x - EP / 2 + "px";
       eh.el.style.top = pt.y - EP / 2 + "px";
       eh.el.style.display = "block";
@@ -539,20 +543,70 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     if (sx < sy) return dx > 0 ? "right" : "left";
     return dy > 0 ? "bottom" : "top";
   }
-  // mirrors geometry.clampOffset(): keep a spread anchor off the border corners.
+  // mirrors geometry.clampOffset(): keep a pinned pointer offset off the corners
+  // (half − margin). The auto-spread anchor uses anchorBound() below instead.
   function clampOff(off: number, half: number): number {
     const max = Math.max(0, half - 6);
     return Math.max(-max, Math.min(max, off));
   }
-  // mirrors geometry.sidePoint(): border anchor, slid along the border by `off`
-  // (perpendicular to the side's normal) so shared-border edges get own channels.
-  function anchor(b: { x: number; y: number; w: number; h: number }, side: string, off = 0) {
+  // mirrors geometry.anchorBound(): furthest a spread anchor may slide on a side
+  // and still project onto the drawn outline — flat part for the rounded family
+  // (rounded / stadium) and the flat sides of hexagon / parallelogram / cylinder;
+  // full span for the tapered / curved sides. Keep in lockstep with geometry.
+  function anchorBound(shape: string, horiz: boolean, hw: number, hh: number): number {
+    const half = horiz ? hw : hh;
+    const cap = half - 6;
+    if (shape === "rounded") return Math.min(cap, half - 14);
+    if (shape === "stadium") return Math.min(cap, half - hh);
+    if (shape === "hexagon") return horiz ? Math.min(cap, half - Math.min(hw * 0.44, hh)) : cap;
+    if (shape === "parallelogram" || shape === "parallelogram-alt")
+      return horiz ? Math.min(cap, half - Math.min(hw * 0.44, 2 * hh)) : cap;
+    if (shape === "cylinder") return horiz ? cap : Math.min(cap, half - Math.min(10, hh * 0.36));
+    return cap;
+  }
+  // mirrors geometry.sidePoint()+outlinePoint(): a border anchor slid along the
+  // side by `off` (its own channel) then PROJECTED onto the node's real outline
+  // for its shape, so a channel-spread endpoint never floats off a tapered /
+  // rounded shape (the arrowhead-in-empty-space bug). Keep in lockstep.
+  function anchor(
+    b: { x: number; y: number; w: number; h: number; shape?: string },
+    side: string,
+    off = 0,
+  ) {
     const hw = b.w / 2;
     const hh = b.h / 2;
-    if (side === "top") return { x: b.x + clampOff(off, hw), y: b.y - hh };
-    if (side === "bottom") return { x: b.x + clampOff(off, hw), y: b.y + hh };
-    if (side === "left") return { x: b.x - hw, y: b.y + clampOff(off, hh) };
-    return { x: b.x + hw, y: b.y + clampOff(off, hh) };
+    const cx = b.x;
+    const cy = b.y;
+    const shape = b.shape || "rect";
+    const horiz = side === "top" || side === "bottom";
+    const bound = Math.max(0, anchorBound(shape, horiz, hw, hh));
+    const t = Math.max(-bound, Math.min(bound, off));
+    if (horiz) {
+      const sgn = side === "top" ? -1 : 1;
+      let y = cy + sgn * hh;
+      if (shape === "diamond") y = cy + sgn * hh * (1 - Math.abs(t) / hw);
+      else if (shape === "circle") y = cy + sgn * hh * Math.sqrt(1 - (t / hw) * (t / hw));
+      else if (shape === "cylinder") {
+        const ry = Math.min(10, hh * 0.36);
+        y = cy + sgn * (hh - ry + ry * Math.sqrt(1 - (t / hw) * (t / hw)));
+      }
+      return { x: cx + t, y };
+    }
+    const sgn = side === "left" ? -1 : 1;
+    let x = cx + sgn * hw;
+    if (shape === "diamond") x = cx + sgn * hw * (1 - Math.abs(t) / hh);
+    else if (shape === "circle") x = cx + sgn * hw * Math.sqrt(1 - (t / hh) * (t / hh));
+    else if (shape === "hexagon") {
+      const k = Math.min(hw * 0.44, hh);
+      x = cx + sgn * (hw - (k * Math.abs(t)) / hh);
+    } else if (shape === "parallelogram") {
+      const k = Math.min(hw * 0.44, 2 * hh);
+      x = side === "left" ? cx - hw + (k * (hh - t)) / (2 * hh) : cx + hw - (k * (t + hh)) / (2 * hh);
+    } else if (shape === "parallelogram-alt") {
+      const k = Math.min(hw * 0.44, 2 * hh);
+      x = side === "left" ? cx - hw + (k * (t + hh)) / (2 * hh) : cx + hw - (k * (hh - t)) / (2 * hh);
+    }
+    return { x, y: cy + t };
   }
   type Pt = { x: number; y: number };
   function offAlong(p: Pt, side: string, k: number): Pt {
@@ -662,10 +716,10 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       source: { side: "bottom", offset: 0 },
       target: { side: "top", offset: 0 },
     }));
-    const boxOf = (id: string): { x: number; y: number; w: number; h: number } => {
+    const boxOf = (id: string): { x: number; y: number; w: number; h: number; shape?: string } => {
       const p = positions[id]!;
       const sz = sizes[id]!;
-      return { x: p.x, y: p.y, w: sz.w, h: sz.h };
+      return { x: p.x, y: p.y, w: sz.w, h: sz.h, shape: shapeById[id] };
     };
     const axisX = (side: string): boolean => side === "top" || side === "bottom";
     // choose each end's border side by the direction to the other node, then
@@ -751,7 +805,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   // mirrors geometry.routeEdge(): recompute path + label from live positions,
   // threading dagre's detour waypoints (kept fixed) when the edge has them, and
   // applying the live per-edge channel offsets + label stagger from computePorts.
-  type Box = { x: number; y: number; w: number; h: number };
+  type Box = { x: number; y: number; w: number; h: number; shape?: string };
   // Core routing given explicit boxes (so the live render works in offset-removed
   // "world" coords while toSvgString routes the identical geometry in absolute
   // coords for parity with src/render/svg.ts).
@@ -815,8 +869,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     const fs = sizes[fromId]!;
     const ts = sizes[toId]!;
     return routeBoxes(
-      { x: fp.x, y: fp.y, w: fs.w, h: fs.h },
-      { x: tp.x, y: tp.y, w: ts.w, h: ts.h },
+      { x: fp.x, y: fp.y, w: fs.w, h: fs.h, shape: shapeById[fromId] },
+      { x: tp.x, y: tp.y, w: ts.w, h: ts.h, shape: shapeById[toId] },
       waypoints,
       ports,
       fromId === toId,
@@ -1466,7 +1520,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   function absBox(id: string): Box {
     const p = positions[id]!;
     const s = sizes[id]!;
-    return { x: p.x + offsetX, y: p.y + offsetY, w: s.w, h: s.h };
+    return { x: p.x + offsetX, y: p.y + offsetY, w: s.w, h: s.h, shape: shapeById[id] };
   }
   function svgDefs(): string {
     const a = tokens.edge.arrowSize;
