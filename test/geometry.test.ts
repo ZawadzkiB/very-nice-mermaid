@@ -167,6 +167,86 @@ describe("computePerimeterPorts distributes anchors around the perimeter (FR2 / 
   });
 });
 
+describe("sidePoint projects spread anchors onto the real shape outline (v0.4.1 bugfix)", () => {
+  // How far off the outline a point is: 0 = exactly on it. For the tapered
+  // shapes the outline is |dx|/hw + |dy|/hh = 1 (diamond) or (dx/hw)^2 +
+  // (dy/hh)^2 = 1 (circle/ellipse). The bug left the anchor on the bounding box
+  // (value > 1) beside the shape; the fix must put it back on the outline (== 1).
+  const diamondResidual = (b: NodeBox, p: { x: number; y: number }): number =>
+    Math.abs(p.x - b.x) / (b.width / 2) + Math.abs(p.y - b.y) / (b.height / 2);
+  const ellipseResidual = (b: NodeBox, p: { x: number; y: number }): number =>
+    ((p.x - b.x) / (b.width / 2)) ** 2 + ((p.y - b.y) / (b.height / 2)) ** 2;
+
+  it("rides the DIAMOND edge for a non-zero offset on every side (not the bbox corner)", () => {
+    const dia: NodeBox = { x: 100, y: 100, width: 120, height: 80, shape: "diamond" };
+    for (const side of ["top", "bottom", "left", "right"] as const) {
+      const p = sidePoint(dia, side, 18);
+      const q = sidePoint(dia, side, -18);
+      expect(diamondResidual(dia, p)).toBeCloseTo(1, 6); // ON the outline
+      expect(diamondResidual(dia, q)).toBeCloseTo(1, 6);
+    }
+    // the pre-fix anchor (box border + tangential offset) was strictly OUTSIDE
+    const preFix = { x: dia.x + 18, y: dia.y - dia.height / 2 }; // old top anchor
+    expect(diamondResidual(dia, preFix)).toBeGreaterThan(1);
+  });
+
+  it("rides the CIRCLE/ellipse outline for a non-zero offset on every side", () => {
+    const cir: NodeBox = { x: 60, y: 60, width: 90, height: 90, shape: "circle" };
+    for (const side of ["top", "bottom", "left", "right"] as const) {
+      expect(ellipseResidual(cir, sidePoint(cir, side, 20))).toBeCloseTo(1, 6);
+      expect(ellipseResidual(cir, sidePoint(cir, side, -20))).toBeCloseTo(1, 6);
+    }
+    const ell: NodeBox = { x: 0, y: 0, width: 140, height: 60, shape: "circle" };
+    expect(ellipseResidual(ell, sidePoint(ell, "top", 30))).toBeCloseTo(1, 6);
+  });
+
+  it("keeps a STADIUM anchor on the flat part of the side (clamped, never on the cap)", () => {
+    const sta: NodeBox = { x: 100, y: 100, width: 160, height: 40, shape: "stadium" };
+    // half-width 80, cap radius = half-height 20 → flat top spans |dx| <= 60.
+    const big = sidePoint(sta, "top", 1000);
+    expect(big.y).toBe(80); // still on the flat top edge (y = cy - hh)
+    expect(Math.abs(big.x - sta.x)).toBeLessThanOrEqual(80 - 20 + 1e-9); // within flat region
+    const small = sidePoint(sta, "bottom", 15);
+    expect(small).toEqual({ x: 115, y: 120 }); // flat bottom, unchanged spread
+  });
+
+  it("EXACT repro: anti-parallel A<->B with B a diamond — both B endpoints on B's outline", () => {
+    const boxes = new Map<string, NodeBox>([
+      ["A", { x: 100, y: 100, width: 80, height: 40, shape: "rect" }],
+      ["B", { x: 100, y: 300, width: 120, height: 80, shape: "diamond" }],
+    ]);
+    const edges = [
+      { from: "A", to: "B" },
+      { from: "B", to: "A" },
+    ];
+    const ports = computePerimeterPorts(edges, boxes);
+    const B = boxes.get("B")!;
+    const A = boxes.get("A")!;
+    // both edges spread onto their own channel (offset != 0 at the B end)
+    expect(ports[0]!.target.offset).not.toBe(0);
+    expect(ports[1]!.source.offset).not.toBe(0);
+    // A->B ends at B (target); B->A starts at B (source). Both must sit ON the
+    // diamond outline, NOT floating beside it at the bounding-box top.
+    const ab = routeEdge(A, B, "TB", "elbow", [], ports[0]);
+    const ba = routeEdge(B, A, "TB", "elbow", [], ports[1]);
+    const abEnd = ab.points[ab.points.length - 1]!;
+    const baStart = ba.points[0]!;
+    expect(diamondResidual(B, abEnd)).toBeCloseTo(1, 6);
+    expect(diamondResidual(B, baStart)).toBeCloseTo(1, 6);
+    // neither endpoint is left at the bounding-box top (the pre-fix defect)
+    expect(abEnd.y).toBeGreaterThan(B.y - B.height / 2);
+    expect(baStart.y).toBeGreaterThan(B.y - B.height / 2);
+  });
+
+  it("leaves a rect anchor exactly on the box border (unchanged, offset preserved)", () => {
+    const box: NodeBox = { x: 100, y: 100, width: 80, height: 40, shape: "rect" };
+    expect(sidePoint(box, "bottom", 10)).toEqual({ x: 110, y: 120 });
+    // a shapeless box (no `shape`) behaves exactly like a rect (backward-compat)
+    const bare: NodeBox = { x: 100, y: 100, width: 80, height: 40 };
+    expect(sidePoint(bare, "bottom", 10)).toEqual({ x: 110, y: 120 });
+  });
+});
+
 describe("contentBounds", () => {
   it("wraps every box with padding", () => {
     const b = contentBounds([A, below], [], 10);

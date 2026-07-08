@@ -6,15 +6,22 @@
  * Node boxes are **center-based** (`x`/`y` = center), matching PositionedNode.
  */
 
-import type { Direction, Point, Rect } from "../model/index.js";
+import type { Direction, Point, Rect, Shape } from "../model/index.js";
 import type { EdgeStyle } from "../theme/index.js";
 
-/** A center-based rectangle. */
+/**
+ * A center-based rectangle. `shape` (optional) is the node's drawn outline kind:
+ * when present it lets {@link sidePoint} land a channel-spread anchor on the real
+ * (tapered / rounded) outline instead of the bounding box, so an arrowhead never
+ * floats beside a diamond / circle / hexagon / … . Absent (or `rect`) → the box
+ * border *is* the outline and anchoring is unchanged (backward-compatible).
+ */
 export interface NodeBox {
   x: number;
   y: number;
   width: number;
   height: number;
+  shape?: Shape;
 }
 
 export type Side = "top" | "bottom" | "left" | "right";
@@ -84,30 +91,107 @@ export function n(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-/** Clamp an anchor offset so it stays on its border (never past a corner). */
-function clampOffset(offset: number, half: number): number {
-  const max = Math.max(0, half - PORT_MARGIN);
+/** Clamp an anchor offset to `±bound` (never past a corner / off a cap). */
+function clampOffset(offset: number, bound: number): number {
+  const max = Math.max(0, bound);
   return Math.max(-max, Math.min(max, offset));
 }
 
 /**
+ * Furthest a tangential anchor may slide from a side's center and still be
+ * projectable onto the drawn outline (keeping {@link PORT_MARGIN} off any corner
+ * or rounded cap). For the **rounded family** (rounded / stadium / subroutine)
+ * and the flat sides of the hexagon / parallelogram / cylinder this trims the
+ * span to the *flat* part of the side; the tapered / curved sides keep the full
+ * span and are projected inward by {@link outlinePoint}. Mirrors the runtime
+ * twin's `anchorBound` — keep them in lockstep (dom-runtime-parity guards it).
+ */
+function anchorBound(shape: Shape, side: Side, hw: number, hh: number): number {
+  const horiz = side === "top" || side === "bottom";
+  const half = horiz ? hw : hh;
+  const cap = half - PORT_MARGIN;
+  switch (shape) {
+    case "rounded":
+      return Math.min(cap, half - 14);
+    case "stadium": // rx = hh on both axes (fully-rounded ends)
+      return Math.min(cap, half - hh);
+    case "hexagon": // flat top/bottom; sloped ends are projected
+      return horiz ? Math.min(cap, half - Math.min(hw * 0.44, hh)) : cap;
+    case "parallelogram":
+    case "parallelogram-alt": // flat top/bottom; slanted ends are projected
+      return horiz ? Math.min(cap, half - Math.min(hw * 0.44, 2 * hh)) : cap;
+    case "cylinder": // curved caps (projected) top/bottom; flat body left/right
+      return horiz ? cap : Math.min(cap, half - Math.min(10, hh * 0.36));
+    default: // rect / subroutine (rx 4 ≤ margin) / circle / diamond
+      return cap;
+  }
+}
+
+/**
+ * Project a border anchor at (already-clamped) tangential offset `t` onto the
+ * node's **actual outline** for its {@link Shape}, insetting along the inward
+ * normal. Mirrors the shapes drawn by `nodeShape` (src/render/svg.ts) and the
+ * runtime twin's `anchor` — the returned point lies on (or just inside) the
+ * drawn shape, never beside it. `rect` and the flat sides return the plain box
+ * border. Keep in lockstep with the runtime.
+ */
+function outlinePoint(
+  shape: Shape,
+  side: Side,
+  cx: number,
+  cy: number,
+  hw: number,
+  hh: number,
+  t: number,
+): Point {
+  switch (side) {
+    case "top":
+    case "bottom": {
+      const sgn = side === "top" ? -1 : 1;
+      let y = cy + sgn * hh;
+      if (shape === "diamond") y = cy + sgn * hh * (1 - Math.abs(t) / hw);
+      else if (shape === "circle") y = cy + sgn * hh * Math.sqrt(1 - (t / hw) * (t / hw));
+      else if (shape === "cylinder") {
+        const ry = Math.min(10, hh * 0.36);
+        y = cy + sgn * (hh - ry + ry * Math.sqrt(1 - (t / hw) * (t / hw)));
+      }
+      return { x: cx + t, y };
+    }
+    case "left":
+    case "right": {
+      const sgn = side === "left" ? -1 : 1;
+      let x = cx + sgn * hw;
+      if (shape === "diamond") x = cx + sgn * hw * (1 - Math.abs(t) / hh);
+      else if (shape === "circle") x = cx + sgn * hw * Math.sqrt(1 - (t / hh) * (t / hh));
+      else if (shape === "hexagon") {
+        const k = Math.min(hw * 0.44, hh);
+        x = cx + sgn * (hw - (k * Math.abs(t)) / hh);
+      } else if (shape === "parallelogram") {
+        const k = Math.min(hw * 0.44, 2 * hh);
+        x = side === "left" ? cx - hw + (k * (hh - t)) / (2 * hh) : cx + hw - (k * (t + hh)) / (2 * hh);
+      } else if (shape === "parallelogram-alt") {
+        const k = Math.min(hw * 0.44, 2 * hh);
+        x = side === "left" ? cx - hw + (k * (t + hh)) / (2 * hh) : cx + hw - (k * (hh - t)) / (2 * hh);
+      }
+      return { x, y: cy + t };
+    }
+  }
+}
+
+/**
  * Anchor point on one side of a box. `offset` slides it along that border
- * (perpendicular to the side's normal), clamped to stay on the border — used to
- * spread several edges that share the same node side onto distinct channels.
+ * (perpendicular to the side's normal); it is clamped to stay on the side and,
+ * for a non-rectangular {@link NodeBox.shape}, **projected onto the shape's real
+ * outline** so a channel-spread endpoint never lands off a tapered / rounded
+ * shape (the arrowhead-floats-in-empty-space bug). Used to spread several edges
+ * that share the same node side onto distinct channels.
  */
 export function sidePoint(box: NodeBox, side: Side, offset = 0): Point {
   const hw = box.width / 2;
   const hh = box.height / 2;
-  switch (side) {
-    case "top":
-      return { x: box.x + clampOffset(offset, hw), y: box.y - hh };
-    case "bottom":
-      return { x: box.x + clampOffset(offset, hw), y: box.y + hh };
-    case "left":
-      return { x: box.x - hw, y: box.y + clampOffset(offset, hh) };
-    case "right":
-      return { x: box.x + hw, y: box.y + clampOffset(offset, hh) };
-  }
+  const shape: Shape = box.shape ?? "rect";
+  const t = clampOffset(offset, anchorBound(shape, side, hw, hh));
+  return outlinePoint(shape, side, box.x, box.y, hw, hh, t);
 }
 
 /**

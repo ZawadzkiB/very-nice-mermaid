@@ -91,6 +91,7 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
       y: round(nd.y),
       width: nd.width,
       height: nd.height,
+      shape: node.shape,
     };
     nodeBoxes.set(node.id, box);
     return { ...node, x: box.x, y: box.y, width: box.width, height: box.height };
@@ -237,7 +238,7 @@ export function applyPositions(
     const y = p ? p.y : node.y;
     const width = sz ? sz.width : node.width;
     const height = sz ? sz.height : node.height;
-    nodeBoxes.set(node.id, { x, y, width, height });
+    nodeBoxes.set(node.id, { x, y, width, height, shape: node.shape });
     return { ...node, x, y, width, height };
   });
 

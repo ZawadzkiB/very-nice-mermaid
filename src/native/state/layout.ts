@@ -72,8 +72,8 @@ export function layoutState(model: StateModel, opts: StateLayoutOptions = {}): S
   const boxes = new Map<string, NodeBox>();
   const shrunk: PositionedNode[] = positioned.nodes.map((nd) => {
     const box: NodeBox = pseudo.has(nd.id)
-      ? { x: nd.x, y: nd.y, width: PSEUDO, height: PSEUDO }
-      : { x: nd.x, y: nd.y, width: nd.width, height: nd.height };
+      ? { x: nd.x, y: nd.y, width: PSEUDO, height: PSEUDO, shape: nd.shape }
+      : { x: nd.x, y: nd.y, width: nd.width, height: nd.height, shape: nd.shape };
     boxes.set(nd.id, box);
     return { ...nd, width: box.width, height: box.height };
   });
