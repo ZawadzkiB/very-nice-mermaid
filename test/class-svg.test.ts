@@ -70,18 +70,21 @@ describe("renderClassSvg", () => {
 
   it("defines + references the correct arrowhead marker per relation type", () => {
     const svg = renderClassSvg(layoutClass(MODEL, { theme: themes.light! }), themes.light!);
-    // all four marker shapes are defined
+    // all four END marker shapes + their mirrored START variants are defined
     for (const id of ["vnm-cls-tri", "vnm-cls-diamond-solid", "vnm-cls-diamond-hollow", "vnm-cls-open"]) {
       expect(svg).toContain(`id="${id}"`);
-      expect(svg).toContain(`url(#${id})`);
+      expect(svg).toContain(`id="${id}-start"`);
     }
-    // inheritance (head=from) uses the triangle on marker-start
-    expect(svg).toContain('marker-start="url(#vnm-cls-tri)"');
-    // composition (head=from) uses the filled diamond on marker-start
-    expect(svg).toContain('marker-start="url(#vnm-cls-diamond-solid)"');
-    // aggregation (head=from) uses the hollow diamond
-    expect(svg).toContain('marker-start="url(#vnm-cls-diamond-hollow)"');
-    // association (head=to) uses the open arrow on marker-end
+    // resvg-safe: markers orient with plain "auto" (never the SVG2
+    // "auto-start-reverse", which resvg ignores → un-rotated heads in PNG)
+    expect(svg).not.toContain("auto-start-reverse");
+    // inheritance (head=from) uses the mirrored triangle on marker-start
+    expect(svg).toContain('marker-start="url(#vnm-cls-tri-start)"');
+    // composition (head=from) uses the mirrored filled diamond on marker-start
+    expect(svg).toContain('marker-start="url(#vnm-cls-diamond-solid-start)"');
+    // aggregation (head=from) uses the mirrored hollow diamond
+    expect(svg).toContain('marker-start="url(#vnm-cls-diamond-hollow-start)"');
+    // association (head=to) uses the forward open arrow on marker-end
     expect(svg).toContain('marker-end="url(#vnm-cls-open)"');
     // realization is dashed
     expect(svg).toContain('stroke-dasharray="6 4"');

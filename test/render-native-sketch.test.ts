@@ -44,7 +44,7 @@ describe("native tiers — sketch style (FR6 / D6=B)", () => {
   it("class keeps its UML relation markers in sketch mode (semantics preserved)", async () => {
     const sketch = await renderSvgAsync("classDiagram\n  Animal <|-- Dog\n", { style: "sketch" });
     // the inheritance head (hollow triangle marker) is still referenced on the
-    // (now hand-drawn) relation line
-    expect(sketch).toMatch(/marker-(start|end)="url\(#vnm-cls-tri\)"/);
+    // (now hand-drawn) relation line — head=from uses the mirrored -start variant
+    expect(sketch).toMatch(/marker-(start|end)="url\(#vnm-cls-tri(-start)?\)"/);
   });
 });

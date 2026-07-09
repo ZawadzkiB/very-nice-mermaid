@@ -2,7 +2,7 @@
 
 exports[`renderSvg > produces a stable, well-formed SVG for the dark theme 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="240" height="319" viewBox="-12 -12 240 319" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
-<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#6b7488"/></marker></defs>
+<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#6b7488"/></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#6b7488"/></marker></defs>
 <rect x="-12" y="-12" width="240" height="319" fill="#0f1117"/>
 <path d="M 110 50 L 110 110" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 100 167.71 L 100 203.35 L 50 203.35 L 50 239" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/><rect x="56.98" y="192.35" width="36.04" height="22" rx="4" fill="#0f1117"/><text x="75" y="203.35" fill="#c3cadb" font-size="13" text-anchor="middle" dominant-baseline="central">yes</text>
@@ -16,7 +16,7 @@ exports[`renderSvg > produces a stable, well-formed SVG for the dark theme 1`] =
 
 exports[`renderSvg > produces a stable, well-formed SVG for the fancy theme 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="258" height="361" viewBox="-12 -12 258 361" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
-<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#7d88c4"/></marker><filter id="vnm-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter></defs>
+<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#7d88c4"/></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#7d88c4"/></marker><filter id="vnm-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter></defs>
 <rect x="-12" y="-12" width="258" height="361" fill="#0b1020"/>
 <path d="M 119.5 55 C 119.5 91 119.5 91 119.5 127" fill="none" stroke="#7d88c4" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 109.5 192.32 C 109.5 234.16 53 234.16 53 276" fill="none" stroke="#7d88c4" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/><rect x="63.23" y="222.66" width="36.04" height="23" rx="6" fill="#0b1020"/><text x="81.25" y="234.16" fill="#c8cffb" font-size="13" text-anchor="middle" dominant-baseline="central">yes</text>
@@ -30,7 +30,7 @@ exports[`renderSvg > produces a stable, well-formed SVG for the fancy theme 1`] 
 
 exports[`renderSvg > produces a stable, well-formed SVG for the light theme 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="240" height="319" viewBox="-12 -12 240 319" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
-<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8a93a6"/></marker></defs>
+<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#8a93a6"/></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#8a93a6"/></marker></defs>
 <rect x="-12" y="-12" width="240" height="319" fill="#f7f8fb"/>
 <path d="M 110 50 L 110 110" fill="none" stroke="#8a93a6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 100 167.71 L 100 203.35 L 50 203.35 L 50 239" fill="none" stroke="#8a93a6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/><rect x="56.98" y="192.35" width="36.04" height="22" rx="4" fill="#f7f8fb"/><text x="75" y="203.35" fill="#3a4152" font-size="13" text-anchor="middle" dominant-baseline="central">yes</text>

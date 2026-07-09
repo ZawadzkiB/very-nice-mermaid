@@ -2,7 +2,7 @@
 
 exports[`renderStateSvg > produces a stable, well-formed SVG for the dark theme 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="133" height="390" viewBox="-12 9 133 390" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
-<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#6b7488"/></marker></defs>
+<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#6b7488"/></marker></defs>
 <rect x="-12" y="9" width="133" height="390" fill="#0f1117"/>
 <path d="M 54.5 51 L 54.5 132" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 44.5 174 L 44.5 234" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/><rect x="17.8" y="179" width="53.4" height="22" rx="4" fill="#0f1117"/><text x="44.5" y="190" fill="#c3cadb" font-size="13" text-anchor="middle" dominant-baseline="central">start</text>
@@ -17,7 +17,7 @@ exports[`renderStateSvg > produces a stable, well-formed SVG for the dark theme 
 
 exports[`renderStateSvg > produces a stable, well-formed SVG for the fancy theme 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="137" height="436" viewBox="-12 9 137 436" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
-<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#7d88c4"/></marker><filter id="vnm-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter></defs>
+<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#7d88c4"/></marker><filter id="vnm-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter></defs>
 <rect x="-12" y="9" width="137" height="436" fill="#0b1020"/>
 <path d="M 56.5 51 C 56.5 97.5 56.5 97.5 56.5 144" fill="none" stroke="#7d88c4" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 46.5 191 C 46.5 227 46.5 227 46.5 263" fill="none" stroke="#7d88c4" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/><rect x="19.8" y="201" width="53.4" height="23" rx="6" fill="#0b1020"/><text x="46.5" y="212.5" fill="#c8cffb" font-size="13" text-anchor="middle" dominant-baseline="central">start</text>
@@ -32,7 +32,7 @@ exports[`renderStateSvg > produces a stable, well-formed SVG for the fancy theme
 
 exports[`renderStateSvg > produces a stable, well-formed SVG for the light theme 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="133" height="390" viewBox="-12 9 133 390" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
-<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8a93a6"/></marker></defs>
+<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#8a93a6"/></marker></defs>
 <rect x="-12" y="9" width="133" height="390" fill="#f7f8fb"/>
 <path d="M 54.5 51 L 54.5 132" fill="none" stroke="#8a93a6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 44.5 174 L 44.5 234" fill="none" stroke="#8a93a6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/><rect x="17.8" y="179" width="53.4" height="22" rx="4" fill="#f7f8fb"/><text x="44.5" y="190" fill="#3a4152" font-size="13" text-anchor="middle" dominant-baseline="central">start</text>
