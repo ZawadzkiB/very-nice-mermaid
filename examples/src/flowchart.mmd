@@ -1,0 +1,10 @@
+flowchart TD
+  start([Push to main]) --> lint{Lint passes?}
+  lint -->|yes| test[Run tests]
+  lint -->|no| fail[(Report failure)]
+  test --> deploy{{Deploy?}}
+  deploy -->|prod| prod[/Ship to prod/]
+  deploy -->|staging| stg[Ship to staging]
+  prod --> done((Done))
+  stg --> done
+  fail --> done

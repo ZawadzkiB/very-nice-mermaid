@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="232" height="492" viewBox="-12 9 232 492" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
+<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#6b7488"/></marker></defs>
+<rect x="-12" y="9" width="232" height="492" fill="#0f1117"/>
+<path d="M 114 51 L 114 132" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 114 174 L 114 234" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/><rect x="87.3" y="193" width="53.4" height="22" rx="4" fill="#0f1117"/><text x="114" y="204" fill="#c3cadb" font-size="13" text-anchor="middle" dominant-baseline="central">fetch</text>
+<path d="M 94 276 L 94 306 L 46 306 L 46 336" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/><rect x="51.98" y="295" width="36.04" height="22" rx="4" fill="#0f1117"/><text x="70" y="306" fill="#c3cadb" font-size="13" text-anchor="middle" dominant-baseline="central">2xx</text>
+<path d="M 114 276 L 114 306 L 152 306 L 152 336" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/><rect x="110.64" y="281" width="44.72" height="22" rx="4" fill="#0f1117"/><text x="133" y="292" fill="#c3cadb" font-size="13" text-anchor="middle" dominant-baseline="central">fail</text>
+<path d="M 172 336 L 172 306 L 134 306 L 134 276" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/><rect x="126.3" y="309" width="53.4" height="22" rx="4" fill="#0f1117"/><text x="153" y="320" fill="#c3cadb" font-size="13" text-anchor="middle" dominant-baseline="central">retry</text>
+<path d="M 46 378 L 46 459" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<circle cx="114" cy="40" r="9" fill="#e7eaf2"/>
+<g><rect x="80.5" y="132" width="67" height="42" rx="14" fill="#1a1f2b" stroke="#3a4152" stroke-width="1.5"/><text x="114" y="153" fill="#e7eaf2" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Idle</text></g>
+<g><rect x="67.5" y="234" width="93" height="42" rx="14" fill="#1a1f2b" stroke="#3a4152" stroke-width="1.5"/><text x="114" y="255" fill="#e7eaf2" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Loading</text></g>
+<g><rect x="8" y="336" width="76" height="42" rx="14" fill="#1a1f2b" stroke="#3a4152" stroke-width="1.5"/><text x="46" y="357" fill="#e7eaf2" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Ready</text></g>
+<g><rect x="124" y="336" width="76" height="42" rx="14" fill="#1a1f2b" stroke="#3a4152" stroke-width="1.5"/><text x="162" y="357" fill="#e7eaf2" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Error</text></g>
+<circle cx="46" cy="470" r="9" fill="none" stroke="#e7eaf2" stroke-width="1.5"/><circle cx="46" cy="470" r="5" fill="#e7eaf2"/>
+</svg>

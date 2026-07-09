@@ -1,0 +1,9 @@
+sequenceDiagram
+  participant U as User
+  participant A as API
+  participant DB as Database
+  U->>A: POST /login
+  A->>DB: lookup user
+  DB-->>A: user record
+  A->>A: verify password
+  A-->>U: 200 + JWT

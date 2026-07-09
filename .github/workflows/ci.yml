@@ -32,6 +32,35 @@ jobs:
       - run: npm run typecheck
       - run: npm test # unit + CLI integration (vitest)
 
+  # Regenerate the examples/ gallery each run so it always matches the current
+  # renderer. The SVG output is deterministic (pure geometry + an embedded font),
+  # so a drift-check on examples/svg fails if the committed gallery is stale —
+  # contributors must `npm run examples` after a renderer change. (PNG bytes can
+  # vary by platform's rasterizer, so they're regenerated + uploaded, not diffed.)
+  examples:
+    name: examples gallery
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run examples
+      - name: Fail if the committed SVG gallery is stale
+        run: |
+          git diff --exit-status -- examples/svg examples/README.md \
+            || (echo "::error::examples are stale — run 'npm run build && npm run examples' and commit" && exit 1)
+      - name: Upload regenerated gallery
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: examples-gallery
+          path: examples/
+          retention-days: 14
+
   # Playwright drives the real interactive renderer in Chromium. Kept in a
   # separate job so the (heavier) browser install runs once, on the Node floor.
   e2e:
