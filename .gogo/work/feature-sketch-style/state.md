@@ -16,10 +16,10 @@
 
 - **feature:** sketch style — an Excalidraw-like hand-drawn rendering mode (rough shapes, sketchy arrows, handwriting font) as a --style axis composing with themes
 - **phase:** done            <!-- plan | implement | review | test | knowledge | done -->
-- **status:** awaiting-uat   <!-- awaiting-plan-acceptance | plan-accepted | implementing | reviewing | testing | waiting-for-user | done | shipped | aborted -->
+- **status:** shipped        <!-- awaiting-plan-acceptance | plan-accepted | implementing | reviewing | testing | waiting-for-user | done | shipped | aborted -->
 - **created:** 2026-07-09
 - **completed:** 2026-07-09
 - **branch:** master (v0.4.1 → v0.5.0)
 - **iterations:** plan=1 · implement=3 · review=1 · test=2
-- **resume:** awaiting UAT — verify the work; `/gogo:done` accepts (ships to changelog), or describe issues to loop back. Report: report/report.md · report/diagrams.html.
+- **resume:** none — shipped to .gogo/changelog/2026-07-09-sketch-style/
 - **open-decision:** none    <!-- <decisions.md anchor> | none -->

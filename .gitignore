@@ -24,3 +24,6 @@ e2e/.artifacts/
 # gogo working state: keep the durable knowledge + work docs in the repo, but
 # ignore the vendored offline mermaid runtime (a ~3 MB binary blob).
 .gogo/resources/
+
+# transient gogo run event logs
+.gogo/work/*/events.jsonl
