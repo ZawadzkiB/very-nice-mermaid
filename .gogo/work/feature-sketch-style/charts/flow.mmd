@@ -1,0 +1,13 @@
+flowchart LR
+  opt["--style sketch"]:::io
+  rough["src/rough seeded generator"]:::proc
+  shapes["rough shapes (multi-stroke + hachure)"]:::proc
+  arrows["wavy edges + open arrowheads"]:::proc
+  font["bundled OFL hand font"]:::art
+  out["SVG / PNG / HTML / interactive (parity)"]:::out
+  opt --> rough --> shapes --> arrows --> out
+  font --> shapes
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111

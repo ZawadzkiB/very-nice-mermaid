@@ -31,6 +31,31 @@ export function exportHtml(fixture: string, theme = "light", name = "exported.ht
 }
 
 /**
+ * Same as {@link exportHtml} but threads `--style` (`clean` | `sketch`) — the
+ * hand-drawn Excalidraw-style rendering mode. Used by the sketch-style e2e spec.
+ */
+export function exportHtmlStyled(
+  fixture: string,
+  style: "clean" | "sketch",
+  theme = "light",
+  name = "exported-styled.html",
+): string {
+  const out = join(artifactsDir, name);
+  execFileSync("node", [
+    cliPath,
+    "render",
+    join(repoRoot, "fixtures", fixture),
+    "-o",
+    out,
+    "--theme",
+    theme,
+    "--style",
+    style,
+  ]);
+  return pathToFileURL(out).href;
+}
+
+/**
  * Render raw ad-hoc DSL (not part of the committed fixtures/ corpus, so it
  * doesn't get swept into the parser/layout corpus-wide unit tests) to a
  * standalone HTML artifact via the built CLI — same path a real `vnm render

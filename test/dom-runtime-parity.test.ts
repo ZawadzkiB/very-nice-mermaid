@@ -581,6 +581,110 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     });
   }
 
+  // ---- sketch-style parity (D2/FR6): toSvgString() must byte-match renderSvg in
+  // SKETCH mode too, which transitively proves the runtime's inlined rough
+  // generator is byte-identical to src/rough (the new drift trap). Drive the REAL
+  // runtime with a sketch payload, drag + resize, and byte-compare — plus assert
+  // the output is genuinely sketch (rough quadratics + embedded font, no marker).
+  for (const themeName of ["light", "fancy"] as const) {
+    it(`toSvgString() == renderSvg in SKETCH mode after drag + resize (${themeName})`, () => {
+      const { model, theme } = prepare(
+        "flowchart TD\nA[Start]-->B{Choice}\nB-->|yes| C([Done])\nB-->|no| D[(Store)]\nC-->E((End))",
+        { theme: themeName },
+      );
+      const { handle } = mountFakeH(
+        buildPayload(model, theme, { minimap: false, persist: false, style: "sketch" }),
+      );
+      const b = model.nodes.find((n) => n.id === "B")!;
+      const c = model.nodes.find((n) => n.id === "C")!;
+      handle.importLayout({
+        version: 1,
+        positions: { C: { x: c.x - 30, y: c.y + 20 } },
+        sizes: { B: { w: b.width + 44, h: b.height + 22 } },
+      });
+      const expected = renderSvgFromModel(editedModel(model, theme, handle), theme, undefined, "sketch");
+      const got = handle.toSvgString();
+      expect(got).toBe(expected);
+      expect(XMLValidator.validate(got)).toBe(true);
+      // genuinely sketch, not accidentally the clean path
+      expect(got).toContain(" Q "); // rough bowed strokes
+      expect(got).toContain("@font-face"); // embedded handwriting font
+      expect(got).not.toContain("marker-end="); // open arrowheads, no triangle marker
+    });
+  }
+
+  it("SKETCH dotted edge: line is dashed, open arrowhead is SOLID, and stays byte-parity (REV-002)", () => {
+    // A dotted edge (`-.->`) must keep the dash on the wavy line but NOT on the
+    // arrowhead V (a "2 5" dash fragments the ~19px head). Static + runtime agree.
+    const { model, theme } = prepare("flowchart LR\nA[A] -.-> B[B]", { theme: "light" });
+    const { handle } = mountFakeH(
+      buildPayload(model, theme, { minimap: false, persist: false, style: "sketch" }),
+    );
+    const got = handle.toSvgString();
+    expect(got).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme, undefined, "sketch"));
+    // the open V arrowhead is a `fill="none"` path containing ` L ` (line-tos); it
+    // must be SOLID even though the dotted line dashes. The wavy line strokes are
+    // quadratics (` Q `), and the dotted dash is present on them.
+    const paths = got.match(/<path[^>]*\/>/g) ?? [];
+    const arrowPaths = paths.filter((p) => p.includes('fill="none"') && / L /.test(p));
+    expect(arrowPaths.length).toBeGreaterThanOrEqual(1); // an open V arrowhead exists
+    for (const p of arrowPaths) expect(p).not.toContain("stroke-dasharray"); // and it's solid
+    expect(got).toContain('stroke-dasharray="2 5"'); // the dotted line still dashes
+  });
+
+  it("SKETCH keeps state [*] pseudo-states as CLEAN circles in toSvgString (TEST-001)", () => {
+    // A state node carrying `stateMarker` must render as the clean solid-dot
+    // (start) / ringed circle (end) in the interactive + exported (Save SVG) view
+    // too, not a rough blob — parity with the static state SVG.
+    const model: PositionedModel = {
+      direction: "TB",
+      nodes: [
+        { id: "s", label: "", shape: "circle", classes: [], x: 60, y: 40, width: 22, height: 22, stateMarker: "start" },
+        { id: "Idle", label: "Idle", shape: "rounded", classes: [], x: 60, y: 140, width: 80, height: 40 },
+        { id: "e", label: "", shape: "circle", classes: [], x: 60, y: 240, width: 22, height: 22, stateMarker: "end" },
+      ],
+      edges: [
+        { from: "s", to: "Idle", kind: "solid", arrows: { start: false, end: true }, length: 2, points: [], path: "" },
+        { from: "Idle", to: "e", kind: "solid", arrows: { start: false, end: true }, length: 2, points: [], path: "" },
+      ],
+      subgraphs: [],
+      classDefs: new Map(),
+      bounds: { x: 0, y: 0, width: 120, height: 280 },
+    };
+    const theme = themes.light!;
+    const { handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false, style: "sketch" }));
+    const svg = handle.toSvgString();
+    expect(XMLValidator.validate(svg)).toBe(true);
+    // start = 1 solid dot; end = ring + inner dot → 3 <circle> total
+    expect((svg.match(/<circle/g) ?? []).length).toBe(3);
+    // the normal state is still rough (bowed quadratics); markers are NOT rough
+    expect(svg).toContain(" Q ");
+    // the end marker's ring is hollow, the start dot is filled
+    expect(svg).toMatch(/<circle[^>]*fill="none"[^>]*stroke=/);
+  });
+
+  it("SKETCH subgraph + every remaining shape stays byte-identical (light)", () => {
+    const dsl = [
+      "flowchart TD",
+      "subgraph G[Cluster One]",
+      "  Rn(Rounded)",
+      "  Sr[[Subroutine]]",
+      "  Ci((Circle))",
+      "end",
+      "Hx{{Hexagon}} --> Rn",
+      "Pl[/Parallel/] --> Sr",
+      "Pa[\\Alt Para\\] --> Ci",
+    ].join("\n");
+    const { model, theme } = prepare(dsl, { theme: "light" });
+    const { handle } = mountFakeH(
+      buildPayload(model, theme, { minimap: false, persist: false, style: "sketch" }),
+    );
+    const hx = model.nodes.find((n) => n.id === "Hx")!;
+    handle.importLayout({ version: 1, positions: { Hx: { x: hx.x - 24, y: hx.y - 16 } } });
+    const expected = renderSvgFromModel(editedModel(model, theme, handle), theme, undefined, "sketch");
+    expect(handle.toSvgString()).toBe(expected);
+  });
+
   // The first byte-parity loop drives only rect/diamond/stadium/cylinder and NO
   // subgraphs, so the inlined svgSubgraph() + the rounded / subroutine / circle /
   // hexagon / parallelogram / parallelogram-alt branches of svgShape() had no

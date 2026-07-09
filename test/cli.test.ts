@@ -108,6 +108,61 @@ describe("vnm CLI (child_process)", () => {
     expect(buf.subarray(0, 4).toString("hex")).toBe("89504e47");
   });
 
+  describe("sketch style (--style sketch)", () => {
+    it("renders hand-drawn SVG: rough paths + embedded @font-face, no triangle marker", () => {
+      const r = cli(["render", join(fixtures, "shapes-gallery.mmd"), "-f", "svg", "--style", "sketch"]);
+      expect(r.status).toBe(0);
+      expect(svgIsWellFormed(r.stdout)).toBe(true);
+      expect(r.stdout).toContain(" Q "); // rough bowed strokes
+      expect(r.stdout).toContain("@font-face"); // bundled handwriting font
+      expect(r.stdout).not.toContain("marker-end="); // open hand-drawn arrowheads
+    });
+
+    it("renders self-contained sketch HTML with zero external requests (-s shorthand)", () => {
+      const out = join(tmp, "sketch.html");
+      const r = cli(["render", join(fixtures, "auth-flow.mmd"), "-o", out, "-s", "sketch"]);
+      expect(r.status).toBe(0);
+      const html = readFileSync(out, "utf8");
+      expect(html).toContain('"style":"sketch"');
+      expect(hasExternalRequest(html)).toBe(false);
+    });
+
+    it("rejects an unknown --style value with a clear error", () => {
+      const r = cli(["render", join(fixtures, "auth-flow.mmd"), "-f", "svg", "--style", "bogus"]);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("unknown style");
+    });
+
+    it("renders native sequence as sketch SVG (rough + embedded font, no note)", () => {
+      const r = cli(["render", "-", "-f", "svg", "--style", "sketch"], "sequenceDiagram\n  A->>B: hi\n  B-->>A: ok\n");
+      expect(r.status).toBe(0);
+      expect(svgIsWellFormed(r.stdout)).toBe(true);
+      expect(r.stdout).toContain(" Q ");
+      expect(r.stdout).toContain("@font-face");
+      expect(r.stderr).not.toContain("[style]"); // sequence is supported → no note
+    });
+
+    it("renders native class + state as sketch SVG (rough + embedded font)", () => {
+      const cls = cli(["render", "-", "-f", "svg", "--style", "sketch"], "classDiagram\n  Animal <|-- Dog\n  class Animal {\n    +int age\n    +run()\n  }\n");
+      expect(cls.status).toBe(0);
+      expect(svgIsWellFormed(cls.stdout)).toBe(true);
+      expect(cls.stdout).toContain(" Q ");
+      expect(cls.stdout).toContain("@font-face");
+
+      const st = cli(["render", "-", "-f", "svg", "--style", "sketch"], "stateDiagram-v2\n  [*] --> Idle\n  Idle --> Running: go\n  Running --> [*]\n");
+      expect(st.status).toBe(0);
+      expect(svgIsWellFormed(st.stdout)).toBe(true);
+      expect(st.stdout).toContain(" Q ");
+      expect(st.stdout).toContain("@font-face");
+    });
+
+    it("notes (does not fail) that sketch is unsupported for the mermaid fallback tier", () => {
+      const r = cli(["render", "-", "-f", "svg", "--style", "sketch"], "pie\n  \"A\" : 60\n  \"B\" : 40\n");
+      // fallback may be unavailable in this env (jsdom) — if it rendered, expect the note
+      if (r.status === 0) expect(r.stderr).toContain("[style]");
+    });
+  });
+
   it("reads DSL from stdin via -", () => {
     const r = cli(["render", "-", "-f", "svg"], "flowchart LR\n A-->B-->C");
     expect(r.status).toBe(0);
@@ -159,7 +214,7 @@ describe("vnm CLI (child_process)", () => {
   });
 
   it("prints help and version", () => {
-    expect(cli(["--version"]).stdout).toContain("0.4.1");
+    expect(cli(["--version"]).stdout).toContain("0.5.0");
     expect(cli(["--help"]).stdout).toContain("render");
   });
 

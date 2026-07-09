@@ -1,0 +1,14 @@
+sequenceDiagram
+  actor User
+  participant CLI as vnm render --style sketch
+  participant RN as renderer<br/>(svg.ts · native · vnmRuntime)
+  participant RG as src/rough<br/>(seeded generator)
+  participant FT as sketch-font<br/>(Kalam base64)
+  User->>CLI: render diagram.mmd --style sketch
+  CLI->>RN: renderX({ style: "sketch" })
+  RN->>RG: roughShape / roughPolyline / openArrowhead (seed = node/edge id)
+  RG-->>RN: wobbly path d-strings (deterministic, no RNG)
+  RN->>FT: sketchFontFaceCss() + family
+  FT-->>RN: @font-face (base64 data URI) + font-family
+  RN-->>CLI: SVG - rough shapes + open arrowheads + embedded font
+  Note over RN: PNG → resvg registers the Kalam buffer · HTML/interactive → vnmRuntime inlines the SAME rough gen (byte-parity guard)

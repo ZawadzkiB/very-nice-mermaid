@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo report diagrams — sketch-style</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo report diagrams — <code>sketch-style</code></h1>
+    <p class="hint">As-built UML set (v0.5.0) · offline viewer · mermaid vendored with the plugin.</p>
+  </header>
+
+  <h2>As-built sketch pipeline (flow)</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  opt["style: clean | sketch<br/>CLI --style · renderX({style}) · &lt;very-nice-mermaid sketch&gt;"]:::io
+  rough["src/rough<br/>deterministic rough gen<br/>(seed=id · mulberry32 · Q-bowed strokes)"]:::proc
+  font["src/render/sketch-font.ts<br/>Kalam woff2 base64 (OFL)"]:::art
+  svg["svg.ts (flowchart)<br/>sketchShape + open arrowheads"]:::proc
+  native["native/{sequence,class,state}/svg.ts<br/>via sketch-svg.ts helper"]:::proc
+  runtime["vnmRuntime<br/>inlined rough MIRROR (byte-parity)<br/>clean state pseudo-markers"]:::proc
+  out1["SVG"]:::out
+  out2["PNG (resvg + Kalam buffer)"]:::out
+  out3["HTML / interactive"]:::out
+  opt --> rough
+  font --> svg
+  font --> native
+  font --> runtime
+  rough --> svg
+  rough --> native
+  rough --> runtime
+  svg --> out1
+  native --> out1
+  out1 --> out2
+  runtime --> out3
+  native --> out3
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111
+  </pre></div>
+
+  <h2>As-built structure (class)</h2>
+  <div class="diagram"><pre class="mermaid">
+classDiagram
+  class rough["src/rough (source of truth)"] {
+    +roughSeed(key) number
+    +roughShape(pts, key) fill+outline[]
+    +roughPolyline(pts, key) string[]
+    +openArrowhead(tip, from, size, key) string
+    +ellipsePoints() ; SKETCH consts
+  }
+  class runtimeRough["vnmRuntime inlined mirror"] {
+    +roughSeed / mulberry32 / roughStroke
+    +roughShape / roughPolyline / openArrowhead
+    +SK_* consts (== SKETCH)
+  }
+  class sketchFont["sketch-font.ts"] {
+    +SKETCH_FONT_FAMILY "Kalam"
+    +SKETCH_FONT_BASE64 (woff2)
+    +sketchFontFaceCss()
+  }
+  class sketchSvg["sketch-svg.ts (native helper)"] {
+    +sketchRectSvg / sketchEllipseSvg
+    +sketchLineSvg / sketchArrowSvg
+  }
+  rough <.. runtimeRough : MIRROR (byte-parity)
+  rough <.. sketchSvg : uses
+  sketchFont <.. sketchSvg
+  sketchFont <.. runtimeRough : rides payload
+  </pre></div>
+
+  <h2>Sketch render call (sequence)</h2>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  actor User
+  participant CLI as vnm render --style sketch
+  participant RN as renderer (svg / native / runtime)
+  participant RG as src/rough (seeded)
+  participant FT as sketch-font (Kalam)
+  User->>CLI: render diagram.mmd --style sketch
+  CLI->>RN: renderX({ style: "sketch" })
+  RN->>RG: roughShape / openArrowhead (seed = id)
+  RG-->>RN: wobbly d-strings (deterministic)
+  RN->>FT: sketchFontFaceCss() + family
+  FT-->>RN: @font-face base64 + family
+  RN-->>CLI: SVG (rough + open arrowheads + font)
+  Note over RN: PNG → resvg Kalam buffer · HTML → vnmRuntime inlines the same gen (parity)
+  </pre></div>
+
+  <script src="../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from ../../../resources/mermaid.min.js</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

@@ -28,6 +28,20 @@ import {
 import { readClassModel, layoutClass, renderClassSvg } from "../native/class/index.js";
 import { readStateModel, layoutState, renderStateSvg } from "../native/state/index.js";
 
+/**
+ * Surface (on the console) that `--style sketch` is dropped for a mermaid.js
+ * fallback type — the library twin of the CLI's note, so the drop isn't invisible
+ * to library / element callers (REV-003: the library surface must route AND
+ * report, not just the CLI). Native flowchart/sequence/class/state DO sketch.
+ */
+function warnSketchFallback(detected: string): void {
+  if (typeof console !== "undefined" && console.warn) {
+    console.warn(
+      `very-nice-mermaid: --style sketch is not supported for the mermaid.js fallback tier ('${detected}'); rendering in its normal style.`,
+    );
+  }
+}
+
 /** ASCII (FR4) is only meaningful for flowchart + sequence. */
 function asciiUnavailable(type: string): Error {
   return new Error(
@@ -48,13 +62,14 @@ export async function renderSvgAsync(dsl: string, opts: SvgRenderOptions = {}): 
     case "flowchart":
       return renderSvg(dsl, opts); // sync own-parser fast path — no mermaid
     case "sequence":
-      return renderSequenceSvg(layoutSequence(await readSequenceModel(dsl), { theme }), theme, opts.background);
+      return renderSequenceSvg(layoutSequence(await readSequenceModel(dsl), { theme }), theme, opts.background, opts.style);
     case "class":
-      return renderClassSvg(layoutClass(await readClassModel(dsl), { theme }), theme, opts.background);
+      return renderClassSvg(layoutClass(await readClassModel(dsl), { theme }), theme, opts.background, opts.style);
     case "state":
-      return renderStateSvg(layoutState(await readStateModel(dsl), { theme }), theme, opts.background);
+      return renderStateSvg(layoutState(await readStateModel(dsl), { theme }), theme, opts.background, opts.style);
     default: {
       const detected = c.detected ?? c.type;
+      if (opts.style === "sketch") warnSketchFallback(detected);
       const { svg } = await renderFallbackSvg(dsl, { theme, detected });
       return svg;
     }
@@ -76,6 +91,7 @@ export async function renderHtmlAsync(dsl: string, opts: HtmlExportOptions = {})
       return renderHtml(layoutState(await readStateModel(dsl), { theme }), opts);
     default: {
       const detected = c.detected ?? c.type;
+      if (opts.style === "sketch") warnSketchFallback(detected);
       const { svg } = await renderFallbackSvg(dsl, { theme, detected });
       return wrapFallbackHtml(svg, opts.title ?? detected, theme);
     }

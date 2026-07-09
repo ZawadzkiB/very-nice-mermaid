@@ -8,6 +8,7 @@
 import type { RenderInput } from "../render/prepare.js";
 import { prepare, ensureSyncRenderable } from "../render/prepare.js";
 import { resolveTheme, type Theme, type PartialTokenSet } from "../theme/index.js";
+import { SKETCH_FONT_FAMILY } from "../render/sketch-font.js";
 import { vnmRuntime } from "../render/dom/runtime.js";
 import { buildPayload, type InteractiveOptions } from "../render/dom/payload.js";
 import { isSequenceLayout, type SequenceLayout } from "../model/sequence.js";
@@ -60,6 +61,7 @@ export function renderHtml(
       fitPadding: opts.fitPadding,
       minScale: opts.minScale,
       maxScale: opts.maxScale,
+      style: opts.style,
     });
   }
   // Class + state are node-graphs: their ClassLayout/StateLayout already carry a
@@ -75,6 +77,9 @@ export function renderHtml(
   const json = embedJson(payload);
   const title = escHtml(opts.title ?? "Diagram");
   const bg = theme.tokens.colors.background;
+  // Sketch mode: the bundled @font-face ships inside the payload (the runtime
+  // injects it on boot, zero network); the document body just adopts the family.
+  const bodyFont = opts.style === "sketch" ? SKETCH_FONT_FAMILY : theme.tokens.font.family;
 
   return `<!doctype html>
 <html lang="en">
@@ -84,7 +89,7 @@ export function renderHtml(
 <title>${title}</title>
 <style>
   html, body { margin: 0; height: 100%; }
-  body { background: ${bg}; font-family: ${theme.tokens.font.family}; }
+  body { background: ${bg}; font-family: ${bodyFont}; }
   #vnm-root { position: absolute; inset: 0; }
   .vnm-node { box-sizing: border-box; }
   button { font-family: inherit; }

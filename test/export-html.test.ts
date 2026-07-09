@@ -65,6 +65,29 @@ describe("renderHtml: self-contained", () => {
     expect(stripped).not.toMatch(/https?:\/\//);
   });
 
+  it("sketch style embeds the handwriting font with ZERO external requests (data: allowed, http not)", () => {
+    const html = renderHtml("flowchart TD\nA[Start]-->B{Choice}-->C([Done])", {
+      theme: "light",
+      style: "sketch",
+      title: "Sketch",
+    });
+    // the payload carries the sketch axis + the bundled @font-face (base64)
+    expect(html).toContain('"style":"sketch"');
+    expect(html).toContain("@font-face");
+    expect(html).toContain("Kalam");
+    expect(html).toContain("url(data:font/woff2;base64,");
+    // still zero EXTERNAL requests: no <link>/<img>, no fetchable http(s) url
+    expect(html).not.toMatch(/<link\b/i);
+    expect(html).not.toMatch(/<img\b/i);
+    expect(html).not.toMatch(/<script[^>]+src=/i);
+    expect(html).not.toMatch(/@import/i);
+    const withoutNs = html.replace(/https?:\/\/www\.w3\.org\/[^"' )]*/g, "");
+    expect(withoutNs).not.toMatch(/https?:\/\//);
+    // a same-document `data:` URI (the embedded font) is fine; an EXTERNAL url() is
+    // not — the refined guard allows `url(#frag)` and `url(data:…)` but nothing else
+    expect(html).not.toMatch(/(^|[^\w-])url\(\s*['"]?(?!#|data:)/i);
+  });
+
   it("round-trips the embedded model", () => {
     const m = /var __vnm_payload = ([\s\S]*?);\nvnmRuntime/.exec(html);
     expect(m).not.toBeNull();

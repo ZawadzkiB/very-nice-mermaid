@@ -6,7 +6,7 @@
  */
 
 import type { SequenceLayout } from "../../model/sequence.js";
-import type { Theme } from "../../theme/index.js";
+import type { Theme, RenderStyle } from "../../theme/index.js";
 import {
   seqRuntime,
   type SeqRuntimePayload,
@@ -14,12 +14,15 @@ import {
   type SeqMinimapBox,
 } from "../../render/dom/seq-runtime.js";
 import { renderSequenceSvg } from "./svg.js";
+import { SKETCH_FONT_FAMILY } from "../../render/sketch-font.js";
 
 export interface SequenceInteractiveOptions {
   minimap?: boolean;
   fitPadding?: number;
   minScale?: number;
   maxScale?: number;
+  /** Drawing style axis (D1): `clean` (default) or hand-drawn `sketch`. */
+  style?: RenderStyle;
 }
 
 export interface SequenceHtmlOptions extends SequenceInteractiveOptions {
@@ -48,7 +51,9 @@ export function buildSequencePayload(
   const lines = layout.messages.map((m) => m.y - b.y);
 
   return {
-    svg: renderSequenceSvg(layout, theme, "transparent"),
+    // The static sketch SVG carries its own embedded @font-face, so the pan/zoom
+    // shell shows the hand-drawn look with zero network.
+    svg: renderSequenceSvg(layout, theme, "transparent", opts.style),
     cssVars: theme.cssVars(),
     bg: theme.tokens.colors.background,
     content: { width: b.width, height: b.height },
@@ -108,6 +113,9 @@ export function renderSequenceHtml(
   const json = embedJson(payload);
   const title = escHtml(opts.title ?? "Diagram");
   const bg = theme.tokens.colors.background;
+  // Sketch: the embedded SVG (in the payload) carries the @font-face; the shell
+  // body just adopts the handwriting family.
+  const bodyFont = opts.style === "sketch" ? SKETCH_FONT_FAMILY : theme.tokens.font.family;
 
   return `<!doctype html>
 <html lang="en">
@@ -117,7 +125,7 @@ export function renderSequenceHtml(
 <title>${title}</title>
 <style>
   html, body { margin: 0; height: 100%; }
-  body { background: ${bg}; font-family: ${theme.tokens.font.family}; }
+  body { background: ${bg}; font-family: ${bodyFont}; }
   #vnm-root { position: absolute; inset: 0; }
   button { font-family: inherit; }
 </style>

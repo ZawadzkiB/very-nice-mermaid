@@ -58,3 +58,17 @@ mermaid + jsdom are **lazy** so flowchart-only users pay nothing.
 - Features shipped: `feature-mermaid-render-toolkit` (v1, flowchart-only) and
   `feature-hybrid-diagram-engine` (v2, all types). Each `report/report.md` is the
   definitive as-built account.
+
+## v0.5.0 — sketch style (feature `sketch-style`, 2026-07-09)
+A **drawing-style axis** orthogonal to the color theme: `--style clean|sketch`
+(library `renderX({ style })`, element `sketch` attr). `sketch` renders an
+**Excalidraw-like hand-drawn look** — wobbly multi-stroke outlines, open `V`
+arrowheads, a bundled handwriting font — for flowchart + native sequence/class/
+state, across SVG/PNG/HTML/interactive. Only the mermaid fallback tier keeps its
+look (surfaced via a CLI note + library `console.warn`).
+- `src/rough/` — a deterministic (seeded, no RNG) rough-path generator; inlined
+  **byte-identically** into `vnmRuntime` (the recurring parity trap — see the
+  `dom-runtime-parity` guard). `src/render/sketch-svg.ts` shares the marks with the
+  native tiers; `src/render/sketch-font.ts` embeds the OFL **Kalam** woff2 as
+  base64 (`@font-face`, zero network; resvg-registered for PNG).
+- Clean mode is byte-unchanged (sketch is strictly additive `if (sketch)` forks).

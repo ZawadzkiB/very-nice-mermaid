@@ -9,11 +9,11 @@ import { extname } from "node:path";
 import { parse, ParseError } from "../parser/index.js";
 import { layout, applyPositions } from "../layout/index.js";
 import type { EdgeAnchorOverride } from "../geometry/index.js";
-import { resolveTheme, type Theme } from "../theme/index.js";
+import { resolveTheme, type Theme, type RenderStyle } from "../theme/index.js";
 import { renderSvg } from "../render/svg.js";
 import { renderMarkdown } from "../render/ascii.js";
 import { renderHtml } from "../export/html.js";
-import { renderPng, renderPngFromSvg } from "../export/png.js";
+import { renderPng, renderPngFromSvg, sketchFontRegistration } from "../export/png.js";
 import { classify } from "../mermaid/router.js";
 import { renderFallbackSvg } from "../mermaid/fallback.js";
 import {
@@ -34,12 +34,13 @@ import type { Diagnostic, PositionedModel } from "../model/index.js";
 
 type Format = "html" | "svg" | "png" | "md";
 
-const VERSION = "0.4.1";
+const VERSION = "0.5.0";
 
 interface RenderOpts {
   output?: string;
   format?: string;
   theme?: string;
+  style?: string;
   strict?: boolean;
   quiet?: boolean;
   layout?: string;
@@ -67,6 +68,7 @@ export async function run(argv: string[]): Promise<number> {
     .option("-o, --output <file>", "output file (default: stdout)")
     .option("-f, --format <fmt>", "html | svg | png | md (inferred from -o if omitted)")
     .option("-t, --theme <name|path>", "theme name (light|dark|fancy) or path to a theme .json", "light")
+    .option("-s, --style <clean|sketch>", "drawing style: clean (default) or hand-drawn sketch (flowchart)", "clean")
     .option("--strict", "treat parser warnings AND fallback degradations as errors")
     .option("--quiet", "mute info-level diagnostics (fallback notices) on stderr")
     .option("--layout <file>", "apply a portable layout.json (node positions, sizes, edge anchors)")
@@ -117,11 +119,25 @@ async function doRender(input: string, opts: RenderOpts): Promise<number> {
     return 1;
   }
 
+  // 3b. validate --style (the hand-drawn axis; only the flowchart tier honors it)
+  if (opts.style !== undefined && opts.style !== "clean" && opts.style !== "sketch") {
+    process.stderr.write(`error: unknown style '${opts.style}'; use clean|sketch\n`);
+    return 1;
+  }
+
   // 4. route by diagram type (fixes the silent-misparse bug: a known
   //    non-flowchart type goes to the mermaid.js fallback tier, not the
   //    flowchart parser). Header-less / garbage falls through to native, where
   //    the flowchart parser + the zero-node check (D6) still apply.
   const classification = await classify(dsl);
+  // Sketch renders natively for flowchart + sequence/class/state; only the
+  // mermaid.js FALLBACK tier keeps its own look — surface that (a note, not a
+  // failure) instead of a silent no-op.
+  if (opts.style === "sketch" && classification.tier === "fallback") {
+    process.stderr.write(
+      "vnm: note [style] --style sketch is not supported for the mermaid.js fallback tier; this diagram renders in its normal style\n",
+    );
+  }
   if (classification.tier === "fallback") {
     return doFallbackRender(dsl, classification.detected ?? classification.type, format, opts, theme);
   }
@@ -189,18 +205,20 @@ async function doClassRender(
 
   if (format === "md") return reportAsciiUnavailable("class", opts);
 
+  const style: RenderStyle = opts.style === "sketch" ? "sketch" : "clean";
+  const fonts = style === "sketch" ? sketchFontRegistration() : undefined;
   try {
     if (format === "png") {
       const scale = opts.scale ? Number(opts.scale) : 1;
-      const bytes = await renderPngFromSvg(renderClassSvg(cls, theme, opts.background), scale);
+      const bytes = await renderPngFromSvg(renderClassSvg(cls, theme, opts.background, style), scale, fonts);
       if (opts.output) writeFileSync(opts.output, bytes);
       else process.stdout.write(Buffer.from(bytes));
       return 0;
     }
     const out =
       format === "html"
-        ? renderHtml(cls.model, { theme, title: opts.title })
-        : renderClassSvg(cls, theme, opts.background);
+        ? renderHtml(cls.model, { theme, title: opts.title, style })
+        : renderClassSvg(cls, theme, opts.background, style);
     if (opts.output) writeFileSync(opts.output, out, "utf8");
     else process.stdout.write(out.endsWith("\n") ? out : out + "\n");
     return 0;
@@ -236,18 +254,20 @@ async function doStateRender(
 
   if (format === "md") return reportAsciiUnavailable("state", opts);
 
+  const style: RenderStyle = opts.style === "sketch" ? "sketch" : "clean";
+  const fonts = style === "sketch" ? sketchFontRegistration() : undefined;
   try {
     if (format === "png") {
       const scale = opts.scale ? Number(opts.scale) : 1;
-      const bytes = await renderPngFromSvg(renderStateSvg(st, theme, opts.background), scale);
+      const bytes = await renderPngFromSvg(renderStateSvg(st, theme, opts.background, style), scale, fonts);
       if (opts.output) writeFileSync(opts.output, bytes);
       else process.stdout.write(Buffer.from(bytes));
       return 0;
     }
     const out =
       format === "html"
-        ? renderHtml(st.model, { theme, title: opts.title })
-        : renderStateSvg(st, theme, opts.background);
+        ? renderHtml(st.model, { theme, title: opts.title, style })
+        : renderStateSvg(st, theme, opts.background, style);
     if (opts.output) writeFileSync(opts.output, out, "utf8");
     else process.stdout.write(out.endsWith("\n") ? out : out + "\n");
     return 0;
@@ -281,19 +301,21 @@ async function doSequenceRender(
     return 1;
   }
 
+  const style: RenderStyle = opts.style === "sketch" ? "sketch" : "clean";
+  const fonts = style === "sketch" ? sketchFontRegistration() : undefined;
   try {
     if (format === "png") {
       const scale = opts.scale ? Number(opts.scale) : 1;
-      const svg = renderSequenceSvg(layout, theme, opts.background);
-      const bytes = await renderPngFromSvg(svg, scale);
+      const svg = renderSequenceSvg(layout, theme, opts.background, style);
+      const bytes = await renderPngFromSvg(svg, scale, fonts);
       if (opts.output) writeFileSync(opts.output, bytes);
       else process.stdout.write(Buffer.from(bytes));
       return 0;
     }
     let out: string;
-    if (format === "html") out = renderSequenceHtml(layout, theme, { title: opts.title });
+    if (format === "html") out = renderSequenceHtml(layout, theme, { title: opts.title, style });
     else if (format === "md") out = renderSequenceMarkdown(layout);
-    else out = renderSequenceSvg(layout, theme, opts.background);
+    else out = renderSequenceSvg(layout, theme, opts.background, style);
     if (opts.output) writeFileSync(opts.output, out, "utf8");
     else process.stdout.write(out.endsWith("\n") ? out : out + "\n");
     return 0;
@@ -356,18 +378,19 @@ async function doNativeRender(
     }
   }
 
+  const style: RenderStyle = opts.style === "sketch" ? "sketch" : "clean";
   try {
     if (format === "png") {
       const scale = opts.scale ? Number(opts.scale) : 1;
-      const bytes = await renderPng(positioned, { theme, scale, background: opts.background });
+      const bytes = await renderPng(positioned, { theme, scale, background: opts.background, style });
       if (opts.output) writeFileSync(opts.output, bytes);
       else process.stdout.write(Buffer.from(bytes));
       return 0;
     }
     let out: string;
-    if (format === "html") out = renderHtml(positioned, { theme, title: opts.title });
+    if (format === "html") out = renderHtml(positioned, { theme, title: opts.title, style });
     else if (format === "md") out = renderMarkdown(positioned, { theme });
-    else out = renderSvg(positioned, { theme, background: opts.background });
+    else out = renderSvg(positioned, { theme, background: opts.background, style });
     if (opts.output) writeFileSync(opts.output, out, "utf8");
     else process.stdout.write(out.endsWith("\n") ? out : out + "\n");
     return 0;

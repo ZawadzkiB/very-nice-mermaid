@@ -1,0 +1,10 @@
+{
+  "slug": "sketch-style",
+  "updated": "2026-07-09",
+  "note": "As-built set (implement ②). flow.mmd is the plan-phase intended design, kept for the report before/after compare.",
+  "diagrams": [
+    { "kind": "flow", "file": ".gogo/work/feature-sketch-style/charts/flow-asbuilt.mmd", "title": "As-built: --style axis → src/rough + Kalam font → svg / runtime (parity) → SVG/PNG/HTML" },
+    { "kind": "class", "file": ".gogo/work/feature-sketch-style/charts/class-asbuilt.mmd", "title": "As-built structure: src/rough source of truth mirrored into vnmRuntime; sketch-font embedded" },
+    { "kind": "flow", "file": ".gogo/work/feature-sketch-style/charts/flow.mmd", "title": "Intended (plan phase): --style sketch → rough generator → shapes/arrows/font → all outputs (parity)" }
+  ]
+}

@@ -22,6 +22,12 @@ runtime and no headless browser**.
   markdown fence.
 - **Themes** — `light` / `dark` / `fancy` built in; define your own as a token
   set (JSON for the CLI, an object or CSS variables for the library).
+- **Sketch style** — a hand-drawn (Excalidraw-like) look via `--style sketch`:
+  wobbly multi-stroke outlines, open arrowheads, and a bundled handwriting font.
+  A separate axis from `--theme`, so it composes with any palette. Deterministic
+  and self-contained (the font embeds as base64 — zero network). Works for
+  flowchart, sequence, class, and state diagrams, across SVG / PNG / HTML /
+  interactive.
 
 ```
 mermaid DSL ──parse──▶ DiagramModel ──dagre──▶ PositionedModel ──┬─▶ interactive DOM (lib / web component / HTML)
@@ -67,12 +73,14 @@ mount(document.getElementById("diagram")!, `
 
 ## Gallery
 
-| Light | Dark |
-|---|---|
-| <img src="./assets/example-light.png" alt="light theme" width="360"> | <img src="./assets/example-dark.png" alt="dark theme" width="360"> |
+| Light | Dark | Sketch |
+|---|---|---|
+| <img src="./assets/example-light.png" alt="light theme" width="300"> | <img src="./assets/example-dark.png" alt="dark theme" width="300"> | <img src="./assets/example-sketch.png" alt="hand-drawn sketch style" width="300"> |
 
 Drag nodes to reorganize (edges re-route live), scroll to zoom, and the layout
-persists across reloads. `--theme fancy` adds curved edges and glow.
+persists across reloads. `--theme fancy` adds curved edges and glow;
+`--style sketch` renders the whole diagram hand-drawn (and still composes with
+any theme).
 
 ## Install
 
@@ -103,9 +111,10 @@ flowchart LR
 
 // Pure string renderers (work in Node and the browser):
 const svg = renderSvg(dsl, { theme: "dark" });     // → SVG string
+const sketch = renderSvg(dsl, { style: "sketch" }); // → hand-drawn SVG (composes with any theme)
 const md  = renderMarkdown(dsl);                    // → ```-fenced ASCII
-const html = renderHtml(dsl, { theme: "fancy" });   // → standalone interactive page
-const png = await renderPng(dsl, { scale: 2 });     // → Uint8Array (needs @resvg/resvg-js)
+const html = renderHtml(dsl, { theme: "fancy", style: "sketch" }); // → standalone interactive page
+const png = await renderPng(dsl, { scale: 2, style: "sketch" });   // → Uint8Array (needs @resvg/resvg-js)
 
 // Or work with the pipeline directly:
 const model = parse(dsl, { strict: false });        // → DiagramModel (+ warnings)
@@ -226,8 +235,9 @@ in). Prefer `await mountAsync(el, dsl, opts)` when you need the settled handle.
 ## Web component
 
 The `<very-nice-mermaid>` element self-registers on import. It reads the diagram
-from its inline text (or a `src` attribute) and a theme from the `theme`
-attribute — zero wrapper code in React / Angular / Vue / plain HTML.
+from its inline text (or a `src` attribute), a theme from the `theme` attribute,
+and the hand-drawn look from a boolean `sketch` attribute — zero wrapper code in
+React / Angular / Vue / plain HTML.
 
 ```html
 <script type="module">
@@ -235,6 +245,12 @@ attribute — zero wrapper code in React / Angular / Vue / plain HTML.
 </script>
 
 <very-nice-mermaid theme="dark" style="height: 420px">
+  flowchart LR
+    A[Start] --> B{Choice} --> C([Done])
+</very-nice-mermaid>
+
+<!-- hand-drawn: the boolean `sketch` attribute (separate from the CSS `style` attr) -->
+<very-nice-mermaid theme="light" sketch style="height: 420px">
   flowchart LR
     A[Start] --> B{Choice} --> C([Done])
 </very-nice-mermaid>
@@ -251,6 +267,7 @@ vnm render <file|-> [options]
   -o, --output <file>       output file (default: stdout)
   -f, --format <fmt>        html | svg | png | md   (inferred from -o if omitted)
   -t, --theme <name|path>   light | dark | fancy, or a theme .json file
+  -s, --style <clean|sketch> drawing style: clean (default) or hand-drawn sketch
       --strict              treat parser warnings as errors
       --layout <file>       apply a portable layout.json (node positions + sizes)
       --scale <n>           PNG scale factor (HiDPI)
@@ -261,9 +278,13 @@ vnm render <file|-> [options]
 ```bash
 vnm render diagram.mmd -o diagram.html --theme dark   # interactive page
 vnm render diagram.mmd -o diagram.svg                 # static SVG
+vnm render diagram.mmd -o sketch.svg --style sketch   # hand-drawn look
 vnm render diagram.mmd -o diagram.png --scale 2       # HiDPI PNG
 cat diagram.mmd | vnm render - -f md                  # ASCII to stdout
 ```
+
+`--style sketch` composes with any `--theme` and works for flowchart / sequence /
+class / state diagrams (the mermaid.js fallback types keep their own look).
 
 Format is inferred from the `-o` extension; diagnostics go to **stderr** with
 `line:col`; exit code is non-zero on error. Both `vnm` and `very-nice-mermaid`

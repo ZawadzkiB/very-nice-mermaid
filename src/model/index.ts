@@ -127,6 +127,13 @@ export interface PositionedNode extends DiagramNode {
   y: number;
   width: number;
   height: number;
+  /**
+   * A state diagram's `[*]` pseudo-state marker (start = solid dot, end = ringed
+   * circle). Set by `layoutState`; read only by the interactive/exported **sketch**
+   * renderer so it draws the clean marker instead of a rough blob (parity with the
+   * static state SVG — TEST-001). Absent for every other node.
+   */
+  stateMarker?: "start" | "end";
 }
 
 /** An edge routed through concrete waypoints. */

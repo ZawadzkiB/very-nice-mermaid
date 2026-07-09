@@ -1,0 +1,10 @@
+{
+  "slug": "sketch-style",
+  "updated": "2026-07-09",
+  "note": "As-built UML set (report ⑤) for v0.5.0. No before/ set — plan ① drew no as-is baseline.",
+  "diagrams": [
+    { "kind": "flow", "file": ".gogo/work/feature-sketch-style/report/flow.mmd", "title": "As-built sketch pipeline: --style axis → src/rough + Kalam font → svg / native / runtime (parity) → SVG/PNG/HTML" },
+    { "kind": "class", "file": ".gogo/work/feature-sketch-style/report/class.mmd", "title": "As-built structure: src/rough source of truth mirrored into vnmRuntime + reused by the native sketch-svg helper; sketch-font embedded" },
+    { "kind": "sequence", "file": ".gogo/work/feature-sketch-style/report/sequence.mmd", "title": "A --style sketch render call: renderer → seeded rough gen + embedded font → hand-drawn output (PNG via resvg, HTML via the inlined runtime)" }
+  ]
+}

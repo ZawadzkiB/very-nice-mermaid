@@ -12,8 +12,12 @@
 import type { PositionedNode, RoutedEdge } from "../../model/index.js";
 import type { ClassLayout, ClassEntity, ClassRelation, ClassRelationType } from "../../model/class.js";
 import type { Theme } from "../../theme/index.js";
+import type { RenderStyle } from "../../theme/index.js";
 import { n } from "../../geometry/index.js";
 import { escapeXml, escapeXmlAttr } from "../../render/style.js";
+import { SKETCH_FONT_FAMILY } from "../../render/sketch-font.js";
+import { sketchFontDefs, sketchRectSvg, sketchLineSvg } from "../../render/sketch-svg.js";
+import { roughPolyline } from "../../rough/index.js";
 import { classCardLines } from "./card.js";
 
 /** Which marker id renders a given relation's decorative head. */
@@ -33,9 +37,15 @@ function markerFor(type: ClassRelationType): string {
 }
 
 /** Render a positioned class layout to a standalone SVG string. */
-export function renderClassSvg(layout: ClassLayout, theme: Theme, background?: string): string {
+export function renderClassSvg(
+  layout: ClassLayout,
+  theme: Theme,
+  background?: string,
+  style: RenderStyle = "clean",
+): string {
   const b = layout.model.bounds;
   const t = theme.tokens;
+  const sketch = style === "sketch";
   const byId = new Map<string, ClassEntity>(layout.classes.map((c) => [c.id, c]));
   const parts: string[] = [];
 
@@ -43,10 +53,10 @@ export function renderClassSvg(layout: ClassLayout, theme: Theme, background?: s
     `<svg xmlns="http://www.w3.org/2000/svg" width="${n(b.width)}" height="${n(
       b.height,
     )}" viewBox="${n(b.x)} ${n(b.y)} ${n(b.width)} ${n(b.height)}" font-family="${escapeXmlAttr(
-      t.font.family,
+      sketch ? SKETCH_FONT_FAMILY : t.font.family,
     )}">`,
   );
-  parts.push(defs(theme));
+  parts.push(defs(theme, sketch));
 
   if (background !== "transparent") {
     parts.push(
@@ -59,19 +69,19 @@ export function renderClassSvg(layout: ClassLayout, theme: Theme, background?: s
   // relations behind the cards
   const count = Math.min(layout.model.edges.length, layout.relations.length);
   for (let i = 0; i < count; i++) {
-    parts.push(renderRelation(layout.model.edges[i]!, layout.relations[i]!, theme));
+    parts.push(renderRelation(layout.model.edges[i]!, layout.relations[i]!, theme, sketch));
   }
   // class cards on top
   for (const node of layout.model.nodes) {
     const entity = byId.get(node.id);
-    if (entity) parts.push(renderCard(node, entity, theme));
+    if (entity) parts.push(renderCard(node, entity, theme, sketch));
   }
 
   parts.push("</svg>");
   return parts.join("\n");
 }
 
-function defs(theme: Theme): string {
+function defs(theme: Theme, sketch: boolean): string {
   const t = theme.tokens;
   const edge = t.colors.edge;
   const fill = t.colors.surface;
@@ -97,11 +107,12 @@ function defs(theme: Theme): string {
     `<marker id="vnm-cls-open" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse">` +
     `<path d="M1 1 L11 6 L1 11" fill="none" stroke="${edge}" stroke-width="1.4"/></marker>` +
     shadow +
+    (sketch ? sketchFontDefs() : "") +
     `</defs>`
   );
 }
 
-function renderRelation(edge: RoutedEdge, rel: ClassRelation, theme: Theme): string {
+function renderRelation(edge: RoutedEdge, rel: ClassRelation, theme: Theme, sketch: boolean): string {
   const t = theme.tokens;
   const dashed = rel.type === "realization" || rel.type === "dependency";
   const dash = dashed ? ` stroke-dasharray="6 4"` : "";
@@ -109,9 +120,18 @@ function renderRelation(edge: RoutedEdge, rel: ClassRelation, theme: Theme): str
     rel.head === "from"
       ? ` marker-start="url(#${markerFor(rel.type)})"`
       : ` marker-end="url(#${markerFor(rel.type)})"`;
-  const parts = [
-    `<path d="${edge.path}" fill="none" stroke="${t.colors.edge}" stroke-width="${t.edge.width}" stroke-linejoin="round" stroke-linecap="round"${dash}${marker}/>`,
-  ];
+  const parts: string[] = [];
+  if (sketch) {
+    const pts = edge.points.map((p) => [p.x, p.y] as [number, number]);
+    const key = edge.from + "->" + edge.to;
+    const strokeAttr = `fill="none" stroke="${t.colors.edge}" stroke-width="${t.edge.width}" stroke-linejoin="round" stroke-linecap="round"`;
+    const ds = roughPolyline(pts, key);
+    ds.forEach((d, i) => parts.push(`<path d="${d}" ${strokeAttr}${dash}${i === 0 ? marker : ""}/>`));
+  } else {
+    parts.push(
+      `<path d="${edge.path}" fill="none" stroke="${t.colors.edge}" stroke-width="${t.edge.width}" stroke-linejoin="round" stroke-linecap="round"${dash}${marker}/>`,
+    );
+  }
   if (edge.label && edge.labelPos) {
     parts.push(edgeLabel(edge.label, edge.labelPos.x, edge.labelPos.y, theme));
   }
@@ -132,7 +152,7 @@ function edgeLabel(label: string, cx: number, cy: number, theme: Theme): string 
   );
 }
 
-function renderCard(node: PositionedNode, entity: ClassEntity, theme: Theme): string {
+function renderCard(node: PositionedNode, entity: ClassEntity, theme: Theme, sketch: boolean): string {
   const t = theme.tokens;
   const lines = classCardLines(entity);
   const x = node.x - node.width / 2;
@@ -141,15 +161,19 @@ function renderCard(node: PositionedNode, entity: ClassEntity, theme: Theme): st
   const padX = t.spacing.nodePadX;
   const padY = t.spacing.nodePadY;
   const lh = t.font.lineHeight;
-  const shadow = t.effects.gradient ? ` filter="url(#vnm-shadow)"` : "";
+  const shadow = t.effects.gradient && !sketch ? ` filter="url(#vnm-shadow)"` : "";
 
   const parts: string[] = [`<g${shadow}>`];
   // card
-  parts.push(
-    `<rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(
-      node.height,
-    )}" rx="${t.radii.card}" fill="${t.colors.surface}" stroke="${t.colors.surfaceStroke}" stroke-width="1.5"/>`,
-  );
+  if (sketch) {
+    parts.push(sketchRectSvg(x, y, w, node.height, t.colors.surface, t.colors.surfaceStroke, "1.5", node.id));
+  } else {
+    parts.push(
+      `<rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(
+        node.height,
+      )}" rx="${t.radii.card}" fill="${t.colors.surface}" stroke="${t.colors.surfaceStroke}" stroke-width="1.5"/>`,
+    );
+  }
 
   const hasBody = lines.members.length + lines.methods.length > 0;
   const headerCount = lines.header.length;
@@ -164,12 +188,14 @@ function renderCard(node: PositionedNode, entity: ClassEntity, theme: Theme): st
     );
   });
 
-  const divider = (dy: number) =>
-    `<line x1="${n(x)}" y1="${n(dy)}" x2="${n(x + w)}" y2="${n(dy)}" stroke="${
-      t.colors.surfaceStroke
-    }" stroke-width="1"/>`;
+  const divider = (dy: number, idx: number) =>
+    sketch
+      ? sketchLineSvg([[x, dy], [x + w, dy]], t.colors.surfaceStroke, "1", node.id + "#d" + idx)
+      : `<line x1="${n(x)}" y1="${n(dy)}" x2="${n(x + w)}" y2="${n(dy)}" stroke="${
+          t.colors.surfaceStroke
+        }" stroke-width="1"/>`;
 
-  if (hasBody) parts.push(divider(y + padY + headerCount * lh));
+  if (hasBody) parts.push(divider(y + padY + headerCount * lh, 0));
 
   // member rows (left-aligned)
   lines.members.forEach((line, j) => {
@@ -178,7 +204,7 @@ function renderCard(node: PositionedNode, entity: ClassEntity, theme: Theme): st
   });
 
   if (lines.members.length > 0 && lines.methods.length > 0) {
-    parts.push(divider(y + padY + (headerCount + lines.members.length) * lh));
+    parts.push(divider(y + padY + (headerCount + lines.members.length) * lh, 1));
   }
 
   // method rows (left-aligned)

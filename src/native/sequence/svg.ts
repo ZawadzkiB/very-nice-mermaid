@@ -8,27 +8,32 @@
 
 import type { SequenceLayout, PositionedParticipant, PositionedMessage } from "../../model/sequence.js";
 import type { Theme } from "../../theme/index.js";
+import type { RenderStyle } from "../../theme/index.js";
 import { n } from "../../geometry/index.js";
 import { escapeXml, escapeXmlAttr } from "../../render/style.js";
+import { SKETCH_FONT_FAMILY } from "../../render/sketch-font.js";
+import { sketchFontDefs, sketchRectSvg, sketchLineSvg, sketchArrowSvg } from "../../render/sketch-svg.js";
 
 /** Render a positioned sequence layout to a standalone SVG string. */
 export function renderSequenceSvg(
   layout: SequenceLayout,
   theme: Theme,
   background?: string,
+  style: RenderStyle = "clean",
 ): string {
   const b = layout.bounds;
   const t = theme.tokens;
+  const sketch = style === "sketch";
   const parts: string[] = [];
 
   parts.push(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${n(b.width)}" height="${n(
       b.height,
     )}" viewBox="${n(b.x)} ${n(b.y)} ${n(b.width)} ${n(b.height)}" font-family="${escapeXmlAttr(
-      t.font.family,
+      sketch ? SKETCH_FONT_FAMILY : t.font.family,
     )}">`,
   );
-  parts.push(defs(theme));
+  parts.push(defs(theme, sketch));
 
   if (background !== "transparent") {
     parts.push(
@@ -39,20 +44,20 @@ export function renderSequenceSvg(
   }
 
   // lifelines behind everything
-  for (const p of layout.participants) parts.push(renderLifeline(p, layout, theme));
+  for (const p of layout.participants) parts.push(renderLifeline(p, layout, theme, sketch));
   // messages (arrows + labels)
-  for (const m of layout.messages) parts.push(renderMessage(m, theme));
+  layout.messages.forEach((m, i) => parts.push(renderMessage(m, theme, sketch, i)));
   // participant boxes on top (top row + mirrored bottom row)
   for (const p of layout.participants) {
-    parts.push(renderParticipant(p, layout.boxTop, theme));
-    parts.push(renderParticipant(p, layout.boxBottom, theme));
+    parts.push(renderParticipant(p, layout.boxTop, theme, sketch, "t"));
+    parts.push(renderParticipant(p, layout.boxBottom, theme, sketch, "b"));
   }
 
   parts.push("</svg>");
   return parts.join("\n");
 }
 
-function defs(theme: Theme): string {
+function defs(theme: Theme, sketch: boolean): string {
   const t = theme.tokens;
   const a = t.edge.arrowSize;
   const shadow = t.effects.gradient
@@ -64,12 +69,30 @@ function defs(theme: Theme): string {
     `<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${a}" markerHeight="${a}" orient="auto-start-reverse">` +
     `<path d="M0 0 L10 5 L0 10 z" fill="${t.colors.edge}"/></marker>` +
     shadow +
+    (sketch ? sketchFontDefs() : "") +
     `</defs>`
   );
 }
 
-function renderLifeline(p: PositionedParticipant, layout: SequenceLayout, theme: Theme): string {
+function renderLifeline(
+  p: PositionedParticipant,
+  layout: SequenceLayout,
+  theme: Theme,
+  sketch: boolean,
+): string {
   const t = theme.tokens;
+  if (sketch) {
+    return sketchLineSvg(
+      [
+        [p.x, layout.lifelineTop],
+        [p.x, layout.lifelineBottom],
+      ],
+      t.colors.edge,
+      1,
+      "life:" + p.id,
+      ' stroke-dasharray="4 4"',
+    );
+  }
   return (
     `<line x1="${n(p.x)}" y1="${n(layout.lifelineTop)}" x2="${n(p.x)}" y2="${n(
       layout.lifelineBottom,
@@ -77,15 +100,22 @@ function renderLifeline(p: PositionedParticipant, layout: SequenceLayout, theme:
   );
 }
 
-function renderParticipant(p: PositionedParticipant, cy: number, theme: Theme): string {
+function renderParticipant(
+  p: PositionedParticipant,
+  cy: number,
+  theme: Theme,
+  sketch: boolean,
+  posKey: string,
+): string {
   const t = theme.tokens;
   const x = p.x - p.width / 2;
   const y = cy - p.height / 2;
-  const shadow = t.effects.gradient ? ` filter="url(#vnm-shadow)"` : "";
-  const rect =
-    `<rect x="${n(x)}" y="${n(y)}" width="${n(p.width)}" height="${n(
-      p.height,
-    )}" rx="${t.radii.card}" fill="${t.colors.surface}" stroke="${t.colors.surfaceStroke}" stroke-width="1.5"/>`;
+  const shadow = t.effects.gradient && !sketch ? ` filter="url(#vnm-shadow)"` : "";
+  const rect = sketch
+    ? sketchRectSvg(x, y, p.width, p.height, t.colors.surface, t.colors.surfaceStroke, "1.5", "p:" + p.id + "@" + posKey)
+    : `<rect x="${n(x)}" y="${n(y)}" width="${n(p.width)}" height="${n(
+        p.height,
+      )}" rx="${t.radii.card}" fill="${t.colors.surface}" stroke="${t.colors.surfaceStroke}" stroke-width="1.5"/>`;
   const text =
     `<text x="${n(p.x)}" y="${n(cy)}" fill="${t.colors.text}" font-size="${t.font.size}" font-weight="${
       t.font.weight
@@ -93,11 +123,39 @@ function renderParticipant(p: PositionedParticipant, cy: number, theme: Theme): 
   return `<g${shadow}>${rect}${text}</g>`;
 }
 
-function renderMessage(m: PositionedMessage, theme: Theme): string {
+function renderMessage(m: PositionedMessage, theme: Theme, sketch: boolean, index: number): string {
   const t = theme.tokens;
   const dash = m.kind === "dashed" ? ` stroke-dasharray="6 4"` : "";
   const marker = m.arrowEnd ? ` marker-end="url(#vnm-arrow)"` : "";
   const parts: string[] = [];
+
+  if (sketch) {
+    const dashAttr = m.kind === "dashed" ? ' stroke-dasharray="6 4"' : "";
+    const key = "msg:" + index;
+    let pts: [number, number][];
+    if (m.self && m.loopWidth && m.loopHeight) {
+      const x = m.fromX,
+        w = m.loopWidth,
+        h = m.loopHeight;
+      pts = [
+        [x, m.y],
+        [x + w, m.y],
+        [x + w, m.y + h],
+        [x, m.y + h],
+      ];
+    } else {
+      pts = [
+        [m.fromX, m.y],
+        [m.toX, m.y],
+      ];
+    }
+    parts.push(sketchLineSvg(pts, t.colors.edge, t.edge.width, key, dashAttr));
+    const mlen = pts.length;
+    if (m.arrowEnd && mlen >= 2)
+      parts.push(sketchArrowSvg(pts[mlen - 1]!, pts[mlen - 2]!, t.edge.arrowSize, t.colors.edge, t.edge.width, key + "@end"));
+    if (m.label) parts.push(messageLabel(m.label, m.labelX, m.labelY, theme));
+    return parts.join("");
+  }
 
   if (m.self && m.loopWidth && m.loopHeight) {
     const x = m.fromX;

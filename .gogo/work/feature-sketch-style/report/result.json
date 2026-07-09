@@ -1,0 +1,23 @@
+{
+  "phase": "report",
+  "status": "ok",
+  "slug": "sketch-style",
+  "validated_in": true,
+  "validated_out": true,
+  "inputs": {
+    "plan": ".gogo/work/feature-sketch-style/plan.md",
+    "decisions": ".gogo/work/feature-sketch-style/decisions.md",
+    "review": ".gogo/work/feature-sketch-style/review/issues.json",
+    "test": ".gogo/work/feature-sketch-style/test/issues.json",
+    "charts": ".gogo/work/feature-sketch-style/charts/manifest.json"
+  },
+  "outputs": {
+    "report": ".gogo/work/feature-sketch-style/report/report.md",
+    "diagrams": [".gogo/work/feature-sketch-style/report/flow.mmd", ".gogo/work/feature-sketch-style/report/class.mmd", ".gogo/work/feature-sketch-style/report/sequence.mmd"],
+    "manifest": ".gogo/work/feature-sketch-style/report/manifest.json",
+    "viewer": ".gogo/work/feature-sketch-style/report/diagrams.html",
+    "knowledge_updated": ["project-knowledge.md", "tech-stack.md", "code-review-standards.md"]
+  },
+  "summary": "Green run. Shipped the --style clean|sketch axis (Excalidraw-like hand-drawn mode) across flowchart + sequence/class/state, every output, deterministic + zero-network, v0.5.0. Review APPROVED (REV-001 accepted; REV-002/003 fixed). Test GREEN (TEST-001 fixed, TEST-002 accepted); unit 339 + e2e 73. As-built UML set (flow/class/sequence) + report written; knowledge docs updated. Feature at awaiting-uat.",
+  "gaps": "none (clean green run); follow-ups: hachure fill, optional lazy font subpath, optional invalid-style warn"
+}

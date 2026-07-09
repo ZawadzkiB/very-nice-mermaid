@@ -13,7 +13,7 @@
  */
 
 import type { SerializedModel, StyleDef } from "../../model/index.js";
-import type { EdgeStyle, TokenSet } from "../../theme/index.js";
+import type { EdgeStyle, TokenSet, RenderStyle } from "../../theme/index.js";
 
 export interface RuntimeTheme {
   name: string;
@@ -27,6 +27,8 @@ export interface RuntimeOptions {
   minimap: boolean;
   minScale: number;
   maxScale: number;
+  /** Drawing style axis (D1): `clean` (default) or hand-drawn `sketch`. */
+  style?: RenderStyle;
 }
 
 export interface RuntimePayload {
@@ -34,6 +36,13 @@ export interface RuntimePayload {
   theme: RuntimeTheme;
   cssVars: string;
   options: RuntimeOptions;
+  /**
+   * Sketch-mode font, present only in sketch: the bundled `@font-face` CSS
+   * (base64, zero network) injected on boot, and the family string the SVG
+   * serializer stamps. Rides the payload because the runtime is
+   * `.toString()`-serialized and cannot import `sketch-font.ts`.
+   */
+  sketch?: { fontFace: string; fontFamily: string };
 }
 
 export interface LayoutData {
@@ -93,6 +102,17 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   const opt = payload.options;
   let tokens = payload.theme.tokens;
   let edgeStyle = payload.theme.edgeStyle;
+  // Sketch (hand-drawn) mode: cards go transparent and every node/edge is drawn
+  // via the inlined rough generator (ROUGH-PARITY below). The @font-face rides
+  // the payload (the runtime can't import it) and is injected on boot.
+  const sketch = opt.style === "sketch";
+  // Sketch look constants — mirror src/rough SKETCH (ROUGH-PARITY). Declared here
+  // (not in the geometry block below) so the node-shape setup can read them.
+  const SK_ROUGHNESS = 2.4;
+  const SK_BOWING = 2.2;
+  const SK_OUTLINE_STROKES = 2;
+  const SK_ELLIPSE_STEPS = 22;
+  const SK_FILL_ROUGHNESS = 1.2;
 
   const offsetX = model.bounds.x;
   const offsetY = model.bounds.y;
@@ -134,6 +154,14 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   );
   if (getComputedStyle(root).position === "static") root.style.position = "relative";
   root.appendChild(viewport);
+
+  // Inject the bundled handwriting @font-face (sketch mode) — self-contained
+  // base64, no network. Scoped to this viewport so multiple mounts don't clash.
+  if (sketch && payload.sketch) {
+    const fontStyle = doc.createElement("style");
+    fontStyle.textContent = payload.sketch.fontFace;
+    viewport.appendChild(fontStyle);
+  }
 
   const world = doc.createElement("div");
   world.className = "vnm-world";
@@ -263,6 +291,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     /** dagre detour bends (offset-removed) for multi-rank / back edges. */
     waypoints?: Array<{ x: number; y: number }>;
     path: SVGPathElement;
+    /** Sketch mode only: a separate SOLID path for the open arrowhead (REV-002),
+     *  so the line's dotted dash never fragments the V. */
+    headPath?: SVGPathElement;
     plate?: SVGRectElement;
     text?: SVGTextElement;
   }
@@ -275,10 +306,24 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     path.setAttribute("stroke-linejoin", "round");
     path.setAttribute("stroke-linecap", "round");
     if (e.kind === "dotted") path.setAttribute("stroke-dasharray", "2 5");
-    if (e.arrows.end) path.setAttribute("marker-end", "url(#vnm-arrow)");
-    if (e.arrows.start) path.setAttribute("marker-start", "url(#vnm-arrow)");
+    // Clean mode uses the triangle marker; sketch mode draws its own open
+    // arrowheads directly into the (multi-subpath) edge `d`, so no marker.
+    if (!sketch && e.arrows.end) path.setAttribute("marker-end", "url(#vnm-arrow)");
+    if (!sketch && e.arrows.start) path.setAttribute("marker-start", "url(#vnm-arrow)");
     svg.appendChild(path);
     const rec: EdgeEls = { from: e.from, to: e.to, kind: e.kind, arrows: e.arrows, path };
+    // Sketch: a separate SOLID arrowhead path (never dashed), so a dotted line's
+    // dash can't fragment the open V (REV-002).
+    if (sketch && (e.arrows.end || e.arrows.start)) {
+      const head = doc.createElementNS(SVGNS, "path");
+      head.setAttribute("fill", "none");
+      head.setAttribute("stroke", "var(--vnm-edge)");
+      head.setAttribute("stroke-width", String(e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width));
+      head.setAttribute("stroke-linejoin", "round");
+      head.setAttribute("stroke-linecap", "round");
+      svg.appendChild(head);
+      rec.headPath = head;
+    }
     if (e.waypoints && e.waypoints.length) {
       rec.waypoints = e.waypoints.map((p) => ({ x: p.x - offsetX, y: p.y - offsetY }));
     }
@@ -319,6 +364,94 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     card.appendChild(inner);
     world.appendChild(card);
     cards[nd.id] = card;
+  }
+
+  // ---- sketch node outlines (D2 / FR2) ----
+  // In sketch mode each node's visible body is a rough SVG outline drawn in the
+  // edge layer (behind the transparent card): one soft fill path + N wobbly
+  // outline strokes (+ a subroutine's side bars). Re-generated on drag/resize
+  // from the live box; seeded by node id so the wobble is stable (ROUGH-PARITY
+  // with src/render/svg.ts sketchShape).
+  interface NodeShapeEls {
+    fill: SVGPathElement;
+    strokes: SVGPathElement[];
+  }
+  const nodeShapeEls: Record<string, NodeShapeEls> = {};
+  // State `[*]` pseudo-state markers stay CLEAN even in sketch (a solid dot for
+  // start, a ringed circle for end) — mirrors the static state SVG (TEST-001).
+  const stateMarkerEls: Record<string, SVGCircleElement[]> = {};
+  if (sketch) {
+    for (const nd of model.nodes) {
+      if (nd.stateMarker) {
+        const circles: SVGCircleElement[] = [];
+        const mk = (): SVGCircleElement => {
+          const c = doc.createElementNS(SVGNS, "circle") as SVGCircleElement;
+          svg.appendChild(c);
+          circles.push(c);
+          return c;
+        };
+        if (nd.stateMarker === "start") {
+          mk().setAttribute("fill", tokens.colors.text); // solid dot
+        } else {
+          const ring = mk(); // ringed "end" circle
+          ring.setAttribute("fill", "none");
+          ring.setAttribute("stroke", tokens.colors.text);
+          ring.setAttribute("stroke-width", "1.5");
+          mk().setAttribute("fill", tokens.colors.text); // inner dot
+        }
+        stateMarkerEls[nd.id] = circles;
+        continue;
+      }
+      const st = styleForNode(nd.id, nd.classes, nd.style);
+      const sw = st.strokeWidth ?? "1.5";
+      const fillEl = doc.createElementNS(SVGNS, "path");
+      fillEl.setAttribute("fill", st.fill);
+      fillEl.setAttribute("stroke", "none");
+      svg.appendChild(fillEl);
+      const probe = sketchShapePoints(nd.shape, 0, 0, 100, 100);
+      const strokeCount = SK_OUTLINE_STROKES + probe.extras.length * SK_OUTLINE_STROKES;
+      const strokes: SVGPathElement[] = [];
+      for (let i = 0; i < strokeCount; i++) {
+        const p = doc.createElementNS(SVGNS, "path");
+        p.setAttribute("fill", "none");
+        p.setAttribute("stroke", st.stroke);
+        p.setAttribute("stroke-width", sw);
+        p.setAttribute("stroke-linejoin", "round");
+        p.setAttribute("stroke-linecap", "round");
+        if (st.strokeDasharray) p.setAttribute("stroke-dasharray", st.strokeDasharray);
+        svg.appendChild(p);
+        strokes.push(p);
+      }
+      nodeShapeEls[nd.id] = { fill: fillEl, strokes };
+    }
+  }
+  // Regenerate one node's rough outline from its live box (sketch mode).
+  function renderNodeShape(id: string): void {
+    const markers = stateMarkerEls[id];
+    if (markers) {
+      const mp = positions[id]!;
+      const ms = sizes[id]!;
+      const r = Math.min(9, ms.w / 2);
+      for (const c of markers) {
+        c.setAttribute("cx", String(nAt(mp.x)));
+        c.setAttribute("cy", String(nAt(mp.y)));
+      }
+      markers[0]!.setAttribute("r", String(nAt(r))); // dot (start) or ring (end)
+      if (markers[1]) markers[1].setAttribute("r", String(nAt(r - 4))); // end inner dot
+      return;
+    }
+    const els = nodeShapeEls[id];
+    if (!els) return;
+    const p = positions[id]!;
+    const s = sizes[id]!;
+    const { pts, extras } = sketchShapePoints(shapeById[id]!, p.x - s.w / 2, p.y - s.h / 2, s.w, s.h);
+    const rs = roughShape(pts, id);
+    els.fill.setAttribute("d", rs.fill);
+    const ds: string[] = rs.outline.slice();
+    extras.forEach((seg, i) => {
+      for (const d of roughPolyline(seg, id + "#x" + i)) ds.push(d);
+    });
+    els.strokes.forEach((el, i) => el.setAttribute("d", ds[i] ?? ""));
   }
 
   // ---- resize handles (FR1) ----
@@ -509,6 +642,130 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   // ================= geometry (inlined, mirrors src/geometry) =================
   function nAt(v: number): number {
     return Math.round(v * 100) / 100;
+  }
+
+  // ========== rough sketch generator — MIRRORS src/rough (ROUGH-PARITY) ========
+  // Byte-identical to src/rough/index.ts so toSvgString() matches renderSvg in
+  // sketch mode. `nAt` here == src/rough's `rn` (both round to 2 decimals). The
+  // SK_* constants are declared at the top of vnmRuntime (used earlier too).
+  // If you change a function here, change its twin there.
+  function roughSeed(key: string): number {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < key.length; i++) {
+      h ^= key.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h >>> 0;
+  }
+  function mulberry32(seed: number): () => number {
+    let a = seed >>> 0;
+    return function (): number {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function roughStroke(pts: number[][], closed: boolean, rand: () => number, rough: number, bow: number): string {
+    if (pts.length === 0) return "";
+    const jv: number[][] = pts.map((p) => [p[0]! + (rand() * 2 - 1) * rough, p[1]! + (rand() * 2 - 1) * rough]);
+    const seq: number[][] = closed ? [...jv, jv[0]!] : jv;
+    let d = "M " + nAt(seq[0]![0]!) + " " + nAt(seq[0]![1]!);
+    for (let i = 1; i < seq.length; i++) {
+      const ax = seq[i - 1]![0]!;
+      const ay = seq[i - 1]![1]!;
+      const bx = seq[i]![0]!;
+      const by = seq[i]![1]!;
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const px = -(by - ay) / len;
+      const py = (bx - ax) / len;
+      const k = (rand() * 2 - 1) * bow;
+      const cx = (ax + bx) / 2 + px * k;
+      const cy = (ay + by) / 2 + py * k;
+      d += " Q " + nAt(cx) + " " + nAt(cy) + " " + nAt(bx) + " " + nAt(by);
+    }
+    if (closed) d += " Z";
+    return d;
+  }
+  function roughShape(pts: number[][], key: string): { fill: string; outline: string[] } {
+    const fill = roughStroke(pts, true, mulberry32(roughSeed(key + "#f")), SK_FILL_ROUGHNESS, SK_BOWING);
+    const outline: string[] = [];
+    for (let s = 0; s < SK_OUTLINE_STROKES; s++) {
+      outline.push(roughStroke(pts, true, mulberry32(roughSeed(key + "#o" + s)), SK_ROUGHNESS, SK_BOWING));
+    }
+    return { fill, outline };
+  }
+  function sketchEllipsePoints(cx: number, cy: number, rx: number, ry: number): number[][] {
+    const pts: number[][] = [];
+    for (let i = 0; i < SK_ELLIPSE_STEPS; i++) {
+      const a = (i / SK_ELLIPSE_STEPS) * Math.PI * 2;
+      pts.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]);
+    }
+    return pts;
+  }
+  function roughPolyline(pts: number[][], key: string): string[] {
+    const out: string[] = [];
+    for (let s = 0; s < SK_OUTLINE_STROKES; s++) {
+      out.push(roughStroke(pts, false, mulberry32(roughSeed(key + "#e" + s)), SK_ROUGHNESS * 0.8, SK_BOWING * 0.8));
+    }
+    return out;
+  }
+  function openArrowhead(tip: number[], from: number[], size: number, key: string): string {
+    const ang = Math.atan2(tip[1]! - from[1]!, tip[0]! - from[0]!);
+    const r = mulberry32(roughSeed(key + "#a"));
+    const spread = 0.52;
+    const len = size * 2.1;
+    const a1 = ang + Math.PI - spread + (r() * 2 - 1) * 0.12;
+    const a2 = ang + Math.PI + spread + (r() * 2 - 1) * 0.12;
+    const l1 = len * (1 + (r() * 2 - 1) * 0.14);
+    const l2 = len * (1 + (r() * 2 - 1) * 0.14);
+    const b1x = tip[0]! + Math.cos(a1) * l1;
+    const b1y = tip[1]! + Math.sin(a1) * l1;
+    const b2x = tip[0]! + Math.cos(a2) * l2;
+    const b2y = tip[1]! + Math.sin(a2) * l2;
+    return "M " + nAt(b1x) + " " + nAt(b1y) + " L " + nAt(tip[0]!) + " " + nAt(tip[1]!) + " L " + nAt(b2x) + " " + nAt(b2y);
+  }
+  function sketchShapePoints(shape: string, x: number, y: number, w: number, h: number): { pts: number[][]; extras: number[][][] } {
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    if (shape === "circle") return { pts: sketchEllipsePoints(cx, cy, w / 2, h / 2), extras: [] };
+    if (shape === "diamond") return { pts: [[cx, y], [x + w, cy], [cx, y + h], [x, cy]], extras: [] };
+    if (shape === "hexagon") {
+      const k = Math.min(w * 0.22, h * 0.5);
+      return { pts: [[x + k, y], [x + w - k, y], [x + w, cy], [x + w - k, y + h], [x + k, y + h], [x, cy]], extras: [] };
+    }
+    if (shape === "parallelogram") {
+      const k = Math.min(w * 0.22, h);
+      return { pts: [[x + k, y], [x + w, y], [x + w - k, y + h], [x, y + h]], extras: [] };
+    }
+    if (shape === "parallelogram-alt") {
+      const k = Math.min(w * 0.22, h);
+      return { pts: [[x, y], [x + w - k, y], [x + w, y + h], [x + k, y + h]], extras: [] };
+    }
+    if (shape === "subroutine") {
+      const inset = 6;
+      return {
+        pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]],
+        extras: [[[x + inset, y], [x + inset, y + h]], [[x + w - inset, y], [x + w - inset, y + h]]],
+      };
+    }
+    return { pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]], extras: [] };
+  }
+  // Live-edge sketch `d`s, split so the LINE can carry the dotted dash while the
+  // open arrowhead stays SOLID (REV-002) — they go to two separate <path>s.
+  function sketchEdgeParts(
+    pts: Array<{ x: number; y: number }>,
+    key: string,
+    arrows: { start: boolean; end: boolean },
+    size: number,
+  ): { line: string; head: string } {
+    const arr = pts.map((p) => [p.x, p.y]);
+    const line = roughPolyline(arr, key).join(" ");
+    const m = arr.length;
+    let head = "";
+    if (arrows.end && m >= 2) head += openArrowhead(arr[m - 1]!, arr[m - 2]!, size, key + "@end");
+    if (arrows.start && m >= 2) head += (head ? " " : "") + openArrowhead(arr[0]!, arr[1]!, size, key + "@start");
+    return { line, head };
   }
   // mirrors geometry.simplify(): drop duplicate + exactly-collinear waypoints
   // so the interactive elbow route matches the static SVG point-for-point.
@@ -863,7 +1120,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     toId: string,
     waypoints?: Pt[],
     ports?: Ports,
-  ): { path: string; labelPos: Pt } {
+  ): { path: string; labelPos: Pt; points: Pt[] } {
     const fp = positions[fromId]!;
     const tp = positions[toId]!;
     const fs = sizes[fromId]!;
@@ -935,6 +1192,18 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
         : st.strokeWidth
       : "1.5px";
     const borderStyle = st.strokeDasharray ? "dashed" : "solid";
+    // Sketch mode: the visible node body is the rough SVG outline drawn behind the
+    // card (nodeShapeEls), so the card itself is a transparent, borderless text +
+    // hit-area layer. Keep size/padding/cursor/font so drag + text still work.
+    if (sketch) {
+      return (
+        "position:absolute;box-sizing:border-box;display:flex;align-items:center;justify-content:center;" +
+        "width:" + s.w + "px;height:" + s.h + "px;padding:0 " + tokens.spacing.nodePadX + "px;" +
+        "cursor:grab;transition:transform .12s ease;" +
+        "font-size:var(--vnm-font-size);font-weight:var(--vnm-font-weight);" +
+        "background:transparent;border:0;color:" + st.text + ";"
+      );
+    }
     return (
       "position:absolute;box-sizing:border-box;display:flex;align-items:center;justify-content:center;" +
       "width:" + s.w + "px;height:" + s.h + "px;padding:0 " + tokens.spacing.nodePadX + "px;" +
@@ -951,6 +1220,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     const s = sizes[id]!;
     card.style.left = p.x - s.w / 2 + "px";
     card.style.top = p.y - s.h / 2 + "px";
+    if (sketch) renderNodeShape(id);
   }
   function renderNodes(): void {
     for (const id in cards) {
@@ -962,7 +1232,15 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     const ports = computePorts();
     edgeEls.forEach((e, i) => {
       const routed = routeEdgePath(e.from, e.to, e.waypoints, ports[i]);
-      e.path.setAttribute("d", routed.path);
+      // Sketch: the line (rough strokes, may be dashed) and the SOLID open
+      // arrowhead go to two separate paths so a dotted dash can't fragment the V.
+      if (sketch) {
+        const sk = sketchEdgeParts(routed.points, e.from + "->" + e.to, e.arrows, tokens.edge.arrowSize);
+        e.path.setAttribute("d", sk.line);
+        if (e.headPath) e.headPath.setAttribute("d", sk.head);
+      } else {
+        e.path.setAttribute("d", routed.path);
+      }
       if (e.plate && e.text && e.label) {
         const lp = routed.labelPos;
         const w = e.label.length * (tokens.font.size * 0.62) + 10;
@@ -1490,6 +1768,25 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     for (const nd of model.nodes) {
       const st = styleForNode(nd.id, nd.classes, nd.style);
       cards[nd.id]!.setAttribute("style", cardStyle(nd.id, st));
+      // Sketch node bodies are literal-colored SVG paths (not CSS-var driven),
+      // so refresh their fill/stroke from the new theme.
+      const els = nodeShapeEls[nd.id];
+      if (els) {
+        els.fill.setAttribute("fill", st.fill);
+        const sw = st.strokeWidth ?? "1.5";
+        for (const p of els.strokes) {
+          p.setAttribute("stroke", st.stroke);
+          p.setAttribute("stroke-width", sw);
+        }
+      }
+      // Refresh state pseudo-state marker colors (literal text color) too.
+      const markers = stateMarkerEls[nd.id];
+      if (markers) {
+        for (const c of markers) {
+          if (c.getAttribute("fill") === "none") c.setAttribute("stroke", tokens.colors.text);
+          else c.setAttribute("fill", tokens.colors.text);
+        }
+      }
     }
     renderAll();
   }
@@ -1528,10 +1825,13 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       ? '<filter id="vnm-shadow" x="-30%" y="-30%" width="160%" height="160%">' +
         '<feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter>'
       : "";
+    // Mirror src/render/svg.ts defs(): sketch embeds the bundled @font-face
+    // (rides the payload — the runtime can't import sketch-font.ts).
+    const font = sketch && payload.sketch ? "<style>" + payload.sketch.fontFace + "</style>" : "";
     return (
       '<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + a +
       '" markerHeight="' + a + '" orient="auto-start-reverse">' +
-      '<path d="M0 0 L10 5 L0 10 z" fill="' + tokens.colors.edge + '"/></marker>' + shadow + "</defs>"
+      '<path d="M0 0 L10 5 L0 10 z" fill="' + tokens.colors.edge + '"/></marker>' + shadow + font + "</defs>"
     );
   }
   // Recompute the container box in ABSOLUTE coords from its live member boxes —
@@ -1577,27 +1877,63 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     });
     return out;
   }
-  function svgEdge(e: EdgeEls, path: string, labelPos: Pt): string {
+  function svgEdge(e: EdgeEls, path: string, labelPos: Pt, points: Pt[]): string {
     const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
     const dash = e.kind === "dotted" ? ' stroke-dasharray="2 5"' : "";
-    const mEnd = e.arrows.end ? ' marker-end="url(#vnm-arrow)"' : "";
-    const mStart = e.arrows.start ? ' marker-start="url(#vnm-arrow)"' : "";
-    let out =
-      '<path d="' + path + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width +
-      '" stroke-linejoin="round" stroke-linecap="round"' + dash + mStart + mEnd + "/>";
+    let out: string;
+    if (sketch) {
+      // Mirror src/render/svg.ts sketchEdgePath: rough strokes + open arrowheads
+      // from the routed polyline, all as separate <path>s (byte-parity). The line
+      // carries the dotted dash; the arrowhead is always SOLID (REV-002).
+      const key = e.from + "->" + e.to;
+      const arr = points.map((p) => [p.x, p.y]);
+      const base =
+        ' fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width +
+        '" stroke-linejoin="round" stroke-linecap="round"';
+      const lineStroke = base + dash;
+      let s = "";
+      for (const d of roughPolyline(arr, key)) s += '<path d="' + d + '"' + lineStroke + "/>";
+      const m = arr.length;
+      if (e.arrows.end && m >= 2)
+        s += '<path d="' + openArrowhead(arr[m - 1]!, arr[m - 2]!, tokens.edge.arrowSize, key + "@end") + '"' + base + "/>";
+      if (e.arrows.start && m >= 2)
+        s += '<path d="' + openArrowhead(arr[0]!, arr[1]!, tokens.edge.arrowSize, key + "@start") + '"' + base + "/>";
+      out = s;
+    } else {
+      const mEnd = e.arrows.end ? ' marker-end="url(#vnm-arrow)"' : "";
+      const mStart = e.arrows.start ? ' marker-start="url(#vnm-arrow)"' : "";
+      out =
+        '<path d="' + path + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width +
+        '" stroke-linejoin="round" stroke-linecap="round"' + dash + mStart + mEnd + "/>";
+    }
     if (e.label && labelPos) out += svgEdgeLabel(e.label, labelPos.x, labelPos.y);
     return out;
   }
   function svgPolygon(pts: number[][], common: string): string {
     return '<polygon points="' + pts.map((p) => nAt(p[0]!) + "," + nAt(p[1]!)).join(" ") + '" ' + common + "/>";
   }
-  function svgShape(shape: string, box: Box, fill: string, stroke: string, sw: string, dash: string): string {
+  function svgShape(shape: string, box: Box, fill: string, stroke: string, sw: string, dash: string, key: string): string {
     const x = box.x - box.w / 2;
     const y = box.y - box.h / 2;
     const w = box.w;
     const h = box.h;
     const cx = box.x;
     const cy = box.y;
+    if (sketch) {
+      // Mirror src/render/svg.ts sketchShape: soft rough fill + N wobbly outline
+      // strokes (+ subroutine side bars), byte-identical for toSvgString parity.
+      const sp = sketchShapePoints(shape, x, y, w, h);
+      const rs = roughShape(sp.pts, key);
+      const strokeAttr =
+        ' fill="none" stroke="' + stroke + '" stroke-width="' + sw +
+        '" stroke-linejoin="round" stroke-linecap="round"' + dash;
+      let out = '<path d="' + rs.fill + '" fill="' + fill + '" stroke="none"/>';
+      for (const d of rs.outline) out += '<path d="' + d + '"' + strokeAttr + "/>";
+      sp.extras.forEach((seg, i) => {
+        for (const d of roughPolyline(seg, key + "#x" + i)) out += '<path d="' + d + '"' + strokeAttr + "/>";
+      });
+      return out;
+    }
     const common = 'fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + sw + '"' + dash;
     const rect = (rx: number): string =>
       '<rect x="' + nAt(x) + '" y="' + nAt(y) + '" width="' + nAt(w) + '" height="' + nAt(h) + '" rx="' + rx + '" ' + common + "/>";
@@ -1658,12 +1994,28 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       .join("");
   }
   function svgNode(node: SvgNode): string {
+    // Sketch: a state pseudo-state stays a CLEAN marker in the serialized SVG too
+    // (Save SVG / PNG), matching the static state renderer (TEST-001).
+    if (sketch && node.stateMarker) {
+      const b = absBox(node.id);
+      const r = Math.min(9, b.w / 2);
+      const cx = nAt(b.x);
+      const cy = nAt(b.y);
+      const col = tokens.colors.text;
+      if (node.stateMarker === "start") {
+        return '<circle cx="' + cx + '" cy="' + cy + '" r="' + nAt(r) + '" fill="' + col + '"/>';
+      }
+      return (
+        '<circle cx="' + cx + '" cy="' + cy + '" r="' + nAt(r) + '" fill="none" stroke="' + col + '" stroke-width="1.5"/>' +
+        '<circle cx="' + cx + '" cy="' + cy + '" r="' + nAt(r - 4) + '" fill="' + col + '"/>'
+      );
+    }
     const box = absBox(node.id);
     const st = styleForNode(node.id, node.classes, node.style);
-    const shadow = tokens.effects.gradient ? ' filter="url(#vnm-shadow)"' : "";
+    const shadow = tokens.effects.gradient && !sketch ? ' filter="url(#vnm-shadow)"' : "";
     const sw = xmlAttr(st.strokeWidth ?? "1.5");
     const dash = st.strokeDasharray ? ' stroke-dasharray="' + xmlAttr(st.strokeDasharray) + '"' : "";
-    const shape = svgShape(node.shape, box, xmlAttr(st.fill), xmlAttr(st.stroke), sw, dash);
+    const shape = svgShape(node.shape, box, xmlAttr(st.fill), xmlAttr(st.stroke), sw, dash, node.id);
     const text = svgNodeText(node, box, xmlAttr(st.text));
     return "<g" + shadow + ">" + shape + text + "</g>";
   }
@@ -1704,14 +2056,14 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : undefined;
       const r = routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
       for (const p of r.points) allPts.push(p);
-      edgeParts.push(svgEdge(e, r.path, r.labelPos));
+      edgeParts.push(svgEdge(e, r.path, r.labelPos, r.points));
     });
     const b = boundsAbs(boxes, allPts);
     const parts: string[] = [];
     parts.push(
       '<svg xmlns="http://www.w3.org/2000/svg" width="' + nAt(b.width) + '" height="' + nAt(b.height) +
         '" viewBox="' + nAt(b.x) + " " + nAt(b.y) + " " + nAt(b.width) + " " + nAt(b.height) +
-        '" font-family="' + xmlAttr(tokens.font.family) + '">',
+        '" font-family="' + xmlAttr(sketch && payload.sketch ? payload.sketch.fontFamily : tokens.font.family) + '">',
     );
     parts.push(svgDefs());
     parts.push(

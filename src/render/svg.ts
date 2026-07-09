@@ -11,9 +11,11 @@ import type {
   PositionedSubgraph,
 } from "../model/index.js";
 import { n } from "../geometry/index.js";
-import type { Theme, PartialTokenSet } from "../theme/index.js";
+import type { Theme, PartialTokenSet, RenderStyle } from "../theme/index.js";
 import { resolveTheme } from "../theme/index.js";
 import { resolveNodeStyle } from "./style.js";
+import { roughShape, roughPolyline, openArrowhead, ellipsePoints, type Pt } from "../rough/index.js";
+import { SKETCH_FONT_FAMILY, sketchFontFaceCss } from "./sketch-font.js";
 import { prepare, ensureSyncRenderable, type RenderInput } from "./prepare.js";
 import { isSequenceLayout, type SequenceLayout } from "../model/sequence.js";
 import { renderSequenceSvg } from "../native/sequence/svg.js";
@@ -27,6 +29,8 @@ export interface SvgRenderOptions {
   strict?: boolean;
   /** Background fill; pass `"transparent"` to omit the background rect. */
   background?: string;
+  /** Drawing style axis (D1): `clean` (default) or hand-drawn `sketch`. */
+  style?: RenderStyle;
 }
 
 /** Render a diagram to a standalone SVG string. */
@@ -45,7 +49,7 @@ export function renderSvg(
   }
   ensureSyncRenderable(input, "renderSvgAsync");
   const prepared = prepare(input, { theme: opts.theme, strict: opts.strict });
-  return renderSvgFromModel(prepared.model, prepared.theme, opts.background);
+  return renderSvgFromModel(prepared.model, prepared.theme, opts.background, opts.style);
 }
 
 /** Render an already-positioned model + theme to SVG. */
@@ -53,20 +57,22 @@ export function renderSvgFromModel(
   model: PositionedModel,
   theme: Theme,
   background?: string,
+  style: RenderStyle = "clean",
 ): string {
   const b = model.bounds;
   const t = theme.tokens;
+  const sketch = style === "sketch";
   const parts: string[] = [];
 
   parts.push(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${n(b.width)}" height="${n(
       b.height,
     )}" viewBox="${n(b.x)} ${n(b.y)} ${n(b.width)} ${n(b.height)}" font-family="${escAttr(
-      t.font.family,
+      sketch ? SKETCH_FONT_FAMILY : t.font.family,
     )}">`,
   );
 
-  parts.push(defs(theme));
+  parts.push(defs(theme, sketch));
 
   if (background !== "transparent") {
     parts.push(
@@ -77,25 +83,29 @@ export function renderSvgFromModel(
   }
 
   for (const sg of model.subgraphs) parts.push(renderSubgraph(sg, theme));
-  for (const edge of model.edges) parts.push(renderEdge(edge, theme));
-  for (const node of model.nodes) parts.push(renderNode(node, model, theme));
+  for (const edge of model.edges) parts.push(renderEdge(edge, theme, sketch));
+  for (const node of model.nodes) parts.push(renderNode(node, model, theme, sketch));
 
   parts.push("</svg>");
   return parts.join("\n");
 }
 
-function defs(theme: Theme): string {
+function defs(theme: Theme, sketch: boolean): string {
   const t = theme.tokens;
   const a = t.edge.arrowSize;
   const shadow = t.effects.gradient
     ? `<filter id="vnm-shadow" x="-30%" y="-30%" width="160%" height="160%">` +
       `<feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter>`
     : "";
+  // Sketch mode embeds the handwriting @font-face (base64, zero network) so the
+  // standalone SVG is portable, and draws its own open arrowheads (no marker).
+  const font = sketch ? `<style>${sketchFontFaceCss()}</style>` : "";
   return (
     `<defs>` +
     `<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${a}" markerHeight="${a}" orient="auto-start-reverse">` +
     `<path d="M0 0 L10 5 L0 10 z" fill="${t.colors.edge}"/></marker>` +
     shadow +
+    font +
     `</defs>`
   );
 }
@@ -119,17 +129,44 @@ function renderSubgraph(sg: PositionedSubgraph, theme: Theme): string {
   return parts.join("");
 }
 
-function renderEdge(edge: RoutedEdge, theme: Theme): string {
+function renderEdge(edge: RoutedEdge, theme: Theme, sketch: boolean): string {
   const t = theme.tokens;
   const width = edge.kind === "thick" ? t.edge.thickWidth : t.edge.width;
   const dash =
     edge.kind === "dotted" ? ` stroke-dasharray="2 5"` : "";
-  const markerEnd = edge.arrows.end ? ` marker-end="url(#vnm-arrow)"` : "";
-  const markerStart = edge.arrows.start ? ` marker-start="url(#vnm-arrow)"` : "";
-  const parts = [
-    `<path d="${edge.path}" fill="none" stroke="${t.colors.edge}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"${dash}${markerStart}${markerEnd}/>`,
-  ];
+  const parts: string[] = [];
+  if (sketch) {
+    parts.push(sketchEdgePath(edge, t.colors.edge, width, dash, t.edge.arrowSize));
+  } else {
+    const markerEnd = edge.arrows.end ? ` marker-end="url(#vnm-arrow)"` : "";
+    const markerStart = edge.arrows.start ? ` marker-start="url(#vnm-arrow)"` : "";
+    parts.push(
+      `<path d="${edge.path}" fill="none" stroke="${t.colors.edge}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"${dash}${markerStart}${markerEnd}/>`,
+    );
+  }
   if (edge.label && edge.labelPos) parts.push(edgeLabel(edge.label, edge.labelPos.x, edge.labelPos.y, theme));
+  return parts.join("");
+}
+
+/**
+ * SKETCH-PARITY: a hand-drawn edge — the routed polyline as N wobbly strokes +
+ * open `V` arrowheads at the arrowed endpoints. Mirrored in `vnmRuntime`
+ * (svgEdge sketch branch) — keep the two in lockstep.
+ */
+function sketchEdgePath(edge: RoutedEdge, color: string, width: number, dash: string, arrowSize: number): string {
+  const key = edge.from + "->" + edge.to;
+  const pts: Pt[] = edge.points.map((p) => [p.x, p.y]);
+  const base = ` fill="none" stroke="${color}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"`;
+  // The line carries the dotted dash; the open arrowhead is always SOLID (a "2 5"
+  // dash chops a ~19px V into fragments — REV-002).
+  const lineStroke = base + dash;
+  const parts: string[] = [];
+  for (const d of roughPolyline(pts, key)) parts.push(`<path d="${d}"${lineStroke}/>`);
+  const m = pts.length;
+  if (edge.arrows.end && m >= 2)
+    parts.push(`<path d="${openArrowhead(pts[m - 1]!, pts[m - 2]!, arrowSize, key + "@end")}"${base}/>`);
+  if (edge.arrows.start && m >= 2)
+    parts.push(`<path d="${openArrowhead(pts[0]!, pts[1]!, arrowSize, key + "@start")}"${base}/>`);
   return parts.join("");
 }
 
@@ -155,18 +192,83 @@ function edgeLabel(label: string, cx: number, cy: number, theme: Theme): string 
   return parts.join("");
 }
 
-function renderNode(node: PositionedNode, model: PositionedModel, theme: Theme): string {
+function renderNode(node: PositionedNode, model: PositionedModel, theme: Theme, sketch: boolean): string {
   const t = theme.tokens;
   const s = resolveNodeStyle(node, model.classDefs, theme);
-  const shadow = t.effects.gradient ? ` filter="url(#vnm-shadow)"` : "";
+  const shadow = t.effects.gradient && !sketch ? ` filter="url(#vnm-shadow)"` : "";
   // Style values originate from user `style`/`classDef` statements. They are
   // already allowlist-sanitized in the parser (see isSafeStyleValue); escaping
   // them here too is defense in depth so nothing can break out of an attribute.
   const strokeWidth = escAttr(s.strokeWidth ?? "1.5");
   const dash = s.strokeDasharray ? ` stroke-dasharray="${escAttr(s.strokeDasharray)}"` : "";
-  const shape = nodeShape(node, escAttr(s.fill), escAttr(s.stroke), strokeWidth, dash);
+  const shape = sketch
+    ? sketchShape(node, escAttr(s.fill), escAttr(s.stroke), strokeWidth, dash)
+    : nodeShape(node, escAttr(s.fill), escAttr(s.stroke), strokeWidth, dash);
   const text = nodeText(node, escAttr(s.text), theme);
   return `<g${shadow}>${shape}${text}</g>`;
+}
+
+/**
+ * SKETCH-PARITY: the clean-geometry vertices of a shape (+ any extra open
+ * strokes, e.g. a subroutine's side bars) that the rough generator wobbles.
+ * Mirrored verbatim in `vnmRuntime` (sketchShapePoints) — keep in lockstep.
+ */
+function sketchShapePoints(
+  shape: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): { pts: Pt[]; extras: Pt[][] } {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  switch (shape) {
+    case "circle":
+      return { pts: ellipsePoints(cx, cy, w / 2, h / 2), extras: [] };
+    case "diamond":
+      return { pts: [[cx, y], [x + w, cy], [cx, y + h], [x, cy]], extras: [] };
+    case "hexagon": {
+      const k = Math.min(w * 0.22, h * 0.5);
+      return { pts: [[x + k, y], [x + w - k, y], [x + w, cy], [x + w - k, y + h], [x + k, y + h], [x, cy]], extras: [] };
+    }
+    case "parallelogram": {
+      const k = Math.min(w * 0.22, h);
+      return { pts: [[x + k, y], [x + w, y], [x + w - k, y + h], [x, y + h]], extras: [] };
+    }
+    case "parallelogram-alt": {
+      const k = Math.min(w * 0.22, h);
+      return { pts: [[x, y], [x + w - k, y], [x + w, y + h], [x + k, y + h]], extras: [] };
+    }
+    case "subroutine": {
+      const inset = 6;
+      return {
+        pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]],
+        extras: [[[x + inset, y], [x + inset, y + h]], [[x + w - inset, y], [x + w - inset, y + h]]],
+      };
+    }
+    default:
+      // rect / rounded / stadium / cylinder / default → a hand-drawn box
+      return { pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]], extras: [] };
+  }
+}
+
+/**
+ * SKETCH-PARITY: a hand-drawn node — a soft rough fill under N wobbly outline
+ * strokes, plus any extra open strokes. Mirrored in `vnmRuntime` (svgShape
+ * sketch branch) — keep in lockstep.
+ */
+function sketchShape(node: PositionedNode, fill: string, stroke: string, strokeWidth: string, dash: string): string {
+  const x = node.x - node.width / 2;
+  const y = node.y - node.height / 2;
+  const { pts, extras } = sketchShapePoints(node.shape, x, y, node.width, node.height);
+  const rs = roughShape(pts, node.id);
+  const strokeAttr = ` fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round"${dash}`;
+  const parts: string[] = [`<path d="${rs.fill}" fill="${fill}" stroke="none"/>`];
+  for (const d of rs.outline) parts.push(`<path d="${d}"${strokeAttr}/>`);
+  extras.forEach((seg, i) => {
+    for (const d of roughPolyline(seg, node.id + "#x" + i)) parts.push(`<path d="${d}"${strokeAttr}/>`);
+  });
+  return parts.join("");
 }
 
 function nodeShape(

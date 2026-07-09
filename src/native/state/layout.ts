@@ -32,6 +32,13 @@ const BOUNDS_PADDING = 20;
 export function layoutState(model: StateModel, opts: StateLayoutOptions = {}): StateLayout {
   const theme = opts.theme ?? themes.light!;
   const pseudo = new Set(model.states.filter((s) => s.kind !== "normal").map((s) => s.id));
+  // start/end per pseudo-state id, so the interactive/exported sketch view can draw
+  // the same clean marker the static SVG does (TEST-001).
+  const pseudoKind = new Map<string, "start" | "end">(
+    model.states
+      .filter((s) => s.kind === "start" || s.kind === "end")
+      .map((s) => [s.id, s.kind === "start" ? "start" : "end"] as [string, "start" | "end"]),
+  );
 
   const nodes: DiagramNode[] = model.states.map((s) => ({
     id: s.id,
@@ -75,7 +82,10 @@ export function layoutState(model: StateModel, opts: StateLayoutOptions = {}): S
       ? { x: nd.x, y: nd.y, width: PSEUDO, height: PSEUDO, shape: nd.shape }
       : { x: nd.x, y: nd.y, width: nd.width, height: nd.height, shape: nd.shape };
     boxes.set(nd.id, box);
-    return { ...nd, width: box.width, height: box.height };
+    const out: PositionedNode = { ...nd, width: box.width, height: box.height };
+    const marker = pseudoKind.get(nd.id);
+    if (marker) out.stateMarker = marker;
+    return out;
   });
 
   // Recompute the perimeter port channels against the shrunk pseudo-state boxes

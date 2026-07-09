@@ -1,0 +1,47 @@
+{
+  "phase": "implement",
+  "status": "ok",
+  "slug": "sketch-style",
+  "round": 2,
+  "validated_in": true,
+  "validated_out": true,
+  "inputs": {
+    "plan": ".gogo/work/feature-sketch-style/plan.md",
+    "knowledge": ["coding-rules.md", "tech-stack.md"],
+    "decision": "D6=B (expand sketch to all native tiers)"
+  },
+  "outputs": {
+    "created": [
+      "src/rough/index.ts",
+      "src/render/sketch-font.ts",
+      "src/render/sketch-svg.ts",
+      "assets/fonts/Kalam-Regular.woff2",
+      "assets/fonts/OFL.txt",
+      "test/rough.test.ts",
+      "test/render-svg-sketch.test.ts",
+      "test/render-native-sketch.test.ts"
+    ],
+    "modified": [
+      "src/theme/index.ts",
+      "src/render/svg.ts",
+      "src/render/dom/runtime.ts",
+      "src/render/dom/payload.ts",
+      "src/native/svg (sequence/class/state)",
+      "src/native/sequence/interactive.ts",
+      "src/render/route.ts",
+      "src/export/html.ts",
+      "src/export/png.ts",
+      "src/cli/run.ts",
+      "src/element.ts",
+      "src/index.ts",
+      "package.json",
+      "test/cli.test.ts",
+      "test/dom-runtime-parity.test.ts",
+      "test/export-html.test.ts"
+    ],
+    "charts": ".gogo/work/feature-sketch-style/charts/manifest.json"
+  },
+  "green": { "typecheck": true, "build": true, "unit": "333 passed" },
+  "summary": "Round 1: --style clean|sketch axis for FLOWCHART — deterministic rough generator (src/rough), bundled OFL Kalam font (base64 @font-face + resvg-registered), sketch shapes/edges/open-arrowheads in static SVG + a byte-identical inlined mirror in vnmRuntime (dom-runtime-parity extended to sketch). Round 2 (D6=B): extended sketch to the NATIVE tiers (sequence/class/state) via a shared src/render/sketch-svg.ts helper; class keeps UML head markers, state pseudo-state dots stay clean; class/state interactive+HTML reuse the flowchart runtime, sequence embeds the sketch SVG in the seqRuntime shell; threaded style through route.ts/cli/html/png (+ font registration). Only the mermaid fallback tier keeps its look (CLI note). Bumped 0.5.0; 333 tests green.",
+  "open_decisions": []
+}

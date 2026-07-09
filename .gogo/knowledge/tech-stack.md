@@ -50,3 +50,8 @@ addon installed.
 ## gogo overrides
 <!-- Preserved across re-runs. -->
 - Entry points: `src/index.ts` (API), `src/element.ts` (web component), `src/cli/index.ts` (CLI bin).
+- **v0.5.0 sketch style:** CLI `-s, --style <clean|sketch>` (flowchart + native tiers).
+  Bundled asset: `assets/fonts/Kalam-Regular.woff2` (OFL 1.1, `assets/fonts/OFL.txt`),
+  embedded as base64 in `src/render/sketch-font.ts` (browser-safe; also fed to resvg
+  for PNG). The ~22KB font ships in the browser-safe core (reachable from `.` via
+  `svg.ts`) — a known bundle-size tradeoff for zero-network portability.

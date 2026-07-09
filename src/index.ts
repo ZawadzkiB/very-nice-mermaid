@@ -28,6 +28,7 @@ export type {
   TokenSet,
   PartialTokenSet,
   EdgeStyle,
+  RenderStyle,
   ColorTokens,
   RoleColors,
   DefineThemeOptions,

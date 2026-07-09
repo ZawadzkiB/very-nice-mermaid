@@ -1,10 +1,12 @@
 /**
  * The `<very-nice-mermaid>` custom element. Self-registers on import (browser
- * only). Reads the diagram from inline text content or a `src` attribute, and a
- * theme from the `theme` attribute.
+ * only). Reads the diagram from inline text content or a `src` attribute, a
+ * theme from the `theme` attribute, and the hand-drawn drawing style from a
+ * boolean `sketch` attribute (a separate name from the reserved DOM `style`
+ * attribute; flowchart tier).
  *
  * ```html
- * <very-nice-mermaid theme="dark">
+ * <very-nice-mermaid theme="dark" sketch>
  *   flowchart LR
  *     A[Start] --> B{Choice} --> C([Done])
  * </very-nice-mermaid>
@@ -20,7 +22,7 @@ export class VeryNiceMermaidElement extends HTMLElement {
   private renderToken = 0;
 
   static get observedAttributes(): string[] {
-    return ["theme", "src"];
+    return ["theme", "src", "sketch"];
   }
 
   connectedCallback(): void {
@@ -43,6 +45,8 @@ export class VeryNiceMermaidElement extends HTMLElement {
 
   private async renderDiagram(): Promise<void> {
     const theme = this.getAttribute("theme") ?? "light";
+    // Boolean `sketch` attribute → hand-drawn style (any value except "false").
+    const style = this.hasAttribute("sketch") && this.getAttribute("sketch") !== "false" ? "sketch" : "clean";
     const src = this.getAttribute("src");
     let dsl = this.source;
     if (src) {
@@ -61,7 +65,7 @@ export class VeryNiceMermaidElement extends HTMLElement {
     this.handle = null;
     this.textContent = "";
     try {
-      const handle = await mountAsync(this, dsl, { theme });
+      const handle = await mountAsync(this, dsl, { theme, style });
       if (token !== this.renderToken) {
         handle.destroy(); // a newer render superseded this one
         return;

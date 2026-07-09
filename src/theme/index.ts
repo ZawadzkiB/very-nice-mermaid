@@ -7,6 +7,14 @@
 
 export type EdgeStyle = "elbow" | "curved";
 
+/**
+ * The **drawing style** axis — orthogonal to the color theme + {@link EdgeStyle}
+ * (D1). `clean` is today's crisp look; `sketch` renders every shape as a
+ * hand-drawn (Excalidraw-like) rough outline with a handwriting font. Composes
+ * with any theme (`light`/`dark`/`fancy`) and any `edge.style`.
+ */
+export type RenderStyle = "clean" | "sketch";
+
 /** Fill/stroke/text for a semantic node role a theme offers. */
 export interface RoleColors {
   fill: string;

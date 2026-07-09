@@ -112,6 +112,13 @@ export async function mountAsync(
     case "state":
       return mountState(el, layoutState(await readStateModel(dsl), { theme }), theme, opts);
     default: {
+      // Sketch isn't supported for the mermaid.js fallback tier — surface the drop
+      // to library/element callers instead of silently ignoring it (REV-003).
+      if (opts.style === "sketch" && typeof console !== "undefined" && console.warn) {
+        console.warn(
+          `very-nice-mermaid: --style sketch is not supported for the mermaid.js fallback tier ('${c.detected ?? c.type}'); rendering in its normal style.`,
+        );
+      }
       const { svg } = await renderFallbackSvg(dsl, { theme, detected: c.detected ?? c.type });
       return mountFallback(el, svg, theme, opts);
     }

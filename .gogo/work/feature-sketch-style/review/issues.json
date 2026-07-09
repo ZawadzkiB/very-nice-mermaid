@@ -1,0 +1,47 @@
+{
+  "slug": "sketch-style",
+  "track": "review",
+  "round": 2,
+  "updated": "2026-07-09",
+  "issues": [
+    {
+      "id": "REV-001",
+      "title": "The ~30KB base64 handwriting font ships in the browser-safe core bundle for every consumer, sketch or not",
+      "description": "src/render/sketch-font.ts holds the base64 woff2 (~30KB text / ~22KB font); svg.ts imports it at module top-level so it is reachable from the `.` entry and cannot be tree-shaken even for clean-only consumers. Intended per D3 (embed for zero-network portability), but cuts against D5's 'keep the core small' rationale. Flagged for visibility.",
+      "proposed_solution": "Accept + document, OR move the font behind a lazily-imported sketch subpath (conflicts with renderSvg being synchronous). Recommend: accept + document.",
+      "severity": "minor",
+      "priority": "P2",
+      "status": "wontfix",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fix_summary": "ACCEPTED (documented tradeoff). The ~22KB woff2 (~30KB base64) is the price of D3's zero-network portability (embedded @font-face in every SVG/HTML + resvg registration). A lazy subpath conflicts with the synchronous renderSvg surface and the runtime already carrying the font via the payload. Noted in plan.md deviations, and to be called out in the report/release notes. No code change."
+    },
+    {
+      "id": "REV-002",
+      "title": "Dotted flowchart edges render dashed (fragmented) open arrowheads in sketch mode",
+      "description": "For edge.kind === 'dotted' the `stroke-dasharray=\"2 5\"` was folded into the shared stroke of BOTH the wavy line sub-paths AND the ~19px open-arrowhead, chopping the V into fragments. Byte-consistent across static/toSvgString/live (parity held), so cosmetic only.",
+      "proposed_solution": "Emit the arrowhead with a stroke that omits the dash (dash on the line strokes only), matching native sequence/state. Extend the sketch parity test with a dotted edge.",
+      "severity": "nit",
+      "priority": "P3",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fix_summary": "Split the stroke: the rough LINE keeps the dotted dash; the open arrowhead is always SOLID. Fixed in svg.ts sketchEdgePath, the runtime svgEdge sketch branch (toSvgString parity), and the live view (a separate solid `headPath` <path> per sketch edge, since the single line path carries the element dash). Added a dotted-edge sketch parity test asserting arrowheads are undashed while the line dashes. 338 tests green."
+    },
+    {
+      "id": "REV-003",
+      "title": "Fallback-tier + sketch honest-degradation note is CLI-only; the library API and custom element ignore the style silently",
+      "description": "The CLI printed a note when sketch hit a mermaid.js fallback type, but renderSvgAsync/renderHtmlAsync and the <very-nice-mermaid sketch> element dropped the style silently — contradicting the as-built 'a note, not a silent skip' claim and the 'library must route AND report, not just the CLI' gotcha. Low impact (renders correctly in its normal look).",
+      "proposed_solution": "Surface the drop from the library/element (console.warn), or narrow the as-built wording to CLI-only. Recommend: element warns; library wording clarified.",
+      "severity": "minor",
+      "priority": "P2",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fix_summary": "Added a shared warnSketchFallback() to route.ts (renderSvgAsync + renderHtmlAsync fallback branches) and a matching console.warn to mountAsync's fallback branch in dom/index.ts (covers the <very-nice-mermaid sketch> element). Now the CLI notes AND the library/element warn — no silent skip. plan.md wording updated."
+    }
+  ]
+}

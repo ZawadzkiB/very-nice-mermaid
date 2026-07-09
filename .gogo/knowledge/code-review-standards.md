@@ -98,3 +98,28 @@ Generated-by: /gogo:build (scaffold)
   import (first-unclaimed match, stored-index preferred — parallel edges can't
   swap). Apply the same rule to any future index-keyed persistence. (Was
   interactive REV-007.)
+
+## Project-specific gotchas (verified — feature `sketch-style`, 2026-07-09)
+- **ROUGH-PARITY: `src/rough` has a byte-identical twin inside `vnmRuntime`.** The
+  sketch generator (`src/rough/index.ts`) is re-implemented inline in
+  `src/render/dom/runtime.ts` (it's `.toString()`-serialized into HTML, so it can't
+  import). The two MUST match char-for-char in output — same `SK_*`==`SKETCH`
+  constants, same `Math.hypot`/`Math.imul` ops, same 2-dp rounding — or `toSvgString()`
+  diverges from `renderSvg` in sketch. The `dom-runtime-parity` sketch cases guard it
+  (light AND fancy, incl. a dotted edge); extend them for any new sketch mark.
+- **A per-edge dash must not bleed into the arrowhead.** Folding a dotted edge's
+  `stroke-dasharray="2 5"` into the shared stroke fragmented the ~19px open `V`. Emit
+  the arrowhead as a SEPARATE solid path (line dashed, head solid) — in the static
+  SVG, `toSvgString`, AND the live runtime (a distinct `headPath` element, since the
+  live line path carries the element dash). (Was REV-002.)
+- **The library must route AND report, not just the CLI.** When sketch is dropped for
+  a mermaid-fallback type, the CLI note isn't enough — the async renderers + the
+  element must `console.warn` too, or the drop is invisible to library callers. (Was
+  REV-003. A typed-enum bad-value, by contrast, is compile-catchable — the library
+  need not runtime-validate it; TEST-002.)
+- **Interactive class/state reuse the flowchart runtime — per-type static markers are
+  lost there.** State `[*]` start/end dots (and class UML heads) live in the static
+  native SVG, not the shared runtime. If a marker must survive into the interactive/
+  exported (Save-SVG) view, carry it on the model node (e.g. `PositionedNode.stateMarker`,
+  set by `layoutState`) so it rides serialization, and special-case it in the runtime
+  — don't let the generic "every node is rough/card" loop swallow it. (Was TEST-001.)

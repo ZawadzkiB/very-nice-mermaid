@@ -9,13 +9,22 @@
 import type { PositionedNode, RoutedEdge } from "../../model/index.js";
 import type { StateLayout, StateNode } from "../../model/state.js";
 import type { Theme } from "../../theme/index.js";
+import type { RenderStyle } from "../../theme/index.js";
 import { n } from "../../geometry/index.js";
 import { escapeXml, escapeXmlAttr } from "../../render/style.js";
+import { SKETCH_FONT_FAMILY } from "../../render/sketch-font.js";
+import { sketchFontDefs, sketchRectSvg, sketchLineSvg, sketchArrowSvg } from "../../render/sketch-svg.js";
 
 /** Render a positioned state layout to a standalone SVG string. */
-export function renderStateSvg(layout: StateLayout, theme: Theme, background?: string): string {
+export function renderStateSvg(
+  layout: StateLayout,
+  theme: Theme,
+  background?: string,
+  style: RenderStyle = "clean",
+): string {
   const b = layout.model.bounds;
   const t = theme.tokens;
+  const sketch = style === "sketch";
   const kinds = new Map<string, StateNode["kind"]>(layout.states.map((s) => [s.id, s.kind]));
   const parts: string[] = [];
 
@@ -23,10 +32,10 @@ export function renderStateSvg(layout: StateLayout, theme: Theme, background?: s
     `<svg xmlns="http://www.w3.org/2000/svg" width="${n(b.width)}" height="${n(
       b.height,
     )}" viewBox="${n(b.x)} ${n(b.y)} ${n(b.width)} ${n(b.height)}" font-family="${escapeXmlAttr(
-      t.font.family,
+      sketch ? SKETCH_FONT_FAMILY : t.font.family,
     )}">`,
   );
-  parts.push(defs(theme));
+  parts.push(defs(theme, sketch));
 
   if (background !== "transparent") {
     parts.push(
@@ -36,16 +45,16 @@ export function renderStateSvg(layout: StateLayout, theme: Theme, background?: s
     );
   }
 
-  for (const edge of layout.model.edges) parts.push(renderTransition(edge, theme));
+  for (const edge of layout.model.edges) parts.push(renderTransition(edge, theme, sketch));
   for (const node of layout.model.nodes) {
-    parts.push(renderState(node, kinds.get(node.id) ?? "normal", theme));
+    parts.push(renderState(node, kinds.get(node.id) ?? "normal", theme, sketch));
   }
 
   parts.push("</svg>");
   return parts.join("\n");
 }
 
-function defs(theme: Theme): string {
+function defs(theme: Theme, sketch: boolean): string {
   const t = theme.tokens;
   const a = t.edge.arrowSize;
   const shadow = t.effects.gradient
@@ -57,16 +66,30 @@ function defs(theme: Theme): string {
     `<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${a}" markerHeight="${a}" orient="auto-start-reverse">` +
     `<path d="M0 0 L10 5 L0 10 z" fill="${t.colors.edge}"/></marker>` +
     shadow +
+    (sketch ? sketchFontDefs() : "") +
     `</defs>`
   );
 }
 
-function renderTransition(edge: RoutedEdge, theme: Theme): string {
+function renderTransition(edge: RoutedEdge, theme: Theme, sketch: boolean): string {
   const t = theme.tokens;
-  const marker = edge.arrows.end ? ` marker-end="url(#vnm-arrow)"` : "";
-  const parts = [
-    `<path d="${edge.path}" fill="none" stroke="${t.colors.edge}" stroke-width="${t.edge.width}" stroke-linejoin="round" stroke-linecap="round"${marker}/>`,
-  ];
+  let parts: string[];
+  if (sketch) {
+    const pts = edge.points.map((p) => [p.x, p.y] as [number, number]);
+    const key = edge.from + "->" + edge.to;
+    parts = [sketchLineSvg(pts, t.colors.edge, t.edge.width, key)];
+    const m = pts.length;
+    if (edge.arrows.end && m >= 2) {
+      parts.push(
+        sketchArrowSvg(pts[m - 1]!, pts[m - 2]!, t.edge.arrowSize, t.colors.edge, t.edge.width, key + "@end"),
+      );
+    }
+  } else {
+    const marker = edge.arrows.end ? ` marker-end="url(#vnm-arrow)"` : "";
+    parts = [
+      `<path d="${edge.path}" fill="none" stroke="${t.colors.edge}" stroke-width="${t.edge.width}" stroke-linejoin="round" stroke-linecap="round"${marker}/>`,
+    ];
+  }
   if (edge.label && edge.labelPos) {
     parts.push(edgeLabel(edge.label, edge.labelPos.x, edge.labelPos.y, theme));
   }
@@ -87,11 +110,16 @@ function edgeLabel(label: string, cx: number, cy: number, theme: Theme): string 
   );
 }
 
-function renderState(node: PositionedNode, kind: StateNode["kind"], theme: Theme): string {
+function renderState(
+  node: PositionedNode,
+  kind: StateNode["kind"],
+  theme: Theme,
+  sketch: boolean,
+): string {
   const t = theme.tokens;
   const cx = node.x;
   const cy = node.y;
-  const shadow = t.effects.gradient ? ` filter="url(#vnm-shadow)"` : "";
+  const shadow = t.effects.gradient && !sketch ? ` filter="url(#vnm-shadow)"` : "";
 
   if (kind === "start") {
     const r = Math.min(9, node.width / 2);
@@ -107,9 +135,11 @@ function renderState(node: PositionedNode, kind: StateNode["kind"], theme: Theme
 
   const x = cx - node.width / 2;
   const y = cy - node.height / 2;
-  const rect = `<rect x="${n(x)}" y="${n(y)}" width="${n(node.width)}" height="${n(
-    node.height,
-  )}" rx="${t.radii.card + 4}" fill="${t.colors.surface}" stroke="${t.colors.surfaceStroke}" stroke-width="1.5"/>`;
+  const rect = sketch
+    ? sketchRectSvg(x, y, node.width, node.height, t.colors.surface, t.colors.surfaceStroke, "1.5", node.id)
+    : `<rect x="${n(x)}" y="${n(y)}" width="${n(node.width)}" height="${n(
+        node.height,
+      )}" rx="${t.radii.card + 4}" fill="${t.colors.surface}" stroke="${t.colors.surfaceStroke}" stroke-width="1.5"/>`;
   const text = `<text x="${n(cx)}" y="${n(cy)}" fill="${t.colors.text}" font-size="${
     t.font.size
   }" font-weight="${t.font.weight}" text-anchor="middle" dominant-baseline="central">${escapeXml(

@@ -1,0 +1,34 @@
+flowchart LR
+  opt["style: clean | sketch<br/>(CLI --style · renderX({style}) · &lt;very-nice-mermaid sketch&gt;)"]:::io
+  rough["src/rough/<br/>deterministic rough gen<br/>(seed=id · mulberry32 · Q-bowed strokes)"]:::proc
+  font["src/render/sketch-font.ts<br/>Kalam woff2 base64 (OFL)"]:::art
+
+  svg["src/render/svg.ts (flowchart)<br/>sketchShape + sketchEdgePath + open V arrowheads<br/>+ embedded @font-face"]:::proc
+  native["src/native/{sequence,class,state}/svg.ts<br/>via src/render/sketch-svg.ts helper<br/>(rough rect/ellipse/line/open-arrow)<br/>class keeps UML markers"]:::proc
+  runtime["src/render/dom/runtime.ts<br/>inlined rough MIRROR (ROUGH-PARITY)<br/>transparent cards + SVG rough outlines<br/>live drag re-render + toSvgString()<br/>class/state reuse this; sequence→seqRuntime"]:::proc
+
+  out1["static SVG"]:::out
+  out2["PNG (resvg + registered Kalam buffer)"]:::out
+  out3["standalone HTML / interactive mount()"]:::out
+  guard["dom-runtime-parity test<br/>toSvgString() === renderSvg (byte)"]:::test
+
+  opt --> rough
+  font --> svg
+  font --> runtime
+  rough --> svg
+  rough --> native
+  rough --> runtime
+  font --> native
+  svg --> out1
+  native --> out1
+  out1 --> out2
+  runtime --> out3
+  native --> out3
+  svg -. byte parity .-> guard
+  runtime -. byte parity .-> guard
+
+  classDef io fill:#e8ecff,stroke:#7c8bd9,color:#111
+  classDef proc fill:#e6f4ea,stroke:#5db97a,color:#111
+  classDef art fill:#fff3d6,stroke:#caa54a,color:#111
+  classDef out fill:#f3e8ff,stroke:#a97ad9,color:#111
+  classDef test fill:#ffe8ec,stroke:#d97a8b,color:#111

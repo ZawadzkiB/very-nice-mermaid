@@ -4,8 +4,9 @@
  */
 
 import { serializeModel, type PositionedModel } from "../../model/index.js";
-import type { Theme } from "../../theme/index.js";
+import type { Theme, RenderStyle } from "../../theme/index.js";
 import type { RuntimePayload } from "./runtime.js";
+import { SKETCH_FONT_FAMILY, sketchFontFaceCss } from "../sketch-font.js";
 
 export interface InteractiveOptions {
   /** Persist layout to localStorage: `true` (auto key), a string key, or `false`. */
@@ -16,6 +17,8 @@ export interface InteractiveOptions {
   fitPadding?: number;
   minScale?: number;
   maxScale?: number;
+  /** Drawing style axis (D1): `clean` (default) or hand-drawn `sketch`. */
+  style?: RenderStyle;
 }
 
 /** Stable, non-cryptographic hash (djb2) for deriving a persistence key. */
@@ -37,16 +40,25 @@ export function buildPayload(
   theme: Theme,
   opts: InteractiveOptions = {},
 ): RuntimePayload {
-  return {
+  const sketch = opts.style === "sketch";
+  // Sketch mode overrides the font family for every card/label via cssVars (last
+  // rule wins on the viewport's inline style), and ships the bundled @font-face
+  // (base64, zero network) + the family string the serializer needs — the runtime
+  // is `.toString()`-serialized so it can't import them; they ride the payload.
+  const cssVars = sketch ? theme.cssVars() + `--vnm-font: ${SKETCH_FONT_FAMILY};` : theme.cssVars();
+  const payload: RuntimePayload = {
     model: serializeModel(model),
     theme: { name: theme.name, edgeStyle: theme.edgeStyle, tokens: theme.tokens },
-    cssVars: theme.cssVars(),
+    cssVars,
     options: {
       fitPadding: opts.fitPadding ?? theme.tokens.spacing.fitPadding,
       persistKey: persistKey(opts.persist, model),
       minimap: opts.minimap ?? true,
       minScale: opts.minScale ?? 0.2,
       maxScale: opts.maxScale ?? 4,
+      style: sketch ? "sketch" : "clean",
     },
   };
+  if (sketch) payload.sketch = { fontFace: sketchFontFaceCss(), fontFamily: SKETCH_FONT_FAMILY };
+  return payload;
 }
