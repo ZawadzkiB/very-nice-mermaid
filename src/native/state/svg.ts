@@ -61,9 +61,12 @@ function defs(theme: Theme, sketch: boolean): string {
     ? `<filter id="vnm-shadow" x="-30%" y="-30%" width="160%" height="160%">` +
       `<feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter>`
     : "";
+  // orient="auto" (never "auto-start-reverse" — resvg ignores that SVG2 value
+  // and renders the head un-rotated). Transitions only carry a marker-END, so a
+  // single forward-pointing marker suffices here.
   return (
     `<defs>` +
-    `<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${a}" markerHeight="${a}" orient="auto-start-reverse">` +
+    `<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${a}" markerHeight="${a}" orient="auto">` +
     `<path d="M0 0 L10 5 L0 10 z" fill="${t.colors.edge}"/></marker>` +
     shadow +
     (sketch ? sketchFontDefs() : "") +
