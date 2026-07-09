@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="595" height="660" viewBox="-12 -12 595 660" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
-<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8a93a6"/></marker></defs>
+<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#8a93a6"/></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#8a93a6"/></marker></defs>
 <rect x="-12" y="-12" width="595" height="660" fill="#f7f8fb"/>
 <path d="M 286.5 50 L 286.5 110" fill="none" stroke="#8a93a6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 276.5 169.72 L 276.5 201.36 L 187.25 201.36 L 187.25 233" fill="none" stroke="#8a93a6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/><rect x="213.86" y="190.36" width="36.04" height="22" rx="4" fill="#f7f8fb"/><text x="231.88" y="201.36" fill="#3a4152" font-size="13" text-anchor="middle" dominant-baseline="central">yes</text>

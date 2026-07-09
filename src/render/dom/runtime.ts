@@ -174,12 +174,20 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   svg.setAttribute("height", String(contentH));
   svg.setAttribute("style", "position:absolute;left:0;top:0;overflow:visible;pointer-events:none;");
   const defs = doc.createElementNS(SVGNS, "defs");
+  // orient="auto" + a mirrored start marker (see src/render/svg.ts defs()): keep
+  // both marker ids/geometry in lockstep with the static SVG so the interactive
+  // view, the PNG, and Save-SVG all point their arrowheads the same way.
   defs.innerHTML =
     '<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' +
     tokens.edge.arrowSize +
     '" markerHeight="' +
     tokens.edge.arrowSize +
-    '" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"></path></marker>';
+    '" orient="auto"><path d="M0 0 L10 5 L0 10 z"></path></marker>' +
+    '<marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' +
+    tokens.edge.arrowSize +
+    '" markerHeight="' +
+    tokens.edge.arrowSize +
+    '" orient="auto"><path d="M10 0 L0 5 L10 10 z"></path></marker>';
   svg.appendChild(defs);
   world.appendChild(svg);
 
@@ -309,7 +317,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // Clean mode uses the triangle marker; sketch mode draws its own open
     // arrowheads directly into the (multi-subpath) edge `d`, so no marker.
     if (!sketch && e.arrows.end) path.setAttribute("marker-end", "url(#vnm-arrow)");
-    if (!sketch && e.arrows.start) path.setAttribute("marker-start", "url(#vnm-arrow)");
+    if (!sketch && e.arrows.start) path.setAttribute("marker-start", "url(#vnm-arrow-start)");
     svg.appendChild(path);
     const rec: EdgeEls = { from: e.from, to: e.to, kind: e.kind, arrows: e.arrows, path };
     // Sketch: a separate SOLID arrowhead path (never dashed), so a dotted line's
@@ -1830,8 +1838,11 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     const font = sketch && payload.sketch ? "<style>" + payload.sketch.fontFace + "</style>" : "";
     return (
       '<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + a +
-      '" markerHeight="' + a + '" orient="auto-start-reverse">' +
-      '<path d="M0 0 L10 5 L0 10 z" fill="' + tokens.colors.edge + '"/></marker>' + shadow + font + "</defs>"
+      '" markerHeight="' + a + '" orient="auto">' +
+      '<path d="M0 0 L10 5 L0 10 z" fill="' + tokens.colors.edge + '"/></marker>' +
+      '<marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + a +
+      '" markerHeight="' + a + '" orient="auto">' +
+      '<path d="M10 0 L0 5 L10 10 z" fill="' + tokens.colors.edge + '"/></marker>' + shadow + font + "</defs>"
     );
   }
   // Recompute the container box in ABSOLUTE coords from its live member boxes —
@@ -1901,7 +1912,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       out = s;
     } else {
       const mEnd = e.arrows.end ? ' marker-end="url(#vnm-arrow)"' : "";
-      const mStart = e.arrows.start ? ' marker-start="url(#vnm-arrow)"' : "";
+      const mStart = e.arrows.start ? ' marker-start="url(#vnm-arrow-start)"' : "";
       out =
         '<path d="' + path + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width +
         '" stroke-linejoin="round" stroke-linecap="round"' + dash + mStart + mEnd + "/>";

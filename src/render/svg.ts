@@ -100,10 +100,17 @@ function defs(theme: Theme, sketch: boolean): string {
   // Sketch mode embeds the handwriting @font-face (base64, zero network) so the
   // standalone SVG is portable, and draws its own open arrowheads (no marker).
   const font = sketch ? `<style>${sketchFontFaceCss()}</style>` : "";
+  // orient="auto" (not "auto-start-reverse", an SVG2 value @resvg/resvg-js
+  // ignores — it would render the head un-rotated / pointing +x). The end
+  // marker's tip is at high-x so `auto` points it forward into the target; the
+  // start marker is the horizontal mirror (tip at low-x, refX at the tip) so
+  // `auto` points it backward at the source. Two markers, both resvg-safe.
   return (
     `<defs>` +
-    `<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${a}" markerHeight="${a}" orient="auto-start-reverse">` +
+    `<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${a}" markerHeight="${a}" orient="auto">` +
     `<path d="M0 0 L10 5 L0 10 z" fill="${t.colors.edge}"/></marker>` +
+    `<marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="${a}" markerHeight="${a}" orient="auto">` +
+    `<path d="M10 0 L0 5 L10 10 z" fill="${t.colors.edge}"/></marker>` +
     shadow +
     font +
     `</defs>`
@@ -139,7 +146,7 @@ function renderEdge(edge: RoutedEdge, theme: Theme, sketch: boolean): string {
     parts.push(sketchEdgePath(edge, t.colors.edge, width, dash, t.edge.arrowSize));
   } else {
     const markerEnd = edge.arrows.end ? ` marker-end="url(#vnm-arrow)"` : "";
-    const markerStart = edge.arrows.start ? ` marker-start="url(#vnm-arrow)"` : "";
+    const markerStart = edge.arrows.start ? ` marker-start="url(#vnm-arrow-start)"` : "";
     parts.push(
       `<path d="${edge.path}" fill="none" stroke="${t.colors.edge}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"${dash}${markerStart}${markerEnd}/>`,
     );

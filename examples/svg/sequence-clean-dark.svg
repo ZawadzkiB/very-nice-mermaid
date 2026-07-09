@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="399.2" height="368" viewBox="4 4 399.2 368" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
-<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#6b7488"/></marker></defs>
+<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#6b7488"/></marker></defs>
 <rect x="4" y="4" width="399.2" height="368" fill="#0f1117"/>
 <line x1="69" y1="66" x2="69" y2="310" stroke="#6b7488" stroke-width="1" stroke-dasharray="4 4"/>
 <line x1="199" y1="66" x2="199" y2="310" stroke="#6b7488" stroke-width="1" stroke-dasharray="4 4"/>

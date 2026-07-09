@@ -89,23 +89,34 @@ function defs(theme: Theme, sketch: boolean): string {
     ? `<filter id="vnm-shadow" x="-30%" y="-30%" width="160%" height="160%">` +
       `<feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter>`
     : "";
-  // Every marker's tip is at its high-x vertex with refX at that tip, and
-  // orient="auto-start-reverse" so it points at whichever endpoint (from/to)
-  // carries the head — start markers flip to point back at the source.
+  // orient="auto", NOT "auto-start-reverse": @resvg/resvg-js ignores that SVG2
+  // value and renders the head un-rotated (pointing +x), so PNG relations broke.
+  // Each decoration ships as a pair: an END marker (tip at its high-x vertex,
+  // refX at that tip → `auto` points it into the `to` node) used when head="to",
+  // and a horizontally-mirrored START marker (`-start`: tip at low-x, refX at
+  // that tip → `auto` points it back at the `from` node) used when head="from".
   return (
     `<defs>` +
     // hollow triangle — inheritance / realization
-    `<marker id="vnm-cls-tri" viewBox="0 0 14 14" refX="13" refY="7" markerWidth="14" markerHeight="14" orient="auto-start-reverse">` +
+    `<marker id="vnm-cls-tri" viewBox="0 0 14 14" refX="13" refY="7" markerWidth="14" markerHeight="14" orient="auto">` +
     `<path d="M0 0 L14 7 L0 14 z" fill="${fill}" stroke="${edge}" stroke-width="1"/></marker>` +
+    `<marker id="vnm-cls-tri-start" viewBox="0 0 14 14" refX="1" refY="7" markerWidth="14" markerHeight="14" orient="auto">` +
+    `<path d="M14 0 L0 7 L14 14 z" fill="${fill}" stroke="${edge}" stroke-width="1"/></marker>` +
     // filled diamond — composition
-    `<marker id="vnm-cls-diamond-solid" viewBox="0 0 20 12" refX="19" refY="6" markerWidth="18" markerHeight="12" orient="auto-start-reverse">` +
+    `<marker id="vnm-cls-diamond-solid" viewBox="0 0 20 12" refX="19" refY="6" markerWidth="18" markerHeight="12" orient="auto">` +
     `<path d="M20 6 L10 0 L0 6 L10 12 z" fill="${edge}" stroke="${edge}" stroke-width="1"/></marker>` +
+    `<marker id="vnm-cls-diamond-solid-start" viewBox="0 0 20 12" refX="1" refY="6" markerWidth="18" markerHeight="12" orient="auto">` +
+    `<path d="M0 6 L10 0 L20 6 L10 12 z" fill="${edge}" stroke="${edge}" stroke-width="1"/></marker>` +
     // hollow diamond — aggregation
-    `<marker id="vnm-cls-diamond-hollow" viewBox="0 0 20 12" refX="19" refY="6" markerWidth="18" markerHeight="12" orient="auto-start-reverse">` +
+    `<marker id="vnm-cls-diamond-hollow" viewBox="0 0 20 12" refX="19" refY="6" markerWidth="18" markerHeight="12" orient="auto">` +
     `<path d="M20 6 L10 0 L0 6 L10 12 z" fill="${fill}" stroke="${edge}" stroke-width="1"/></marker>` +
+    `<marker id="vnm-cls-diamond-hollow-start" viewBox="0 0 20 12" refX="1" refY="6" markerWidth="18" markerHeight="12" orient="auto">` +
+    `<path d="M0 6 L10 0 L20 6 L10 12 z" fill="${fill}" stroke="${edge}" stroke-width="1"/></marker>` +
     // open arrow — association / dependency
-    `<marker id="vnm-cls-open" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse">` +
+    `<marker id="vnm-cls-open" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="11" markerHeight="11" orient="auto">` +
     `<path d="M1 1 L11 6 L1 11" fill="none" stroke="${edge}" stroke-width="1.4"/></marker>` +
+    `<marker id="vnm-cls-open-start" viewBox="0 0 12 12" refX="2" refY="6" markerWidth="11" markerHeight="11" orient="auto">` +
+    `<path d="M11 1 L1 6 L11 11" fill="none" stroke="${edge}" stroke-width="1.4"/></marker>` +
     shadow +
     (sketch ? sketchFontDefs() : "") +
     `</defs>`
@@ -118,7 +129,7 @@ function renderRelation(edge: RoutedEdge, rel: ClassRelation, theme: Theme, sket
   const dash = dashed ? ` stroke-dasharray="6 4"` : "";
   const marker =
     rel.head === "from"
-      ? ` marker-start="url(#${markerFor(rel.type)})"`
+      ? ` marker-start="url(#${markerFor(rel.type)}-start)"`
       : ` marker-end="url(#${markerFor(rel.type)})"`;
   const parts: string[] = [];
   if (sketch) {
