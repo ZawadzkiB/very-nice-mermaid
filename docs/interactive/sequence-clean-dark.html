@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sequence — clean / dark</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: #0f1117; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #vnm-root { position: absolute; inset: 0; }
+  button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="vnm-root"></div>
+<script>
+"use strict";
+var seqRuntime = function seqRuntime(root, payload) {
+  const doc = root.ownerDocument;
+  const win = doc.defaultView;
+  const opt = payload.options;
+  const contentW = payload.content.width;
+  const contentH = payload.content.height;
+  let tx = 0;
+  let ty = 0;
+  let scale = 1;
+  root.classList.add("vnm-root");
+  const viewport = doc.createElement("div");
+  viewport.className = "vnm-viewport";
+  viewport.setAttribute(
+    "style",
+    "position:absolute;inset:0;overflow:hidden;background:var(--vnm-bg);cursor:grab;touch-action:none;user-select:none;font-family:var(--vnm-font);" + payload.cssVars
+  );
+  if (getComputedStyle(root).position === "static") root.style.position = "relative";
+  root.appendChild(viewport);
+  const world = doc.createElement("div");
+  world.className = "vnm-world";
+  world.setAttribute(
+    "style",
+    "position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform;"
+  );
+  world.innerHTML = payload.svg;
+  viewport.appendChild(world);
+  let minimap = null;
+  if (opt.minimap) {
+    minimap = doc.createElement("canvas");
+    minimap.className = "vnm-minimap";
+    minimap.width = 180;
+    minimap.height = Math.max(80, Math.round(180 * contentH / Math.max(contentW, 1)));
+    minimap.setAttribute(
+      "style",
+      "position:absolute;right:12px;bottom:12px;border:1px solid var(--vnm-surface-stroke);border-radius:8px;background:var(--vnm-minimap-bg);cursor:pointer;box-shadow:var(--vnm-node-shadow);"
+    );
+    viewport.appendChild(minimap);
+  }
+  const toolbar = doc.createElement("div");
+  toolbar.className = "vnm-toolbar";
+  toolbar.setAttribute("style", "position:absolute;left:12px;top:12px;display:flex;gap:6px;");
+  const mkBtn = (label, title, on) => {
+    const btn = doc.createElement("button");
+    btn.type = "button";
+    btn.textContent = label;
+    btn.title = title;
+    btn.setAttribute(
+      "style",
+      "width:28px;height:28px;border:1px solid var(--vnm-surface-stroke);border-radius:6px;background:var(--vnm-surface);color:var(--vnm-text);cursor:pointer;font-size:15px;line-height:1;"
+    );
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      on();
+    });
+    toolbar.appendChild(btn);
+    return btn;
+  };
+  mkBtn("\u2922", "Fit to view", () => fit());
+  mkBtn("+", "Zoom in", () => zoomBy(1.2));
+  mkBtn("\u2212", "Zoom out", () => zoomBy(1 / 1.2));
+  viewport.appendChild(toolbar);
+  function clampScale(v) {
+    return Math.max(opt.minScale, Math.min(opt.maxScale, v));
+  }
+  function applyTransform() {
+    world.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
+    drawMinimap();
+  }
+  function fit() {
+    const vw = viewport.clientWidth || 800;
+    const vh = viewport.clientHeight || 600;
+    const pad = opt.fitPadding;
+    const s = clampScale(
+      Math.min((vw - pad * 2) / Math.max(contentW, 1), (vh - pad * 2) / Math.max(contentH, 1))
+    );
+    scale = s;
+    tx = (vw - contentW * s) / 2;
+    ty = (vh - contentH * s) / 2;
+    applyTransform();
+  }
+  function zoomAt(cx, cy, next) {
+    const wx = (cx - tx) / scale;
+    const wy = (cy - ty) / scale;
+    scale = next;
+    tx = cx - wx * scale;
+    ty = cy - wy * scale;
+    applyTransform();
+  }
+  function zoomBy(factor) {
+    zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, clampScale(scale * factor));
+  }
+  function resetView() {
+    scale = 1;
+    tx = 0;
+    ty = 0;
+    applyTransform();
+  }
+  function drawMinimap() {
+    if (!minimap) return;
+    const ctx = minimap.getContext("2d");
+    if (!ctx) return;
+    const mw = minimap.width;
+    const mh = minimap.height;
+    ctx.clearRect(0, 0, mw, mh);
+    const s = Math.min(mw / Math.max(contentW, 1), mh / Math.max(contentH, 1));
+    ctx.save();
+    ctx.scale(s, s);
+    ctx.strokeStyle = payload.minimap.accent;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.45;
+    for (const y of payload.minimap.lines) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(contentW, y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = payload.minimap.accent;
+    for (const box of payload.minimap.boxes) ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.restore();
+    const vw = viewport.clientWidth;
+    const vh = viewport.clientHeight;
+    const vx = -tx / scale * s;
+    const vy = -ty / scale * s;
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = payload.minimap.accent;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(vx, vy, vw / scale * s, vh / scale * s);
+    ctx.fillStyle = payload.minimap.viewport;
+    ctx.fillRect(vx, vy, vw / scale * s, vh / scale * s);
+  }
+  let mode = "none";
+  let startX = 0;
+  let startY = 0;
+  let startTx = 0;
+  let startTy = 0;
+  function onPointerDown(ev) {
+    const target = ev.target;
+    if (target.closest && target.closest(".vnm-toolbar")) return;
+    mode = "pan";
+    startX = ev.clientX;
+    startY = ev.clientY;
+    startTx = tx;
+    startTy = ty;
+    viewport.style.cursor = "grabbing";
+    viewport.setPointerCapture(ev.pointerId);
+  }
+  function onPointerMove(ev) {
+    if (mode !== "pan") return;
+    tx = startTx + (ev.clientX - startX);
+    ty = startTy + (ev.clientY - startY);
+    applyTransform();
+  }
+  function onPointerUp(ev) {
+    viewport.style.cursor = "grab";
+    try {
+      viewport.releasePointerCapture(ev.pointerId);
+    } catch {
+    }
+    mode = "none";
+  }
+  function onWheel(ev) {
+    ev.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const cx = ev.clientX - rect.left;
+    const cy = ev.clientY - rect.top;
+    const factor = ev.deltaY < 0 ? 1.1 : 1 / 1.1;
+    zoomAt(cx, cy, clampScale(scale * factor));
+  }
+  function recenterFromMinimap(ev) {
+    const rect = minimap.getBoundingClientRect();
+    const s = Math.min(minimap.width / Math.max(contentW, 1), minimap.height / Math.max(contentH, 1));
+    const worldX = (ev.clientX - rect.left) / s;
+    const worldY = (ev.clientY - rect.top) / s;
+    tx = viewport.clientWidth / 2 - worldX * scale;
+    ty = viewport.clientHeight / 2 - worldY * scale;
+    applyTransform();
+  }
+  function onMinimapDown(ev) {
+    ev.stopPropagation();
+    mode = "minimap";
+    recenterFromMinimap(ev);
+    minimap.setPointerCapture(ev.pointerId);
+  }
+  function onMinimapMove(ev) {
+    if (mode === "minimap") recenterFromMinimap(ev);
+  }
+  function onMinimapUp(ev) {
+    mode = "none";
+    try {
+      minimap.releasePointerCapture(ev.pointerId);
+    } catch {
+    }
+  }
+  viewport.addEventListener("pointerdown", onPointerDown);
+  viewport.addEventListener("pointermove", onPointerMove);
+  viewport.addEventListener("pointerup", onPointerUp);
+  viewport.addEventListener("wheel", onWheel, { passive: false });
+  if (minimap) {
+    minimap.addEventListener("pointerdown", onMinimapDown);
+    minimap.addEventListener("pointermove", onMinimapMove);
+    minimap.addEventListener("pointerup", onMinimapUp);
+  }
+  function destroy() {
+    viewport.removeEventListener("pointerdown", onPointerDown);
+    viewport.removeEventListener("pointermove", onPointerMove);
+    viewport.removeEventListener("pointerup", onPointerUp);
+    viewport.removeEventListener("wheel", onWheel);
+    root.removeChild(viewport);
+  }
+  if (viewport.clientWidth === 0) win.requestAnimationFrame(() => fit());
+  else fit();
+  const ROCtor = win.ResizeObserver;
+  if (ROCtor) new ROCtor(() => drawMinimap()).observe(viewport);
+  return {
+    root,
+    destroy,
+    fit,
+    zoomIn: () => zoomBy(1.2),
+    zoomOut: () => zoomBy(1 / 1.2),
+    resetView
+  };
+};
+var __vnm_payload = {"svg":"\u003csvg xmlns=\"http://www.w3.org/2000/svg\" width=\"399.2\" height=\"368\" viewBox=\"4 4 399.2 368\" font-family=\"system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif\">\n\u003cdefs>\u003cmarker id=\"vnm-arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\">\u003cpath d=\"M0 0 L10 5 L0 10 z\" fill=\"#6b7488\"/>\u003c/marker>\u003c/defs>\n\u003cline x1=\"69\" y1=\"66\" x2=\"69\" y2=\"310\" stroke=\"#6b7488\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"199\" y1=\"66\" x2=\"199\" y2=\"310\" stroke=\"#6b7488\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"333.6\" y1=\"66\" x2=\"333.6\" y2=\"310\" stroke=\"#6b7488\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"69\" y1=\"96\" x2=\"199\" y2=\"96\" stroke=\"#6b7488\" stroke-width=\"1.5\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow)\"/>\u003crect x=\"81.26\" y=\"73\" width=\"105.48\" height=\"22\" rx=\"4\" fill=\"#0f1117\"/>\u003ctext x=\"134\" y=\"84\" fill=\"#c3cadb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">POST /login\u003c/text>\n\u003cline x1=\"199\" y1=\"140\" x2=\"333.6\" y2=\"140\" stroke=\"#6b7488\" stroke-width=\"1.5\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow)\"/>\u003crect x=\"213.56\" y=\"117\" width=\"105.48\" height=\"22\" rx=\"4\" fill=\"#0f1117\"/>\u003ctext x=\"266.3\" y=\"128\" fill=\"#c3cadb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">lookup user\u003c/text>\n\u003cline x1=\"333.6\" y1=\"184\" x2=\"199\" y2=\"184\" stroke=\"#6b7488\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-dasharray=\"6 4\" marker-end=\"url(#vnm-arrow)\"/>\u003crect x=\"213.56\" y=\"161\" width=\"105.48\" height=\"22\" rx=\"4\" fill=\"#0f1117\"/>\u003ctext x=\"266.3\" y=\"172\" fill=\"#c3cadb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">user record\u003c/text>\n\u003cpath d=\"M 199 228 L 239 228 L 239 258 L 199 258\" fill=\"none\" stroke=\"#6b7488\" stroke-width=\"1.5\" stroke-linejoin=\"round\" marker-end=\"url(#vnm-arrow)\"/>\u003crect x=\"244.9\" y=\"232\" width=\"140.2\" height=\"22\" rx=\"4\" fill=\"#0f1117\"/>\u003ctext x=\"315\" y=\"243\" fill=\"#c3cadb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">verify password\u003c/text>\n\u003cline x1=\"199\" y1=\"284\" x2=\"69\" y2=\"284\" stroke=\"#6b7488\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-dasharray=\"6 4\" marker-end=\"url(#vnm-arrow)\"/>\u003crect x=\"89.94\" y=\"261\" width=\"88.12\" height=\"22\" rx=\"4\" fill=\"#0f1117\"/>\u003ctext x=\"134\" y=\"272\" fill=\"#c3cadb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">200 + JWT\u003c/text>\n\u003cg>\u003crect x=\"24\" y=\"24\" width=\"90\" height=\"42\" rx=\"10\" fill=\"#1a1f2b\" stroke=\"#3a4152\" stroke-width=\"1.5\"/>\u003ctext x=\"69\" y=\"45\" fill=\"#e7eaf2\" font-size=\"14\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">User\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"24\" y=\"310\" width=\"90\" height=\"42\" rx=\"10\" fill=\"#1a1f2b\" stroke=\"#3a4152\" stroke-width=\"1.5\"/>\u003ctext x=\"69\" y=\"331\" fill=\"#e7eaf2\" font-size=\"14\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">User\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"154\" y=\"24\" width=\"90\" height=\"42\" rx=\"10\" fill=\"#1a1f2b\" stroke=\"#3a4152\" stroke-width=\"1.5\"/>\u003ctext x=\"199\" y=\"45\" fill=\"#e7eaf2\" font-size=\"14\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">API\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"154\" y=\"310\" width=\"90\" height=\"42\" rx=\"10\" fill=\"#1a1f2b\" stroke=\"#3a4152\" stroke-width=\"1.5\"/>\u003ctext x=\"199\" y=\"331\" fill=\"#e7eaf2\" font-size=\"14\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">API\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"284\" y=\"24\" width=\"99.2\" height=\"42\" rx=\"10\" fill=\"#1a1f2b\" stroke=\"#3a4152\" stroke-width=\"1.5\"/>\u003ctext x=\"333.6\" y=\"45\" fill=\"#e7eaf2\" font-size=\"14\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">Database\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"284\" y=\"310\" width=\"99.2\" height=\"42\" rx=\"10\" fill=\"#1a1f2b\" stroke=\"#3a4152\" stroke-width=\"1.5\"/>\u003ctext x=\"333.6\" y=\"331\" fill=\"#e7eaf2\" font-size=\"14\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">Database\u003c/text>\u003c/g>\n\u003c/svg>","cssVars":"--vnm-bg: #0f1117; --vnm-surface: #1a1f2b; --vnm-surface-stroke: #3a4152; --vnm-text: #e7eaf2; --vnm-text-muted: #9aa3b8; --vnm-edge: #6b7488; --vnm-edge-label-bg: #0f1117; --vnm-edge-label-text: #c3cadb; --vnm-subgraph-fill: #161b25; --vnm-subgraph-stroke: #3a4152; --vnm-subgraph-text: #9aa3b8; --vnm-accent: #6f9bff; --vnm-minimap-bg: rgba(20,24,34,0.9); --vnm-minimap-viewport: rgba(111,155,255,0.32); --vnm-radius: 10px; --vnm-label-radius: 4px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 500; --vnm-node-shadow: 0 1px 3px rgba(0,0,0,0.5); --vnm-hover-lift: 2px; --vnm-edge-width: 1.5px;","bg":"#0f1117","content":{"width":399.2,"height":368},"minimap":{"boxes":[{"x":20,"y":20,"w":90,"h":42},{"x":20,"y":306,"w":90,"h":42},{"x":150,"y":20,"w":90,"h":42},{"x":150,"y":306,"w":90,"h":42},{"x":280,"y":20,"w":99.2,"h":42},{"x":280,"y":306,"w":99.2,"h":42}],"lines":[92,136,180,224,280],"accent":"#6f9bff","viewport":"rgba(111,155,255,0.32)"},"options":{"fitPadding":60,"minimap":true,"minScale":0.2,"maxScale":4}};
+seqRuntime(document.getElementById("vnm-root"), __vnm_payload);
+</script>
+</body>
+</html>

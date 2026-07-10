@@ -1,0 +1,52 @@
+# GitHub Pages config for the very-nice-mermaid documentation site.
+# GitHub builds this with Jekyll + a remote theme — nothing is committed, there is
+# no local build step, and no CI for the site itself.
+#
+# Pages is configured to deploy from branch `master`, folder `/docs` — so Jekyll's
+# site source IS this docs/ folder. The library/CLI source (one level up) is never
+# seen by the build, so no exclude list is needed.
+
+title: very-nice-mermaid
+description: >-
+  A framework-agnostic Mermaid renderer — keep Mermaid's DSL, drop the
+  mermaid.js runtime and the headless browser. Beautiful, interactive,
+  themeable diagrams as a library, a web component, and a CLI.
+
+# Project site served at https://zawadzkib.github.io/very-nice-mermaid/
+url: "https://zawadzkib.github.io"
+baseurl: "/very-nice-mermaid"
+
+# Remote theme — GitHub Pages builds it; nothing is vendored.
+remote_theme: just-the-docs/just-the-docs
+
+# Brand lockup (mark + wordmark) shown in the sidebar header (resolved vs baseurl).
+logo: "/assets/logo.svg"
+
+plugins:
+  - jekyll-remote-theme
+  - jekyll-include-cache
+
+# NOTE: mermaid rendering is intentionally NOT enabled. The whole point of this
+# project is that WE render the diagrams — so DSL blocks on the site show as source
+# code, next to our own interactive/static output. Do not add a `mermaid:` key.
+
+# Link out to the sources of truth.
+aux_links:
+  "GitHub":
+    - "https://github.com/ZawadzkiB/very-nice-mermaid"
+  "npm":
+    - "https://www.npmjs.com/package/very-nice-mermaid"
+aux_links_new_tab: true
+
+# Theme niceties.
+search_enabled: true
+heading_anchors: true
+back_to_top: true
+back_to_top_text: "Back to top"
+color_scheme: dark
+
+# The interactive exports are self-contained .html files with no Jekyll front
+# matter, so Jekyll copies them through verbatim (stays fully interactive).
+# Nothing to exclude — but keep the generator's raw sources out of the build.
+exclude:
+  - "*.mmd"

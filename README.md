@@ -1,4 +1,8 @@
-# very-nice-mermaid
+<p align="center">
+  <img src="./assets/logo.svg" alt="very-nice-mermaid" width="96" height="96">
+</p>
+
+<h1 align="center">very-nice-mermaid</h1>
 
 [![CI](https://github.com/ZawadzkiB/very-nice-mermaid/actions/workflows/ci.yml/badge.svg)](https://github.com/ZawadzkiB/very-nice-mermaid/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/very-nice-mermaid.svg)](https://www.npmjs.com/package/very-nice-mermaid)
@@ -9,6 +13,9 @@ A framework-agnostic **Mermaid flowchart** renderer. It keeps Mermaid's DSL and
 replaces everything after it with **our own parser, layout, and renderers** — so
 you get **beautiful, interactive, themeable** diagrams with **no `mermaid.js`
 runtime and no headless browser**.
+
+📖 **Docs & live gallery: <https://zawadzkib.github.io/very-nice-mermaid/>** —
+drag / resize / pan / zoom the actual diagrams right in your browser.
 
 <p align="center">
   <img src="./assets/example-fancy.png" alt="A microservices flowchart rendered in the fancy theme" width="600">
@@ -81,6 +88,10 @@ Drag nodes to reorganize (edges re-route live), scroll to zoom, and the layout
 persists across reloads. `--theme fancy` adds curved edges and glow;
 `--style sketch` renders the whole diagram hand-drawn (and still composes with
 any theme).
+
+> **Try it live:** the [interactive gallery](https://zawadzkib.github.io/very-nice-mermaid/gallery)
+> embeds the real HTML exports — drag, resize, pan and zoom every diagram type in
+> each style × theme, straight in your browser.
 
 ## Install
 

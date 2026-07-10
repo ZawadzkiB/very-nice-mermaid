@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 64" width="340" height="64" role="img" aria-label="very-nice-mermaid">
+  <title>very-nice-mermaid</title>
+  <defs>
+    <linearGradient id="vnm-lock" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c8bd9"/>
+      <stop offset="1" stop-color="#39c0ed"/>
+    </linearGradient>
+  </defs>
+  <!-- mark (the 100x100 square, scaled to 56px) -->
+  <g transform="translate(2 4) scale(0.56)">
+    <rect x="4" y="4" width="92" height="92" rx="24" fill="#0f1830" stroke="url(#vnm-lock)" stroke-width="2.5"/>
+    <g fill="none" stroke="url(#vnm-lock)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 37 L26 64 L34 37"/>
+      <path d="M42 64 L42 37 L58 64 L58 37"/>
+      <path d="M66 64 L66 37 L74 50 L82 37 L82 64"/>
+    </g>
+  </g>
+  <!-- wordmark -->
+  <text x="70" y="41" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="26" font-weight="800" letter-spacing="-0.5">
+    <tspan fill="#e7ebf7">very-nice</tspan><tspan fill="#5ec8ef">-mermaid</tspan>
+  </text>
+</svg>

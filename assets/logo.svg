@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="very-nice-mermaid">
+  <title>very-nice-mermaid</title>
+  <defs>
+    <linearGradient id="vnm-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c8bd9"/>
+      <stop offset="1" stop-color="#39c0ed"/>
+    </linearGradient>
+  </defs>
+  <!-- app-icon tile: dark so the gradient mark reads on any background -->
+  <rect x="4" y="4" width="92" height="92" rx="24" fill="#0f1830" stroke="url(#vnm-grad)" stroke-width="2.5"/>
+  <!-- V N M drawn as diagram-edge strokes (round joins, like the connectors the tool renders) -->
+  <g fill="none" stroke="url(#vnm-grad)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 37 L26 64 L34 37"/>
+    <path d="M42 64 L42 37 L58 64 L58 37"/>
+    <path d="M66 64 L66 37 L74 50 L82 37 L82 64"/>
+  </g>
+</svg>
