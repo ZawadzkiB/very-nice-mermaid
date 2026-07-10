@@ -19,6 +19,9 @@ baseurl: "/very-nice-mermaid"
 # Remote theme — GitHub Pages builds it; nothing is vendored.
 remote_theme: just-the-docs/just-the-docs
 
+# Brand lockup (mark + wordmark) shown in the sidebar header (resolved vs baseurl).
+logo: "/assets/logo.svg"
+
 plugins:
   - jekyll-remote-theme
   - jekyll-include-cache

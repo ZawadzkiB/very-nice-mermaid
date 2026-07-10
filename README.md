@@ -1,4 +1,8 @@
-# very-nice-mermaid
+<p align="center">
+  <img src="./assets/logo.svg" alt="very-nice-mermaid" width="96" height="96">
+</p>
+
+<h1 align="center">very-nice-mermaid</h1>
 
 [![CI](https://github.com/ZawadzkiB/very-nice-mermaid/actions/workflows/ci.yml/badge.svg)](https://github.com/ZawadzkiB/very-nice-mermaid/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/very-nice-mermaid.svg)](https://www.npmjs.com/package/very-nice-mermaid)
