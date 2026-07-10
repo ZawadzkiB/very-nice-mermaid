@@ -50,23 +50,30 @@ jobs:
       - run: npm run build
       # Regenerate the whole gallery (fails only if a diagram fails to render).
       - run: npm run examples
-      # Surface, without failing, whether the committed gallery drifted from this
-      # run — a nudge to `npm run examples` + commit after a renderer change.
-      # (PNG bytes vary by the platform's rasterizer, so this is informational.)
-      - name: Note if the committed gallery drifted
+      # Regenerate the GitHub Pages docs gallery (interactive HTML + thumbnails)
+      # too, so the published site never drifts from the current renderer.
+      - run: npm run docs
+      # Surface, without failing, whether the committed galleries drifted from this
+      # run — a nudge to regenerate + commit after a renderer change. (PNG bytes vary
+      # by the platform's rasterizer, so this is informational. The interactive HTML
+      # is deterministic — pure geometry + an embedded font.)
+      - name: Note if a committed gallery drifted
         run: |
-          if git diff --quiet -- examples/svg examples/README.md; then
-            echo "committed SVG gallery is up to date"
+          if git diff --quiet -- examples/svg examples/README.md docs/interactive; then
+            echo "committed galleries are up to date"
           else
-            echo "::warning::examples/svg drifted — run 'npm run build && npm run examples' and commit to refresh the gallery"
-            git --no-pager diff --stat -- examples/svg examples/README.md || true
+            echo "::warning::a gallery drifted — run 'npm run build && npm run examples && npm run docs' and commit to refresh"
+            git --no-pager diff --stat -- examples/svg examples/README.md docs/interactive || true
           fi
-      - name: Upload freshly regenerated gallery
+      - name: Upload freshly regenerated galleries
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: examples-gallery
-          path: examples/
+          path: |
+            examples/
+            docs/interactive/
+            docs/assets/
           retention-days: 14
 
   # Playwright drives the real interactive renderer in Chromium. Kept in a

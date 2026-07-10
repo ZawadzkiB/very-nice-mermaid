@@ -55,7 +55,8 @@
     "test:e2e": "playwright test",
     "test:all": "npm run build && npm run typecheck && npm run test && npm run test:e2e",
     "prepublishOnly": "npm run build",
-    "examples": "node scripts/generate-examples.mjs"
+    "examples": "node scripts/generate-examples.mjs",
+    "docs": "node scripts/generate-docs.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "1.1.8",
