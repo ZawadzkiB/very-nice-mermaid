@@ -356,6 +356,22 @@ renderSvg(dsl, { theme: ocean });
   .my-diagram { --vnm-surface: #fff; --vnm-accent: #e91e63; --vnm-edge: #888; }
   ```
 
+## Claude Code plugin
+
+This repo also ships a **[Claude Code](https://claude.com/claude-code) plugin** — a
+skill that teaches Claude to *render* your Mermaid diagrams with the `vnm` CLI
+(inline ASCII, a PNG it can check, an interactive HTML page, or an SVG) instead of
+printing raw DSL. Install it from this repo's marketplace:
+
+```
+/plugin marketplace add ZawadzkiB/very-nice-mermaid
+/plugin install very-nice-mermaid@very-nice-mermaid
+```
+
+It then activates automatically whenever you ask Claude to render, view, or export a
+diagram. Requires Node ≥ 20 (the skill runs `npx very-nice-mermaid`). Full guide:
+**[docs → Claude Code plugin](https://zawadzkib.github.io/very-nice-mermaid/plugin)**.
+
 ## Development
 
 ```bash

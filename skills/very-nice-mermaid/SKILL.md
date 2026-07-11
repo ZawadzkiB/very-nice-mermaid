@@ -35,7 +35,9 @@ just use `vnm render …`.
 -o, --output <file>       output file (default: stdout). Format inferred from its extension.
 -f, --format <fmt>        html | svg | png | md   (md = ASCII in a fenced code block)
 -t, --theme <name|path>   light | dark | fancy, or a path to a theme .json
+-s, --style <clean|sketch> drawing style: clean (default) or hand-drawn sketch
     --strict              treat warnings as errors (non-zero exit)
+    --layout <file>       apply a portable layout.json (node positions + sizes)
     --scale <n>           PNG scale factor (HiDPI), e.g. 2
     --background <color>  background color, or 'transparent'
     --title <title>       HTML document <title>
@@ -77,6 +79,13 @@ Pick the format by what you're trying to do:
 custom look, pass a JSON file of theme tokens (`--theme ./my-theme.json`): colors
 (incl. per-role node fills/strokes), radii, fonts, `edge.style` (`elbow`|`curved`),
 spacing, effects. Only the keys you set override the built-in `light` base.
+
+`--style` is a **separate axis** from `--theme`: `--style sketch` renders a
+hand-drawn (Excalidraw-like) look — wobbly outlines, open arrowheads, a handwriting
+font — and composes with any theme (e.g. `--style sketch --theme fancy`). It's
+deterministic and self-contained. Works for flowchart/sequence/class/state; the
+mermaid.js fallback types keep their own look. Reach for it when the user wants a
+sketchy/whiteboard feel rather than the crisp default.
 
 ## What renders how
 
