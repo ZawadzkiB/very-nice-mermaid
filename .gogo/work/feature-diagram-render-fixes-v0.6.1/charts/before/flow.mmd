@@ -1,0 +1,7 @@
+flowchart TD
+  ports["computePerimeterPorts()"] --> stub["idle→Loading: top port offset from approach lane<br/>BUG 1a: short horizontal stub → arrowhead sits ABOVE the box (doubles back)"]
+  route["routeEdge() / labelPoint()"] --> lbl["give up label at route mid-segment<br/>BUG 1b: bisected by the parallel ready→idle run (~20px apart)"]
+  theme["light colors.edge = #8a93a6 on background #f7f8fb"] --> faint["BUG 2+3: low contrast<br/>state clean·light + sketch·light edges read merged near Loading/Error/retry;<br/>Report-failure arrowheads invisible (dark/fancy same geometry read fine)"]
+  stub --> emit["5-layer emit → SVG/PNG (+ runtime twin)"]
+  lbl --> emit
+  faint --> emit

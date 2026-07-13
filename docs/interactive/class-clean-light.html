@@ -695,7 +695,19 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       }
       out.push(cur);
     }
+    perpendicularizeEntry2(out, entryVertical);
     return simplify2(out);
+  }
+  function perpendicularizeEntry2(out, entryVertical) {
+    if (out.length < 3) return;
+    const end = out[out.length - 1];
+    const a = out[out.length - 3];
+    const b = out[out.length - 2];
+    const finalPerp = entryVertical ? nAt(b.x) === nAt(end.x) : nAt(b.y) === nAt(end.y);
+    const swappable = entryVertical ? nAt(a.y) !== nAt(end.y) : nAt(a.x) !== nAt(end.x);
+    if (!finalPerp && swappable) {
+      out[out.length - 2] = entryVertical ? { x: end.x, y: a.y } : { x: a.x, y: end.y };
+    }
   }
   function dist2(a, b) {
     return Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
@@ -1101,21 +1113,41 @@ var vnmRuntime = function vnmRuntime(root, payload) {
             const a = pts[s];
             const b = pts[s + 1];
             if (axis === "x") {
-              if (Math.abs(a.x - b.x) >= 0.5) continue;
-              const gx = a.x;
-              if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
-              if (cy[i] + hh <= Math.min(a.y, b.y) || cy[i] - hh >= Math.max(a.y, b.y)) continue;
-              hasHit = true;
-              hiTarget = Math.max(hiTarget, gx + hw + 6);
-              loTarget = Math.min(loTarget, gx - hw - 6);
+              if (Math.abs(a.x - b.x) < 0.5) {
+                const gx = a.x;
+                if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
+                if (cy[i] + hh <= Math.min(a.y, b.y) || cy[i] - hh >= Math.max(a.y, b.y)) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, gx + hw + 6);
+                loTarget = Math.min(loTarget, gx - hw - 6);
+              } else if (Math.abs(a.y - b.y) < 0.5) {
+                const gy = a.y;
+                if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
+                const lo = Math.min(a.x, b.x);
+                const hi = Math.max(a.x, b.x);
+                if (cx[i] + hw <= lo || cx[i] - hw >= hi) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, hi + hw + 6);
+                loTarget = Math.min(loTarget, lo - hw - 6);
+              }
             } else {
-              if (Math.abs(a.y - b.y) >= 0.5) continue;
-              const gy = a.y;
-              if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
-              if (cx[i] + hw <= Math.min(a.x, b.x) || cx[i] - hw >= Math.max(a.x, b.x)) continue;
-              hasHit = true;
-              hiTarget = Math.max(hiTarget, gy + hh + 6);
-              loTarget = Math.min(loTarget, gy - hh - 6);
+              if (Math.abs(a.y - b.y) < 0.5) {
+                const gy = a.y;
+                if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
+                if (cx[i] + hw <= Math.min(a.x, b.x) || cx[i] - hw >= Math.max(a.x, b.x)) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, gy + hh + 6);
+                loTarget = Math.min(loTarget, gy - hh - 6);
+              } else if (Math.abs(a.x - b.x) < 0.5) {
+                const gx = a.x;
+                if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
+                const lo = Math.min(a.y, b.y);
+                const hi = Math.max(a.y, b.y);
+                if (cy[i] + hh <= lo || cy[i] - hh >= hi) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, hi + hh + 6);
+                loTarget = Math.min(loTarget, lo - hh - 6);
+              }
             }
           }
         }
@@ -1170,6 +1202,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const pts2 = [start, c1, c2, end];
       return { path: pathBezier(pts2), labelPos: withShift(labelBezier(pts2)), points: pts2 };
     }
+    const entryVertical = entry === "top" || entry === "bottom";
     let pts;
     if (hasWps) {
       pts = elbowThrough2(
@@ -1177,15 +1210,19 @@ var vnmRuntime = function vnmRuntime(root, payload) {
         end,
         waypoints,
         !horizontal,
-        entry === "top" || entry === "bottom",
+        entryVertical,
         !(model.direction === "LR" || model.direction === "RL")
       );
     } else if (horizontal) {
       const midX = (start.x + end.x) / 2;
-      pts = simplify2([start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]);
+      pts = [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end];
+      perpendicularizeEntry2(pts, entryVertical);
+      pts = simplify2(pts);
     } else {
       const midY = (start.y + end.y) / 2;
-      pts = simplify2([start, { x: start.x, y: midY }, { x: end.x, y: midY }, end]);
+      pts = [start, { x: start.x, y: midY }, { x: end.x, y: midY }, end];
+      perpendicularizeEntry2(pts, entryVertical);
+      pts = simplify2(pts);
     }
     const path = edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts);
     return { path, labelPos: withShift(labelPoly(pts)), points: pts };
@@ -2074,7 +2111,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     toSvgString
   };
 };
-var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"Animal","label":"Animal\n+int age\n+makeSound()","shape":"rect","classes":[],"x":121,"y":47,"width":137,"height":78},{"id":"Dog","label":"Dog\n+bark()","shape":"rect","classes":[],"x":54.5,"y":176,"width":93,"height":60},{"id":"Cat","label":"Cat\n+meow()","shape":"rect","classes":[],"x":187.5,"y":176,"width":93,"height":60}],"edges":[{"from":"Animal","to":"Dog","kind":"solid","arrows":{"start":true,"end":false},"length":2,"points":[{"x":106,"y":86},{"x":106,"y":116},{"x":54.5,"y":116},{"x":54.5,"y":146}],"path":"M 106 86 L 106 116 L 54.5 116 L 54.5 146","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}}},{"from":"Animal","to":"Cat","kind":"solid","arrows":{"start":true,"end":false},"length":2,"points":[{"x":136,"y":86},{"x":136,"y":116},{"x":187.5,"y":116},{"x":187.5,"y":146}],"path":"M 136 86 L 136 116 L 187.5 116 L 187.5 146","ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}}}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":-12,"width":266,"height":238}},"theme":{"name":"light","edgeStyle":"elbow","tokens":{"colors":{"background":"#f7f8fb","surface":"#ffffff","surfaceStroke":"#c7cdd9","text":"#1b2030","textMuted":"#5c6478","edge":"#8a93a6","edgeLabelBg":"#f7f8fb","edgeLabelText":"#3a4152","subgraphFill":"#eef1f6","subgraphStroke":"#c7cdd9","subgraphText":"#5c6478","accent":"#4f7cff","minimapBg":"rgba(240,242,247,0.9)","minimapViewport":"rgba(79,124,255,0.28)","roles":{"accent":{"fill":"#e8ecff","stroke":"#7c8bd9","text":"#1b2030"},"success":{"fill":"#e6f4ea","stroke":"#5db97a","text":"#12331f"},"warn":{"fill":"#fff3d6","stroke":"#caa54a","text":"#3b2f0b"},"danger":{"fill":"#fde8e8","stroke":"#d9534f","text":"#4a1210"}}},"radii":{"node":10,"card":10,"label":4},"spacing":{"nodePadX":16,"nodePadY":12,"nodesep":40,"ranksep":60,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":18,"weight":500},"edge":{"style":"elbow","width":1.5,"thickWidth":3,"arrowSize":8},"effects":{"nodeShadow":"0 1px 2px rgba(20,24,40,0.08)","gradient":false,"hoverLift":2}}},"cssVars":"--vnm-bg: #f7f8fb; --vnm-surface: #ffffff; --vnm-surface-stroke: #c7cdd9; --vnm-text: #1b2030; --vnm-text-muted: #5c6478; --vnm-edge: #8a93a6; --vnm-edge-label-bg: #f7f8fb; --vnm-edge-label-text: #3a4152; --vnm-subgraph-fill: #eef1f6; --vnm-subgraph-stroke: #c7cdd9; --vnm-subgraph-text: #5c6478; --vnm-accent: #4f7cff; --vnm-minimap-bg: rgba(240,242,247,0.9); --vnm-minimap-viewport: rgba(79,124,255,0.28); --vnm-radius: 10px; --vnm-label-radius: 4px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 500; --vnm-node-shadow: 0 1px 2px rgba(20,24,40,0.08); --vnm-hover-lift: 2px; --vnm-edge-width: 1.5px;","options":{"fitPadding":60,"persistKey":"vnm-layout:os2u9f","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true}};
+var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"Animal","label":"Animal\n+int age\n+makeSound()","shape":"rect","classes":[],"x":121,"y":47,"width":137,"height":78},{"id":"Dog","label":"Dog\n+bark()","shape":"rect","classes":[],"x":54.5,"y":176,"width":93,"height":60},{"id":"Cat","label":"Cat\n+meow()","shape":"rect","classes":[],"x":187.5,"y":176,"width":93,"height":60}],"edges":[{"from":"Animal","to":"Dog","kind":"solid","arrows":{"start":true,"end":false},"length":2,"points":[{"x":106,"y":86},{"x":106,"y":116},{"x":54.5,"y":116},{"x":54.5,"y":146}],"path":"M 106 86 L 106 116 L 54.5 116 L 54.5 146","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}}},{"from":"Animal","to":"Cat","kind":"solid","arrows":{"start":true,"end":false},"length":2,"points":[{"x":136,"y":86},{"x":136,"y":116},{"x":187.5,"y":116},{"x":187.5,"y":146}],"path":"M 136 86 L 136 116 L 187.5 116 L 187.5 146","ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}}}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":-12,"width":266,"height":238}},"theme":{"name":"light","edgeStyle":"elbow","tokens":{"colors":{"background":"#f7f8fb","surface":"#ffffff","surfaceStroke":"#c7cdd9","text":"#1b2030","textMuted":"#5c6478","edge":"#69728a","edgeLabelBg":"#f7f8fb","edgeLabelText":"#3a4152","subgraphFill":"#eef1f6","subgraphStroke":"#c7cdd9","subgraphText":"#5c6478","accent":"#4f7cff","minimapBg":"rgba(240,242,247,0.9)","minimapViewport":"rgba(79,124,255,0.28)","roles":{"accent":{"fill":"#e8ecff","stroke":"#7c8bd9","text":"#1b2030"},"success":{"fill":"#e6f4ea","stroke":"#5db97a","text":"#12331f"},"warn":{"fill":"#fff3d6","stroke":"#caa54a","text":"#3b2f0b"},"danger":{"fill":"#fde8e8","stroke":"#d9534f","text":"#4a1210"}}},"radii":{"node":10,"card":10,"label":4},"spacing":{"nodePadX":16,"nodePadY":12,"nodesep":40,"ranksep":60,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":18,"weight":500},"edge":{"style":"elbow","width":1.5,"thickWidth":3,"arrowSize":8},"effects":{"nodeShadow":"0 1px 2px rgba(20,24,40,0.08)","gradient":false,"hoverLift":2}}},"cssVars":"--vnm-bg: #f7f8fb; --vnm-surface: #ffffff; --vnm-surface-stroke: #c7cdd9; --vnm-text: #1b2030; --vnm-text-muted: #5c6478; --vnm-edge: #69728a; --vnm-edge-label-bg: #f7f8fb; --vnm-edge-label-text: #3a4152; --vnm-subgraph-fill: #eef1f6; --vnm-subgraph-stroke: #c7cdd9; --vnm-subgraph-text: #5c6478; --vnm-accent: #4f7cff; --vnm-minimap-bg: rgba(240,242,247,0.9); --vnm-minimap-viewport: rgba(79,124,255,0.28); --vnm-radius: 10px; --vnm-label-radius: 4px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 500; --vnm-node-shadow: 0 1px 2px rgba(20,24,40,0.08); --vnm-hover-lift: 2px; --vnm-edge-width: 1.5px;","options":{"fitPadding":60,"persistKey":"vnm-layout:os2u9f","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true}};
 vnmRuntime(document.getElementById("vnm-root"), __vnm_payload);
 </script>
 </body>

@@ -25,6 +25,7 @@ import {
   routeEdge,
   computePerimeterPorts,
   contentBounds,
+  labelPoint,
   type NodeBox,
   type EdgeAnchorOverride,
 } from "../src/geometry/index.js";
@@ -668,6 +669,54 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     const m = model.nodes.find((n) => n.id === "M")!;
     handle.importLayout({ version: 1, positions: { M: { x: m.x + 40, y: m.y + 30 } } });
     expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+  });
+
+  // ---- v0.6.1 FR2 (⟂ final approach) + FR3 (label off a parallel run) parity: the
+  // state-machine fixture is the one diagram that drives BOTH new geometry branches —
+  // idle→Loading is a left-exit → top-entry elbow whose naive route closes PARALLEL to
+  // Loading's top (perpendicularizeEntry swaps the corner), and the "give up" label is
+  // bisected by the near-parallel errored→loading run (resolveLabelEdgeCollisions's new
+  // parallel-escape lifts it). The fixes changed ZERO snapshot bytes, so without this
+  // the runtime twins had no static-vs-runtime byte-compare (the project's recurring
+  // drift trap; REV-001). Reverting EITHER twin branch makes toSvgString() diverge from
+  // renderSvg here; the two sanity asserts prove the static side genuinely fires each
+  // branch (so the byte-compare is non-vacuous), mirroring the REV-009 bite-verify.
+  it("toSvgString() == renderSvg for the state-machine fixture (FR2 ⟂-entry + FR3 parallel-label)", () => {
+    const { model, theme } = prepare(
+      [
+        "graph TD",
+        "  idle((Idle)) --> loading[Loading]",
+        "  loading --> success{Response OK?}",
+        "  success -->|2xx| ready[Ready]",
+        "  success -->|error| errored[/Errored/]",
+        "  ready --> idle",
+        "  errored -->|retry| loading",
+        "  errored -->|give up| idle",
+      ].join("\n"),
+      { theme: "light" },
+    );
+
+    // sanity A (FR2 fired): idle→Loading closes with a segment PERPENDICULAR to the
+    // entered (top) border — vertical, coming DOWN into it — not a sideways stub.
+    const il = model.edges.find((e) => e.from === "idle" && e.to === "loading")!;
+    const last = il.points[il.points.length - 1]!;
+    const penult = il.points[il.points.length - 2]!;
+    expect(Math.abs(penult.x - last.x)).toBeLessThan(0.5); // vertical closing segment
+    expect(penult.y).toBeLessThan(last.y); // descends into the top border
+
+    // sanity B (FR3 fired): the "give up" label was lifted OFF its route's naive
+    // midpoint (where the parallel run would bisect it) by the label passes.
+    const gu = model.edges.find((e) => e.from === "errored" && e.to === "idle")!;
+    expect(gu.label).toBe("give up");
+    const naive = labelPoint(gu.points, "elbow");
+    expect(gu.labelPos!.x !== naive.x || gu.labelPos!.y !== naive.y).toBe(true);
+
+    // the interactive/exported twin reproduces the shared geometry byte-for-byte,
+    // locking BOTH perpendicularizeEntry and the FR3 parallel-escape in runtime.ts.
+    const { handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+    const got = handle.toSvgString();
+    expect(got).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+    expect(XMLValidator.validate(got)).toBe(true);
   });
 
   it("STATE re-route: baked renderStateSvg edges match the live runtime (native/state/layout.ts parity, REV-009)", async () => {

@@ -964,7 +964,23 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       }
       out.push(cur);
     }
+    perpendicularizeEntry(out, entryVertical);
     return simplify(out);
+  }
+  // mirrors geometry.perpendicularizeEntry() (FR2): force the closing segment to enter
+  // its target perpendicular to the border (arrowhead INTO the node) by swapping the
+  // last elbow corner when a bend left the final approach parallel to it. Endpoints
+  // fixed; a route already entering perpendicular is untouched. Keep in lockstep.
+  function perpendicularizeEntry(out: Pt[], entryVertical: boolean): void {
+    if (out.length < 3) return;
+    const end = out[out.length - 1]!;
+    const a = out[out.length - 3]!;
+    const b = out[out.length - 2]!;
+    const finalPerp = entryVertical ? nAt(b.x) === nAt(end.x) : nAt(b.y) === nAt(end.y);
+    const swappable = entryVertical ? nAt(a.y) !== nAt(end.y) : nAt(a.x) !== nAt(end.x);
+    if (!finalPerp && swappable) {
+      out[out.length - 2] = entryVertical ? { x: end.x, y: a.y } : { x: a.x, y: end.y };
+    }
   }
   function dist(a: Pt, b: Pt): number {
     return Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
@@ -1421,8 +1437,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   }
   // mirrors geometry.resolveLabelEdgeCollisions() (UAT-round, gRPC-stream fix): slide
   // any label plate sitting ON a foreign edge's crossing run along its OWN edge until
-  // it clears (PORT_LABEL_PAD=6, +axis tiebreak, 4 bounded passes, no RNG). Parallel
-  // grazes are left alone. Byte-identical shifts to the static twin. Keep in lockstep.
+  // it clears (PORT_LABEL_PAD=6, +axis tiebreak, 4 bounded passes, no RNG). A foreign
+  // run PARALLEL to (and bisecting) the own run is escaped by the same along-axis slide
+  // (FR3, "give up" fix). Byte-identical shifts to the static twin. Keep in lockstep.
   function resolveLabelEdgeCollisions(
     plates: Array<{ x: number; y: number; w: number; h: number } | undefined>,
     polylines: Pt[][],
@@ -1449,21 +1466,45 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
             const a = pts[s]!;
             const b = pts[s + 1]!;
             if (axis === "x") {
-              if (Math.abs(a.x - b.x) >= 0.5) continue;
-              const gx = a.x;
-              if (gx <= cx[i]! - hw || gx >= cx[i]! + hw) continue;
-              if (cy[i]! + hh <= Math.min(a.y, b.y) || cy[i]! - hh >= Math.max(a.y, b.y)) continue;
-              hasHit = true;
-              hiTarget = Math.max(hiTarget, gx + hw + 6);
-              loTarget = Math.min(loTarget, gx - hw - 6);
+              if (Math.abs(a.x - b.x) < 0.5) {
+                // perpendicular (vertical) foreign run → slide in x past it (unchanged)
+                const gx = a.x;
+                if (gx <= cx[i]! - hw || gx >= cx[i]! + hw) continue;
+                if (cy[i]! + hh <= Math.min(a.y, b.y) || cy[i]! - hh >= Math.max(a.y, b.y)) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, gx + hw + 6);
+                loTarget = Math.min(loTarget, gx - hw - 6);
+              } else if (Math.abs(a.y - b.y) < 0.5) {
+                // FR3 — parallel bisecting foreign run → slide in x past its nearer x-end
+                const gy = a.y;
+                if (gy <= cy[i]! - hh || gy >= cy[i]! + hh) continue;
+                const lo = Math.min(a.x, b.x);
+                const hi = Math.max(a.x, b.x);
+                if (cx[i]! + hw <= lo || cx[i]! - hw >= hi) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, hi + hw + 6);
+                loTarget = Math.min(loTarget, lo - hw - 6);
+              }
             } else {
-              if (Math.abs(a.y - b.y) >= 0.5) continue;
-              const gy = a.y;
-              if (gy <= cy[i]! - hh || gy >= cy[i]! + hh) continue;
-              if (cx[i]! + hw <= Math.min(a.x, b.x) || cx[i]! - hw >= Math.max(a.x, b.x)) continue;
-              hasHit = true;
-              hiTarget = Math.max(hiTarget, gy + hh + 6);
-              loTarget = Math.min(loTarget, gy - hh - 6);
+              if (Math.abs(a.y - b.y) < 0.5) {
+                // perpendicular (horizontal) foreign run → slide in y past it (unchanged)
+                const gy = a.y;
+                if (gy <= cy[i]! - hh || gy >= cy[i]! + hh) continue;
+                if (cx[i]! + hw <= Math.min(a.x, b.x) || cx[i]! - hw >= Math.max(a.x, b.x)) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, gy + hh + 6);
+                loTarget = Math.min(loTarget, gy - hh - 6);
+              } else if (Math.abs(a.x - b.x) < 0.5) {
+                // FR3 — parallel bisecting foreign run → slide in y past its nearer y-end
+                const gx = a.x;
+                if (gx <= cx[i]! - hw || gx >= cx[i]! + hw) continue;
+                const lo = Math.min(a.y, b.y);
+                const hi = Math.max(a.y, b.y);
+                if (cy[i]! + hh <= lo || cy[i]! - hh >= hi) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, hi + hh + 6);
+                loTarget = Math.min(loTarget, lo - hh - 6);
+              }
             }
           }
         }
@@ -1540,6 +1581,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const pts = [start, c1, c2, end];
       return { path: pathBezier(pts), labelPos: withShift(labelBezier(pts)), points: pts };
     }
+    const entryVertical = entry === "top" || entry === "bottom";
     let pts: Pt[];
     if (hasWps) {
       pts = elbowThrough(
@@ -1547,15 +1589,19 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
         end,
         waypoints!,
         !horizontal,
-        entry === "top" || entry === "bottom",
+        entryVertical,
         !(model.direction === "LR" || model.direction === "RL"),
       );
     } else if (horizontal) {
       const midX = (start.x + end.x) / 2;
-      pts = simplify([start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]);
+      pts = [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end];
+      perpendicularizeEntry(pts, entryVertical); // FR2 — perpendicular final approach
+      pts = simplify(pts);
     } else {
       const midY = (start.y + end.y) / 2;
-      pts = simplify([start, { x: start.x, y: midY }, { x: end.x, y: midY }, end]);
+      pts = [start, { x: start.x, y: midY }, { x: end.x, y: midY }, end];
+      perpendicularizeEntry(pts, entryVertical); // FR2 — perpendicular final approach
+      pts = simplify(pts);
     }
     const path = edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts);
     return { path, labelPos: withShift(labelPoly(pts)), points: pts };

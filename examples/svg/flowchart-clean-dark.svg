@@ -7,9 +7,9 @@
 <path d="M 187.25 275 L 187.25 335" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 172.25 377 L 172.25 410 L 87 410 L 87 443" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 202.25 377 L 202.25 410 L 287.5 410 L 287.5 443" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
-<path d="M 87 485 L 87 537.25 L 249 537.25 L 249 589.5" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 87 485 L 87 589.5 L 249 589.5" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 287.5 485 L 287.5 551" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
-<path d="M 486 491 L 486 540.25 L 326 540.25 L 326 589.5" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 486 491 L 486 589.5 L 326 589.5" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <rect x="213.78" y="190.54" width="31.2" height="20" rx="4" fill="#0f1117"/><text x="229.38" y="200.54" fill="#c3cadb" font-size="13" text-anchor="middle" dominant-baseline="central">yes</text>
 <rect x="382.35" y="193" width="22.8" height="20" rx="4" fill="#0f1117"/><text x="393.75" y="203" fill="#c3cadb" font-size="13" text-anchor="middle" dominant-baseline="central">no</text>
 <rect x="109.83" y="400" width="39.6" height="20" rx="4" fill="#0f1117"/><text x="129.63" y="410" fill="#c3cadb" font-size="13" text-anchor="middle" dominant-baseline="central">prod</text>

@@ -1,0 +1,9 @@
+{
+  "slug": "diagram-render-fixes-v0.6.1",
+  "updated": "2026-07-13",
+  "note": "As-built set for the three v0.6.0 render fixes. flow = the render-edge pipeline with the shipped fix sites (FR1 light edge token; FR2 perpendicularizeEntry() shared helper on routeElbow; FR3 resolveLabelEdgeCollisions parallel-run escape), the byte-parity runtime twin, and the new generate-heroes.mjs + cache-lookup.mmd. sequence = the render call path through those fix points and its mirror in the interactive-export twin. before/ holds the plan-time as-is baseline for side-by-side compare.",
+  "diagrams": [
+    { "kind": "flow", "file": "report/flow.mmd", "title": "As-built: render-edge pipeline with FR1/FR2/FR3 fix sites + byte-parity twin + hero script" },
+    { "kind": "sequence", "file": "report/sequence.mmd", "title": "As-built: render call path through perpendicularizeEntry (FR2) + resolveLabelEdgeCollisions (FR3), mirrored in the runtime twin" }
+  ]
+}

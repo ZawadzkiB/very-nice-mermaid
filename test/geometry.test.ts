@@ -11,6 +11,7 @@ import {
   contentBounds,
   computePerimeterPorts,
   resolveLabelCollisions,
+  resolveLabelEdgeCollisions,
   segmentsCross,
   applyEdgeBridges,
   separateLanes,
@@ -93,6 +94,77 @@ describe("routeEdge", () => {
     expect(r.points.length).toBeGreaterThanOrEqual(2);
     expect(r.path.startsWith("M ")).toBe(true);
     expect(r.labelPos).toBeDefined();
+  });
+});
+
+describe("routeElbow enters the target perpendicular to the entered side (FR2)", () => {
+  it("a left-exit / top-entry route closes with a vertical segment into the top (no sideways stub)", () => {
+    // Idle→Loading shape: source up-and-right, target down-and-left, so the ports land
+    // on perpendicular sides (exit left, entry top). Without the fix the naive elbow's
+    // last segment runs flat along the top border → arrowhead points sideways.
+    const from: NodeBox = { x: 240, y: 60, width: 80, height: 40 };
+    const to: NodeBox = { x: 100, y: 200, width: 80, height: 40 };
+    const ports = {
+      source: { side: "left" as const, offset: 0 },
+      target: { side: "top" as const, offset: 0 },
+    };
+    const pts = routeElbow(from, to, "TB", [], ports);
+    const end = pts[pts.length - 1]!;
+    const penult = pts[pts.length - 2]!;
+    expect(end).toEqual({ x: 100, y: 180 }); // lands on the target's top border
+    expect(penult.x).toBe(end.x); // closing segment is vertical → perpendicular to the top
+    expect(penult.y).toBeLessThan(end.y); // and comes down INTO the node
+  });
+
+  it("leaves an already-perpendicular route byte-identical (opposite sides)", () => {
+    const pts = routeElbow(A, below, "TB");
+    expect(pts[0]).toEqual({ x: 100, y: 120 });
+    expect(pts[pts.length - 1]).toEqual({ x: 100, y: 280 });
+    const penult = pts[pts.length - 2]!;
+    expect(penult.x).toBe(100); // still a clean vertical entry into the top
+  });
+
+  it("handles a BOTTOM entry too — closes vertical, approaching from below (sign check, REV-002)", () => {
+    // Target ABOVE the source, entering its BOTTOM border: the closing segment must
+    // be vertical AND come UP from below (exterior), so the arrowhead points up into
+    // the node — the mirror of the top-entry case, proving the sign handling.
+    const from: NodeBox = { x: 100, y: 300, width: 80, height: 40 };
+    const to: NodeBox = { x: 240, y: 60, width: 80, height: 40 };
+    const ports = {
+      source: { side: "left" as const, offset: 0 },
+      target: { side: "bottom" as const, offset: 0 },
+    };
+    const pts = routeElbow(from, to, "TB", [], ports);
+    const end = pts[pts.length - 1]!;
+    const penult = pts[pts.length - 2]!;
+    expect(end).toEqual({ x: 240, y: 80 }); // the target's bottom border
+    expect(penult.x).toBe(end.x); // vertical closing segment (⟂ to the bottom)
+    expect(penult.y).toBeGreaterThan(end.y); // approaches from BELOW (exterior)
+  });
+});
+
+describe("resolveLabelEdgeCollisions lifts a label off a bisecting parallel run (FR3)", () => {
+  it("slides a label along its own vertical run past a foreign parallel run's nearer end", () => {
+    const plates: Array<PlateRect | undefined> = [
+      { x: 100, y: 100, w: 40, h: 20 }, // label centred on its own vertical run at x=100
+      undefined, // the foreign edge carries no label
+    ];
+    const polylines = [
+      [{ x: 100, y: 0 }, { x: 100, y: 200 }], // own run: vertical at x=100 through the plate
+      [{ x: 110, y: 90 }, { x: 110, y: 300 }], // foreign PARALLEL run bisecting the plate
+    ];
+    const shifts = resolveLabelEdgeCollisions(plates, polylines);
+    expect(shifts[0]!.x).toBe(0); // moved only ALONG its own edge, never flung sideways
+    expect(shifts[0]!.y).toBeLessThan(0); // up, toward the foreign run's nearer (upper) end
+    // clears it: the plate now sits fully above the foreign run's start (y=90)
+    expect(100 + shifts[0]!.y + 10).toBeLessThanOrEqual(90);
+  });
+
+  it("leaves a label with no foreign parallel run untouched (byte-identical)", () => {
+    const plates: Array<PlateRect | undefined> = [{ x: 100, y: 100, w: 40, h: 20 }];
+    const polylines = [[{ x: 100, y: 0 }, { x: 100, y: 200 }]];
+    const shifts = resolveLabelEdgeCollisions(plates, polylines);
+    expect(shifts[0]).toEqual({ x: 0, y: 0 });
   });
 });
 

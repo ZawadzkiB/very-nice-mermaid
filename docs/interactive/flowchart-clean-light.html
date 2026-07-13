@@ -695,7 +695,19 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       }
       out.push(cur);
     }
+    perpendicularizeEntry2(out, entryVertical);
     return simplify2(out);
+  }
+  function perpendicularizeEntry2(out, entryVertical) {
+    if (out.length < 3) return;
+    const end = out[out.length - 1];
+    const a = out[out.length - 3];
+    const b = out[out.length - 2];
+    const finalPerp = entryVertical ? nAt(b.x) === nAt(end.x) : nAt(b.y) === nAt(end.y);
+    const swappable = entryVertical ? nAt(a.y) !== nAt(end.y) : nAt(a.x) !== nAt(end.x);
+    if (!finalPerp && swappable) {
+      out[out.length - 2] = entryVertical ? { x: end.x, y: a.y } : { x: a.x, y: end.y };
+    }
   }
   function dist2(a, b) {
     return Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
@@ -1101,21 +1113,41 @@ var vnmRuntime = function vnmRuntime(root, payload) {
             const a = pts[s];
             const b = pts[s + 1];
             if (axis === "x") {
-              if (Math.abs(a.x - b.x) >= 0.5) continue;
-              const gx = a.x;
-              if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
-              if (cy[i] + hh <= Math.min(a.y, b.y) || cy[i] - hh >= Math.max(a.y, b.y)) continue;
-              hasHit = true;
-              hiTarget = Math.max(hiTarget, gx + hw + 6);
-              loTarget = Math.min(loTarget, gx - hw - 6);
+              if (Math.abs(a.x - b.x) < 0.5) {
+                const gx = a.x;
+                if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
+                if (cy[i] + hh <= Math.min(a.y, b.y) || cy[i] - hh >= Math.max(a.y, b.y)) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, gx + hw + 6);
+                loTarget = Math.min(loTarget, gx - hw - 6);
+              } else if (Math.abs(a.y - b.y) < 0.5) {
+                const gy = a.y;
+                if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
+                const lo = Math.min(a.x, b.x);
+                const hi = Math.max(a.x, b.x);
+                if (cx[i] + hw <= lo || cx[i] - hw >= hi) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, hi + hw + 6);
+                loTarget = Math.min(loTarget, lo - hw - 6);
+              }
             } else {
-              if (Math.abs(a.y - b.y) >= 0.5) continue;
-              const gy = a.y;
-              if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
-              if (cx[i] + hw <= Math.min(a.x, b.x) || cx[i] - hw >= Math.max(a.x, b.x)) continue;
-              hasHit = true;
-              hiTarget = Math.max(hiTarget, gy + hh + 6);
-              loTarget = Math.min(loTarget, gy - hh - 6);
+              if (Math.abs(a.y - b.y) < 0.5) {
+                const gy = a.y;
+                if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
+                if (cx[i] + hw <= Math.min(a.x, b.x) || cx[i] - hw >= Math.max(a.x, b.x)) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, gy + hh + 6);
+                loTarget = Math.min(loTarget, gy - hh - 6);
+              } else if (Math.abs(a.x - b.x) < 0.5) {
+                const gx = a.x;
+                if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
+                const lo = Math.min(a.y, b.y);
+                const hi = Math.max(a.y, b.y);
+                if (cy[i] + hh <= lo || cy[i] - hh >= hi) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, hi + hh + 6);
+                loTarget = Math.min(loTarget, lo - hh - 6);
+              }
             }
           }
         }
@@ -1170,6 +1202,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const pts2 = [start, c1, c2, end];
       return { path: pathBezier(pts2), labelPos: withShift(labelBezier(pts2)), points: pts2 };
     }
+    const entryVertical = entry === "top" || entry === "bottom";
     let pts;
     if (hasWps) {
       pts = elbowThrough2(
@@ -1177,15 +1210,19 @@ var vnmRuntime = function vnmRuntime(root, payload) {
         end,
         waypoints,
         !horizontal,
-        entry === "top" || entry === "bottom",
+        entryVertical,
         !(model.direction === "LR" || model.direction === "RL")
       );
     } else if (horizontal) {
       const midX = (start.x + end.x) / 2;
-      pts = simplify2([start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]);
+      pts = [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end];
+      perpendicularizeEntry2(pts, entryVertical);
+      pts = simplify2(pts);
     } else {
       const midY = (start.y + end.y) / 2;
-      pts = simplify2([start, { x: start.x, y: midY }, { x: end.x, y: midY }, end]);
+      pts = [start, { x: start.x, y: midY }, { x: end.x, y: midY }, end];
+      perpendicularizeEntry2(pts, entryVertical);
+      pts = simplify2(pts);
     }
     const path = edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts);
     return { path, labelPos: withShift(labelPoly(pts)), points: pts };
@@ -2074,7 +2111,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     toSvgString
   };
 };
-var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"start","label":"Push to main","shape":"stadium","classes":[],"x":286.5,"y":29,"width":154,"height":42},{"id":"lint","label":"Lint passes?","shape":"diamond","classes":[],"x":286.5,"y":141.5,"width":192,"height":63},{"id":"test","label":"Run tests","shape":"rect","classes":[],"x":187.25,"y":254,"width":111,"height":42},{"id":"fail","label":"Report failure","shape":"cylinder","classes":[],"x":486,"y":464,"width":154,"height":54},{"id":"deploy","label":"Deploy?","shape":"hexagon","classes":[],"x":187.25,"y":356,"width":118,"height":42},{"id":"prod","label":"Ship to prod","shape":"parallelogram","classes":[],"x":87,"y":464,"width":158,"height":42},{"id":"stg","label":"Ship to staging","shape":"rect","classes":[],"x":287.5,"y":464,"width":163,"height":42},{"id":"done","label":"Done","shape":"circle","classes":[],"x":287.5,"y":589.5,"width":77,"height":77}],"edges":[{"from":"start","to":"lint","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":286.5,"y":50},{"x":286.5,"y":110}],"path":"M 286.5 50 L 286.5 110"},{"from":"lint","to":"test","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"yes","points":[{"x":271.5,"y":168.078125},{"x":271.5,"y":200.5390625},{"x":187.25,"y":200.5390625},{"x":187.25,"y":233}],"path":"M 271.5 168.08 L 271.5 200.54 L 187.25 200.54 L 187.25 233","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":229.38,"y":200.54}},{"from":"lint","to":"fail","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"no","points":[{"x":301.5,"y":168.078125},{"x":301.5,"y":203},{"x":486,"y":203},{"x":486,"y":437}],"path":"M 301.5 168.08 L 301.5 203 L 486 203 L 486 437","waypoints":[{"x":486,"y":203},{"x":486,"y":254},{"x":486,"y":305},{"x":486,"y":356},{"x":486,"y":407}],"ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":393.75,"y":203}},{"from":"test","to":"deploy","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":187.25,"y":275},{"x":187.25,"y":335}],"path":"M 187.25 275 L 187.25 335"},{"from":"deploy","to":"prod","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"prod","points":[{"x":172.25,"y":377},{"x":172.25,"y":410},{"x":87,"y":410},{"x":87,"y":443}],"path":"M 172.25 377 L 172.25 410 L 87 410 L 87 443","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":129.63,"y":410}},{"from":"deploy","to":"stg","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"staging","points":[{"x":202.25,"y":377},{"x":202.25,"y":410},{"x":287.5,"y":410},{"x":287.5,"y":443}],"path":"M 202.25 377 L 202.25 410 L 287.5 410 L 287.5 443","ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":244.88,"y":410}},{"from":"prod","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":87,"y":485},{"x":87,"y":537.25},{"x":249,"y":537.25},{"x":249,"y":589.5}],"path":"M 87 485 L 87 537.25 L 249 537.25 L 249 589.5"},{"from":"stg","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":287.5,"y":485},{"x":287.5,"y":551}],"path":"M 287.5 485 L 287.5 551"},{"from":"fail","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":486,"y":491},{"x":486,"y":540.25},{"x":326,"y":540.25},{"x":326,"y":589.5}],"path":"M 486 491 L 486 540.25 L 326 540.25 L 326 589.5"}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":-12,"width":595,"height":660}},"theme":{"name":"light","edgeStyle":"elbow","tokens":{"colors":{"background":"#f7f8fb","surface":"#ffffff","surfaceStroke":"#c7cdd9","text":"#1b2030","textMuted":"#5c6478","edge":"#8a93a6","edgeLabelBg":"#f7f8fb","edgeLabelText":"#3a4152","subgraphFill":"#eef1f6","subgraphStroke":"#c7cdd9","subgraphText":"#5c6478","accent":"#4f7cff","minimapBg":"rgba(240,242,247,0.9)","minimapViewport":"rgba(79,124,255,0.28)","roles":{"accent":{"fill":"#e8ecff","stroke":"#7c8bd9","text":"#1b2030"},"success":{"fill":"#e6f4ea","stroke":"#5db97a","text":"#12331f"},"warn":{"fill":"#fff3d6","stroke":"#caa54a","text":"#3b2f0b"},"danger":{"fill":"#fde8e8","stroke":"#d9534f","text":"#4a1210"}}},"radii":{"node":10,"card":10,"label":4},"spacing":{"nodePadX":16,"nodePadY":12,"nodesep":40,"ranksep":60,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":18,"weight":500},"edge":{"style":"elbow","width":1.5,"thickWidth":3,"arrowSize":8},"effects":{"nodeShadow":"0 1px 2px rgba(20,24,40,0.08)","gradient":false,"hoverLift":2}}},"cssVars":"--vnm-bg: #f7f8fb; --vnm-surface: #ffffff; --vnm-surface-stroke: #c7cdd9; --vnm-text: #1b2030; --vnm-text-muted: #5c6478; --vnm-edge: #8a93a6; --vnm-edge-label-bg: #f7f8fb; --vnm-edge-label-text: #3a4152; --vnm-subgraph-fill: #eef1f6; --vnm-subgraph-stroke: #c7cdd9; --vnm-subgraph-text: #5c6478; --vnm-accent: #4f7cff; --vnm-minimap-bg: rgba(240,242,247,0.9); --vnm-minimap-viewport: rgba(79,124,255,0.28); --vnm-radius: 10px; --vnm-label-radius: 4px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 500; --vnm-node-shadow: 0 1px 2px rgba(20,24,40,0.08); --vnm-hover-lift: 2px; --vnm-edge-width: 1.5px;","options":{"fitPadding":60,"persistKey":"vnm-layout:1wui0yq","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true}};
+var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"start","label":"Push to main","shape":"stadium","classes":[],"x":286.5,"y":29,"width":154,"height":42},{"id":"lint","label":"Lint passes?","shape":"diamond","classes":[],"x":286.5,"y":141.5,"width":192,"height":63},{"id":"test","label":"Run tests","shape":"rect","classes":[],"x":187.25,"y":254,"width":111,"height":42},{"id":"fail","label":"Report failure","shape":"cylinder","classes":[],"x":486,"y":464,"width":154,"height":54},{"id":"deploy","label":"Deploy?","shape":"hexagon","classes":[],"x":187.25,"y":356,"width":118,"height":42},{"id":"prod","label":"Ship to prod","shape":"parallelogram","classes":[],"x":87,"y":464,"width":158,"height":42},{"id":"stg","label":"Ship to staging","shape":"rect","classes":[],"x":287.5,"y":464,"width":163,"height":42},{"id":"done","label":"Done","shape":"circle","classes":[],"x":287.5,"y":589.5,"width":77,"height":77}],"edges":[{"from":"start","to":"lint","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":286.5,"y":50},{"x":286.5,"y":110}],"path":"M 286.5 50 L 286.5 110"},{"from":"lint","to":"test","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"yes","points":[{"x":271.5,"y":168.078125},{"x":271.5,"y":200.5390625},{"x":187.25,"y":200.5390625},{"x":187.25,"y":233}],"path":"M 271.5 168.08 L 271.5 200.54 L 187.25 200.54 L 187.25 233","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":229.38,"y":200.54}},{"from":"lint","to":"fail","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"no","points":[{"x":301.5,"y":168.078125},{"x":301.5,"y":203},{"x":486,"y":203},{"x":486,"y":437}],"path":"M 301.5 168.08 L 301.5 203 L 486 203 L 486 437","waypoints":[{"x":486,"y":203},{"x":486,"y":254},{"x":486,"y":305},{"x":486,"y":356},{"x":486,"y":407}],"ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":393.75,"y":203}},{"from":"test","to":"deploy","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":187.25,"y":275},{"x":187.25,"y":335}],"path":"M 187.25 275 L 187.25 335"},{"from":"deploy","to":"prod","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"prod","points":[{"x":172.25,"y":377},{"x":172.25,"y":410},{"x":87,"y":410},{"x":87,"y":443}],"path":"M 172.25 377 L 172.25 410 L 87 410 L 87 443","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":129.63,"y":410}},{"from":"deploy","to":"stg","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"staging","points":[{"x":202.25,"y":377},{"x":202.25,"y":410},{"x":287.5,"y":410},{"x":287.5,"y":443}],"path":"M 202.25 377 L 202.25 410 L 287.5 410 L 287.5 443","ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":244.88,"y":410}},{"from":"prod","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":87,"y":485},{"x":87,"y":589.5},{"x":249,"y":589.5}],"path":"M 87 485 L 87 589.5 L 249 589.5"},{"from":"stg","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":287.5,"y":485},{"x":287.5,"y":551}],"path":"M 287.5 485 L 287.5 551"},{"from":"fail","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":486,"y":491},{"x":486,"y":589.5},{"x":326,"y":589.5}],"path":"M 486 491 L 486 589.5 L 326 589.5"}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":-12,"width":595,"height":660}},"theme":{"name":"light","edgeStyle":"elbow","tokens":{"colors":{"background":"#f7f8fb","surface":"#ffffff","surfaceStroke":"#c7cdd9","text":"#1b2030","textMuted":"#5c6478","edge":"#69728a","edgeLabelBg":"#f7f8fb","edgeLabelText":"#3a4152","subgraphFill":"#eef1f6","subgraphStroke":"#c7cdd9","subgraphText":"#5c6478","accent":"#4f7cff","minimapBg":"rgba(240,242,247,0.9)","minimapViewport":"rgba(79,124,255,0.28)","roles":{"accent":{"fill":"#e8ecff","stroke":"#7c8bd9","text":"#1b2030"},"success":{"fill":"#e6f4ea","stroke":"#5db97a","text":"#12331f"},"warn":{"fill":"#fff3d6","stroke":"#caa54a","text":"#3b2f0b"},"danger":{"fill":"#fde8e8","stroke":"#d9534f","text":"#4a1210"}}},"radii":{"node":10,"card":10,"label":4},"spacing":{"nodePadX":16,"nodePadY":12,"nodesep":40,"ranksep":60,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":18,"weight":500},"edge":{"style":"elbow","width":1.5,"thickWidth":3,"arrowSize":8},"effects":{"nodeShadow":"0 1px 2px rgba(20,24,40,0.08)","gradient":false,"hoverLift":2}}},"cssVars":"--vnm-bg: #f7f8fb; --vnm-surface: #ffffff; --vnm-surface-stroke: #c7cdd9; --vnm-text: #1b2030; --vnm-text-muted: #5c6478; --vnm-edge: #69728a; --vnm-edge-label-bg: #f7f8fb; --vnm-edge-label-text: #3a4152; --vnm-subgraph-fill: #eef1f6; --vnm-subgraph-stroke: #c7cdd9; --vnm-subgraph-text: #5c6478; --vnm-accent: #4f7cff; --vnm-minimap-bg: rgba(240,242,247,0.9); --vnm-minimap-viewport: rgba(79,124,255,0.28); --vnm-radius: 10px; --vnm-label-radius: 4px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 500; --vnm-node-shadow: 0 1px 2px rgba(20,24,40,0.08); --vnm-hover-lift: 2px; --vnm-edge-width: 1.5px;","options":{"fitPadding":60,"persistKey":"vnm-layout:1wui0yq","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true}};
 vnmRuntime(document.getElementById("vnm-root"), __vnm_payload);
 </script>
 </body>

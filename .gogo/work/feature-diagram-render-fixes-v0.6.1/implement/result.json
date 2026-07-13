@@ -1,0 +1,37 @@
+{
+  "slug": "diagram-render-fixes-v0.6.1",
+  "phase": "implement",
+  "status": "ok",
+  "round": 1,
+  "inputs": [
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/plan.md",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/decisions.md",
+    ".gogo/knowledge/coding-rules.md",
+    ".gogo/knowledge/tech-stack.md"
+  ],
+  "outputs": [
+    "src/theme/index.ts",
+    "src/geometry/index.ts",
+    "src/render/dom/runtime.ts",
+    "test/geometry.test.ts",
+    "test/__snapshots__/render-svg.test.ts.snap",
+    "test/__snapshots__/state-svg.test.ts.snap",
+    "test/__snapshots__/class-svg.test.ts.snap",
+    "test/__snapshots__/sequence-svg.test.ts.snap",
+    "fixtures/cache-lookup.mmd",
+    "scripts/generate-heroes.mjs",
+    "package.json",
+    "assets/example-dark.png",
+    "assets/example-light.png",
+    "assets/example-sketch.png",
+    "docs/assets/",
+    "docs/interactive/",
+    "examples/png/",
+    "examples/svg/",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/charts/flow-asbuilt.mmd",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/charts/manifest.json"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "summary": "Implemented FR1-FR4 + D5/D6. FR1 (Issues 2+3): src/theme/index.ts light colors.edge #8a93a6 -> #69728a (~4.5:1 on #f7f8fb, dark-parity), colour-only, verified zero geometry churn (light snapshot diffs are stroke/fill-only). FR2 (Issue 1a): new shared geometry helper perpendicularizeEntry() swaps the last elbow corner so an edge's closing segment enters perpendicular to the entered border (arrowhead into the node) - applied to BOTH the naive elbow and elbowThrough (all sides), fixing idle->Loading and, as a bonus of the same bug class, the flowchart prod/fail->Done side-entries. FR3 (Issue 1b): resolveLabelEdgeCollisions extended to escape a foreign PARALLEL run by sliding the label along its own axis past the run's nearer end (give-up label lifted off the parallel lane) - keeps the label on its own edge. Both FR2/FR3 mirrored byte-for-byte in the vnmRuntime twin (src/render/dom/runtime.ts); dom-runtime-parity green. Added 4 geometry unit tests. D5: scripts/generate-heroes.mjs + npm run heroes capturing all 4 hero recipes. D6 (escalated + resolved -> A): example-sketch.png is a cache-lookup flowchart (not the state machine D4 assumed); reconstructed as fixtures/cache-lookup.mmd (pixel-perfect) and regenerated. Regenerated docs/ gallery, examples/, and README heroes; git diff shows only intended files; dark/fancy geometry unchanged except the legit FR2 Done-entry fix; example-fancy hero unchanged; re-render byte-identical (deterministic). Green: npm run build, npm run typecheck, npm test (392 unit, +4). No commits. No open forks."
+}
