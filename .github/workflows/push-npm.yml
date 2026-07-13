@@ -40,10 +40,16 @@ jobs:
 
       # Node >= 22.14 + npm >= 11.5.1 are required for OIDC trusted publishing.
       # setup-node ships an older npm, so upgrade it explicitly below.
+      #
+      # IMPORTANT: do NOT set `registry-url` here. It makes setup-node write an
+      # .npmrc with `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` and set a
+      # placeholder NODE_AUTH_TOKEN, and npm then uses that bogus token instead of
+      # doing the OIDC exchange — publishing fails with a misleading E404
+      # (actions/setup-node#1440). npm defaults to registry.npmjs.org anyway, so
+      # OIDC trusted publishing works without it.
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
           cache: npm
       - name: Upgrade npm to an OIDC-capable version (>= 11.5.1)
         run: npm install -g npm@latest && npm --version
