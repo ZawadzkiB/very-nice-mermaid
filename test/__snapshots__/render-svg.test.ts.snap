@@ -34,11 +34,11 @@ exports[`renderSvg > produces a stable, well-formed SVG for the fancy theme 1`] 
 
 exports[`renderSvg > produces a stable, well-formed SVG for the light theme 1`] = `
 "<svg xmlns="http://www.w3.org/2000/svg" width="240" height="319" viewBox="-12 -12 240 319" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
-<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#8a93a6"/></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#8a93a6"/></marker></defs>
+<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#69728a"/></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#69728a"/></marker></defs>
 <rect x="-12" y="-12" width="240" height="319" fill="#f7f8fb"/>
-<path d="M 110 50 L 110 110" fill="none" stroke="#8a93a6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
-<path d="M 95 165.06 L 95 202.03 L 50 202.03 L 50 239" fill="none" stroke="#8a93a6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
-<path d="M 125 165.06 L 125 199.03 L 170 199.03 L 170 233" fill="none" stroke="#8a93a6" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 110 50 L 110 110" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 95 165.06 L 95 202.03 L 50 202.03 L 50 239" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 125 165.06 L 125 199.03 L 170 199.03 L 170 233" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <rect x="56.9" y="192.03" width="31.2" height="20" rx="4" fill="#f7f8fb"/><text x="72.5" y="202.03" fill="#3a4152" font-size="13" text-anchor="middle" dominant-baseline="central">yes</text>
 <rect x="136.1" y="189.03" width="22.8" height="20" rx="4" fill="#f7f8fb"/><text x="147.5" y="199.03" fill="#3a4152" font-size="13" text-anchor="middle" dominant-baseline="central">no</text>
 <g><rect x="72" y="8" width="76" height="42" rx="6" fill="#f00" stroke="#900" stroke-width="1.5"/><text x="110" y="29" fill="#fff" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Start</text></g>

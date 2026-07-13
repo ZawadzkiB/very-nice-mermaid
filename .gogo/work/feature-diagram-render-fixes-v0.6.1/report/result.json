@@ -1,0 +1,28 @@
+{
+  "slug": "diagram-render-fixes-v0.6.1",
+  "phase": "report",
+  "status": "ok",
+  "inputs": [
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/plan.md",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/state.md",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/decisions.md",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/review/issues.json",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/test/issues.json",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/charts/manifest.json",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/charts/before/manifest.json"
+  ],
+  "outputs": [
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/report/report.md",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/report/flow.mmd",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/report/sequence.mmd",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/report/before/flow.mmd",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/report/before/manifest.json",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/report/manifest.json",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/report/diagrams.html",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/plan.md",
+    ".gogo/knowledge/tech-stack.md"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "summary": "Report bundle for the 3 v0.6.0 render fixes (FR1 light-edge contrast, FR2 perpendicular-entry helper, FR3 parallel-run label escape) + D5 hero script + D6 reconstructed fixture. As-built flow + sequence diagrams drawn; before/ set copied in for compare; plan reconciled to as-built (FR2 landed as a shared perpendicularizeEntry helper on routeElbow, plus a bonus flowchart Done-entry fix; D6 escalated+resolved). Review APPROVE (3 non-blocking, 2 fixed 1 deferred), test GREEN (397 unit + 84 e2e, all issues verified against real pixels + interactive twin). Knowledge: tech-stack.md gogo-overrides gained the npm run heroes command + cache-lookup fixture. No open issues; sits at the UAT gate (awaiting-uat)."
+}

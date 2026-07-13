@@ -1,0 +1,19 @@
+flowchart TD
+  dsl["examples/src/*.mmd · fixtures/*.mmd"] --> parse["parser → DiagramModel"]
+  parse --> layout["layout() · dagre positions + waypoints"]
+  layout --> ports["computePerimeterPorts() → EdgePorts (unchanged)"]
+  ports --> route["routeEdge() → routeElbow()"]
+  route --> perp["perpendicularizeEntry() (NEW shared helper)<br/>FR2: swap last elbow corner so the closing<br/>segment enters ⟂ to the border — applied to BOTH<br/>the naive elbow AND elbowThrough (all sides)"]
+  perp --> finish["layout.finishEdges()"]
+  finish --> lanes["separateLanes · resolveLabelCollisions · resolveLabelNodeCollisions"]
+  finish --> ledge["resolveLabelEdgeCollisions()<br/>FR3: extended — also escapes a foreign PARALLEL<br/>run by sliding along the own axis (give-up fix)"]
+  lanes --> emit["5-layer emit → SVG string"]
+  ledge --> emit
+  theme["theme tokens (src/theme/index.ts)<br/>FR1: light colors.edge #8a93a6 → #69728a (~4.5:1)"] --> emit
+  theme --> rt
+  emit --> svg["static SVG / HTML"]
+  emit --> png["resvg → PNG (docs/ thumbs · README heroes)"]
+  perp --> rt["vnmRuntime twin (src/render/dom/runtime.ts)<br/>byte-parity: mirrors perpendicularizeEntry + FR3"]
+  ledge --> rt
+  rt --> html["interactive HTML export"]
+  png --> heroes["scripts/generate-heroes.mjs (NEW, D5)<br/>captures all 4 hero recipes incl.<br/>fixtures/cache-lookup.mmd (D6)"]

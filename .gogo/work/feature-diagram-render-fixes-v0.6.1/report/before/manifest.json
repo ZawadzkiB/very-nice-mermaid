@@ -1,0 +1,8 @@
+{
+  "slug": "diagram-render-fixes-v0.6.1",
+  "updated": "2026-07-13",
+  "note": "As-is baseline (before any code change): the three v0.6.0 defects located at their real code sites in the render-edge pipeline — 1a idle→Loading port stub, 1b give-up label bisected by a parallel run, 2+3 low light-theme edge contrast. Copied into the report bundle for a self-contained before/after compare.",
+  "diagrams": [
+    { "kind": "flow", "file": "report/before/flow.mmd", "title": "As-is: the three defects at their code sites (port stub · label bisected · low light-edge contrast)" }
+  ]
+}

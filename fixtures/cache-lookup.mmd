@@ -1,0 +1,7 @@
+flowchart TD
+  req[User request] --> hit{Cache hit?}
+  hit -->|yes| cached[Return cached]
+  hit -->|no| db[Query DB]
+  db --> build[Build response]
+  build --> ret[Return]
+  build --> write[/Write cache/]

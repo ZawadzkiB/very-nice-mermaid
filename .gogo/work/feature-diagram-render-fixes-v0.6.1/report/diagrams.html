@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo report diagrams — diagram-render-fixes-v0.6.1</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo report diagrams — <code>diagram-render-fixes-v0.6.1</code></h1>
+    <p class="hint">As-built · Offline viewer · mermaid is vendored with the plugin (no network, no CLI) · regenerate via the gogo-mermaid skill.</p>
+  </header>
+
+  <h2>As-built — render-edge pipeline with the shipped FR1/FR2/FR3 fix sites</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  dsl["examples/src/*.mmd · fixtures/*.mmd"] --> parse["parser → DiagramModel"]
+  parse --> layout["layout() · dagre positions + waypoints"]
+  layout --> ports["computePerimeterPorts() → EdgePorts (unchanged)"]
+  ports --> route["routeEdge() → routeElbow()"]
+  route --> perp["perpendicularizeEntry() (NEW shared helper)<br/>FR2: swap last elbow corner so the closing<br/>segment enters ⟂ to the border — applied to BOTH<br/>the naive elbow AND elbowThrough (all sides)"]
+  perp --> finish["layout.finishEdges()"]
+  finish --> lanes["separateLanes · resolveLabelCollisions · resolveLabelNodeCollisions"]
+  finish --> ledge["resolveLabelEdgeCollisions()<br/>FR3: extended — also escapes a foreign PARALLEL<br/>run by sliding along the own axis (give-up fix)"]
+  lanes --> emit["5-layer emit → SVG string"]
+  ledge --> emit
+  theme["theme tokens (src/theme/index.ts)<br/>FR1: light colors.edge #8a93a6 → #69728a (~4.5:1)"] --> emit
+  theme --> rt
+  emit --> svg["static SVG / HTML"]
+  emit --> png["resvg → PNG (docs/ thumbs · README heroes)"]
+  perp --> rt["vnmRuntime twin (src/render/dom/runtime.ts)<br/>byte-parity: mirrors perpendicularizeEntry + FR3"]
+  ledge --> rt
+  rt --> html["interactive HTML export"]
+  png --> heroes["scripts/generate-heroes.mjs (NEW, D5)<br/>4 hero recipes incl. fixtures/cache-lookup.mmd (D6)"]
+</pre></div>
+
+  <h2>As-built — render call path through the fix points (and its runtime twin mirror)</h2>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  participant L as layout()
+  participant R as routeElbow() (geometry)
+  participant P as perpendicularizeEntry()
+  participant F as finishEdges()
+  participant E as resolveLabelEdgeCollisions()
+  participant S as SVG sink / resvg PNG
+  participant T as vnmRuntime twin (runtime.ts)
+
+  Note over L,T: One shared geometry, mirrored byte-for-byte in the runtime twin
+  L->>R: route each edge (ports + waypoints)
+  R->>P: closing segment ⟂ entered border?
+  P-->>R: FR2 — swap last corner if parallel (arrowhead into node)
+  R-->>L: routed points + path + labelPos
+  L->>F: post-routing passes
+  F->>E: label bisected by a run?
+  E-->>F: FR3 — slide label off a foreign PARALLEL run (give-up)
+  F-->>L: final labelPos
+  L->>S: 5-layer emit → static SVG / PNG (theme edge #69728a on light)
+  Note over T: interactive HTML export re-derives the same geometry live
+  T->>P: perpendicularizeEntry (mirrored)
+  T->>E: resolveLabelEdgeCollisions parallel-escape (mirrored)
+  Note over S,T: dom-runtime-parity guards toSvgString() == renderSvg
+</pre></div>
+
+  <h2>Before (as-is) — the three v0.6.0 defects at their code sites</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  ports["computePerimeterPorts()"] --> stub["idle→Loading: top port offset from approach lane<br/>BUG 1a: short horizontal stub → arrowhead sits ABOVE the box (doubles back)"]
+  route["routeEdge() / labelPoint()"] --> lbl["give up label at route mid-segment<br/>BUG 1b: bisected by the parallel ready→idle run (~20px apart)"]
+  theme["light colors.edge = #8a93a6 on background #f7f8fb"] --> faint["BUG 2+3: low contrast<br/>state clean·light + sketch·light edges read merged near Loading/Error/retry;<br/>Report-failure arrowheads invisible (dark/fancy same geometry read fine)"]
+  stub --> emit["5-layer emit → SVG/PNG (+ runtime twin)"]
+  lbl --> emit
+  faint --> emit
+</pre></div>
+
+  <script src="../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from: ../../../resources/mermaid.min.js\n' +
+          'Re-run the gogo-mermaid skill, or read the .mmd source files directly.</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

@@ -108,7 +108,10 @@ const lightTokens: TokenSet = {
     surfaceStroke: "#c7cdd9",
     text: "#1b2030",
     textMuted: "#5c6478",
-    edge: "#8a93a6",
+    // Dark-parity edge contrast on the near-white bg (was #8a93a6 ≈ 2.9:1, too faint
+    // for sketch·light + near-parallel runs). #69728a ≈ 4.5:1 on #f7f8fb, matching the
+    // dark theme's edge legibility; colour-only, no geometry impact (D2=A).
+    edge: "#69728a",
     edgeLabelBg: "#f7f8fb",
     edgeLabelText: "#3a4152",
     subgraphFill: "#eef1f6",

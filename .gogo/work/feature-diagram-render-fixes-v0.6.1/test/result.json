@@ -1,0 +1,24 @@
+{
+  "slug": "diagram-render-fixes-v0.6.1",
+  "phase": "test",
+  "status": "ok",
+  "round": 1,
+  "inputs": [
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/plan.md",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/review/issues.json",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/implement/result.json",
+    ".gogo/knowledge/test-strategy.md",
+    ".gogo/knowledge/testing-tools.md",
+    ".gogo/knowledge/tech-stack.md",
+    ".gogo/knowledge/non-functional-requirements.md"
+  ],
+  "outputs": [
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/test/issues.json",
+    ".gogo/work/feature-diagram-render-fixes-v0.6.1/test/test-01.md",
+    "e2e/render-fixes-v0.6.1.spec.ts"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "open_issues": 0,
+  "summary": "Round 1: build/typecheck/unit(397)/e2e(84, incl. 5 new) all green; every plan acceptance-criteria check (Issue 1a/1b/2/3, regression sweep, interactive-HTML twin parity in a real browser) verified hands-on against real pixels with before/after comparisons proving improvement not regression; zero issues found; added e2e/render-fixes-v0.6.1.spec.ts to close a gap (no prior real-browser assertion of the FR2/FR3 shapes). Done-bar met; advancing to report."
+}

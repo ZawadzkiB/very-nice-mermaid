@@ -695,7 +695,19 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       }
       out.push(cur);
     }
+    perpendicularizeEntry2(out, entryVertical);
     return simplify2(out);
+  }
+  function perpendicularizeEntry2(out, entryVertical) {
+    if (out.length < 3) return;
+    const end = out[out.length - 1];
+    const a = out[out.length - 3];
+    const b = out[out.length - 2];
+    const finalPerp = entryVertical ? nAt(b.x) === nAt(end.x) : nAt(b.y) === nAt(end.y);
+    const swappable = entryVertical ? nAt(a.y) !== nAt(end.y) : nAt(a.x) !== nAt(end.x);
+    if (!finalPerp && swappable) {
+      out[out.length - 2] = entryVertical ? { x: end.x, y: a.y } : { x: a.x, y: end.y };
+    }
   }
   function dist2(a, b) {
     return Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
@@ -1101,21 +1113,41 @@ var vnmRuntime = function vnmRuntime(root, payload) {
             const a = pts[s];
             const b = pts[s + 1];
             if (axis === "x") {
-              if (Math.abs(a.x - b.x) >= 0.5) continue;
-              const gx = a.x;
-              if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
-              if (cy[i] + hh <= Math.min(a.y, b.y) || cy[i] - hh >= Math.max(a.y, b.y)) continue;
-              hasHit = true;
-              hiTarget = Math.max(hiTarget, gx + hw + 6);
-              loTarget = Math.min(loTarget, gx - hw - 6);
+              if (Math.abs(a.x - b.x) < 0.5) {
+                const gx = a.x;
+                if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
+                if (cy[i] + hh <= Math.min(a.y, b.y) || cy[i] - hh >= Math.max(a.y, b.y)) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, gx + hw + 6);
+                loTarget = Math.min(loTarget, gx - hw - 6);
+              } else if (Math.abs(a.y - b.y) < 0.5) {
+                const gy = a.y;
+                if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
+                const lo = Math.min(a.x, b.x);
+                const hi = Math.max(a.x, b.x);
+                if (cx[i] + hw <= lo || cx[i] - hw >= hi) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, hi + hw + 6);
+                loTarget = Math.min(loTarget, lo - hw - 6);
+              }
             } else {
-              if (Math.abs(a.y - b.y) >= 0.5) continue;
-              const gy = a.y;
-              if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
-              if (cx[i] + hw <= Math.min(a.x, b.x) || cx[i] - hw >= Math.max(a.x, b.x)) continue;
-              hasHit = true;
-              hiTarget = Math.max(hiTarget, gy + hh + 6);
-              loTarget = Math.min(loTarget, gy - hh - 6);
+              if (Math.abs(a.y - b.y) < 0.5) {
+                const gy = a.y;
+                if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
+                if (cx[i] + hw <= Math.min(a.x, b.x) || cx[i] - hw >= Math.max(a.x, b.x)) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, gy + hh + 6);
+                loTarget = Math.min(loTarget, gy - hh - 6);
+              } else if (Math.abs(a.x - b.x) < 0.5) {
+                const gx = a.x;
+                if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
+                const lo = Math.min(a.y, b.y);
+                const hi = Math.max(a.y, b.y);
+                if (cy[i] + hh <= lo || cy[i] - hh >= hi) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, hi + hh + 6);
+                loTarget = Math.min(loTarget, lo - hh - 6);
+              }
             }
           }
         }
@@ -1170,6 +1202,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const pts2 = [start, c1, c2, end];
       return { path: pathBezier(pts2), labelPos: withShift(labelBezier(pts2)), points: pts2 };
     }
+    const entryVertical = entry === "top" || entry === "bottom";
     let pts;
     if (hasWps) {
       pts = elbowThrough2(
@@ -1177,15 +1210,19 @@ var vnmRuntime = function vnmRuntime(root, payload) {
         end,
         waypoints,
         !horizontal,
-        entry === "top" || entry === "bottom",
+        entryVertical,
         !(model.direction === "LR" || model.direction === "RL")
       );
     } else if (horizontal) {
       const midX = (start.x + end.x) / 2;
-      pts = simplify2([start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]);
+      pts = [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end];
+      perpendicularizeEntry2(pts, entryVertical);
+      pts = simplify2(pts);
     } else {
       const midY = (start.y + end.y) / 2;
-      pts = simplify2([start, { x: start.x, y: midY }, { x: end.x, y: midY }, end]);
+      pts = [start, { x: start.x, y: midY }, { x: end.x, y: midY }, end];
+      perpendicularizeEntry2(pts, entryVertical);
+      pts = simplify2(pts);
     }
     const path = edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts);
     return { path, labelPos: withShift(labelPoly(pts)), points: pts };

@@ -558,9 +558,11 @@ function nearestRunAxis(points: ReadonlyArray<Point>, cx: number, cy: number): "
  * foreign edge segments that run **across** the label's own edge (perpendicular to
  * the label's nearest own run) and pass through its plate, and slide the plate
  * **along its own edge** (the axis of that nearest run) to the nearer side that
- * clears them all by {@link PORT_LABEL_PAD}. A plate merely grazing a **parallel**
- * neighbour lane is left alone (an along-axis move can't clear that cleanly and would
- * fling the label off its own edge). The label's own segments are excluded.
+ * clears them all by {@link PORT_LABEL_PAD}. A foreign run **parallel** to (and
+ * bisecting) the label's own run is also escaped by the same along-axis slide — past
+ * the nearer end of that run's bounded extent — so a label sandwiched between two
+ * near-parallel lines (the "give up" bisection) lifts off cleanly while staying on
+ * its own edge. The label's own segments are excluded.
  *
  * `polylines[i]` is edge i's routed polyline; `plates[i]` its plate (or `undefined`
  * for an unlabelled edge). Deterministic — fixed edge×edge×segment order, fixed
@@ -597,21 +599,50 @@ export function resolveLabelEdgeCollisions(
           const a = pts[s]!;
           const b = pts[s + 1]!;
           if (axis === "x") {
-            if (Math.abs(a.x - b.x) >= 0.5) continue; // slide-in-x clears verticals
-            const gx = a.x;
-            if (gx <= cx[i]! - hw || gx >= cx[i]! + hw) continue; // not through plate (x)
-            if (cy[i]! + hh <= Math.min(a.y, b.y) || cy[i]! - hh >= Math.max(a.y, b.y)) continue;
-            hasHit = true;
-            hiTarget = Math.max(hiTarget, gx + hw + PORT_LABEL_PAD);
-            loTarget = Math.min(loTarget, gx - hw - PORT_LABEL_PAD);
+            if (Math.abs(a.x - b.x) < 0.5) {
+              // Perpendicular (vertical) foreign run crossing the plate → slide in x
+              // past the crossing line (the original gRPC-stream fix; unchanged).
+              const gx = a.x;
+              if (gx <= cx[i]! - hw || gx >= cx[i]! + hw) continue; // not through plate (x)
+              if (cy[i]! + hh <= Math.min(a.y, b.y) || cy[i]! - hh >= Math.max(a.y, b.y)) continue;
+              hasHit = true;
+              hiTarget = Math.max(hiTarget, gx + hw + PORT_LABEL_PAD);
+              loTarget = Math.min(loTarget, gx - hw - PORT_LABEL_PAD);
+            } else if (Math.abs(a.y - b.y) < 0.5) {
+              // FR3 — a foreign run PARALLEL to (and bisecting) the label's own run: an
+              // along-axis slide past the nearer end of its bounded x-extent lifts the
+              // label off the line while keeping it on its own edge ("give up" fix).
+              const gy = a.y;
+              if (gy <= cy[i]! - hh || gy >= cy[i]! + hh) continue; // its lane misses the plate (y)
+              const lo = Math.min(a.x, b.x);
+              const hi = Math.max(a.x, b.x);
+              if (cx[i]! + hw <= lo || cx[i]! - hw >= hi) continue; // no x-overlap → not on it
+              hasHit = true;
+              hiTarget = Math.max(hiTarget, hi + hw + PORT_LABEL_PAD);
+              loTarget = Math.min(loTarget, lo - hw - PORT_LABEL_PAD);
+            }
           } else {
-            if (Math.abs(a.y - b.y) >= 0.5) continue; // slide-in-y clears horizontals
-            const gy = a.y;
-            if (gy <= cy[i]! - hh || gy >= cy[i]! + hh) continue; // not through plate (y)
-            if (cx[i]! + hw <= Math.min(a.x, b.x) || cx[i]! - hw >= Math.max(a.x, b.x)) continue;
-            hasHit = true;
-            hiTarget = Math.max(hiTarget, gy + hh + PORT_LABEL_PAD);
-            loTarget = Math.min(loTarget, gy - hh - PORT_LABEL_PAD);
+            if (Math.abs(a.y - b.y) < 0.5) {
+              // Perpendicular (horizontal) foreign run crossing the plate → slide in y
+              // past the crossing line (the original gRPC-stream fix; unchanged).
+              const gy = a.y;
+              if (gy <= cy[i]! - hh || gy >= cy[i]! + hh) continue; // not through plate (y)
+              if (cx[i]! + hw <= Math.min(a.x, b.x) || cx[i]! - hw >= Math.max(a.x, b.x)) continue;
+              hasHit = true;
+              hiTarget = Math.max(hiTarget, gy + hh + PORT_LABEL_PAD);
+              loTarget = Math.min(loTarget, gy - hh - PORT_LABEL_PAD);
+            } else if (Math.abs(a.x - b.x) < 0.5) {
+              // FR3 — a foreign run PARALLEL to (and bisecting) the label's own vertical
+              // run: slide along y past the nearer end of its bounded y-extent.
+              const gx = a.x;
+              if (gx <= cx[i]! - hw || gx >= cx[i]! + hw) continue; // its lane misses the plate (x)
+              const lo = Math.min(a.y, b.y);
+              const hi = Math.max(a.y, b.y);
+              if (cy[i]! + hh <= lo || cy[i]! - hh >= hi) continue; // no y-overlap → not on it
+              hasHit = true;
+              hiTarget = Math.max(hiTarget, hi + hh + PORT_LABEL_PAD);
+              loTarget = Math.min(loTarget, lo - hh - PORT_LABEL_PAD);
+            }
           }
         }
       }
@@ -998,7 +1029,38 @@ function elbowThrough(
     }
     out.push(cur);
   }
+  perpendicularizeEntry(out, sides.entryVertical);
   return simplify(out);
+}
+
+/**
+ * **FR2 — perpendicular final approach.** The closing segment of a routed elbow must
+ * enter its target **perpendicular** to the entered border, so the arrowhead points
+ * INTO the node rather than a sideways stub sitting on the border (the "idle→Loading
+ * doubling-back arrow": a left-exit / top-entry route whose last segment ran flat along
+ * Loading's top). When a corner left the final approach *parallel* to the border, swap
+ * that last elbow corner — both endpoints stay put, only the corner flips to the other
+ * side of their bounding box — so the closing segment becomes perpendicular. A route that
+ * already enters perpendicular is untouched (byte-identical). Mirrored in the runtime twin.
+ *
+ * **Invariant (relied on, not asserted):** the pre-corner point `a` sits on the *exterior*
+ * side of the entered border (above a top entry, below a bottom entry, outside a left/right
+ * entry). The swap only fires when the closing segment is *parallel* to that border, which
+ * for a genuine perimeter-port entry only arises from an exterior approach — the port
+ * spreader routes a top-entry from above, etc. — so the flipped segment always approaches
+ * from outside and the arrowhead points into the node. The `swappable` guard additionally
+ * rejects the degenerate `a`-on-the-border case (would collapse the corner onto `end`).
+ */
+function perpendicularizeEntry(out: Point[], entryVertical: boolean): void {
+  if (out.length < 3) return;
+  const end = out[out.length - 1]!;
+  const a = out[out.length - 3]!;
+  const b = out[out.length - 2]!;
+  const finalPerp = entryVertical ? n(b.x) === n(end.x) : n(b.y) === n(end.y);
+  const swappable = entryVertical ? n(a.y) !== n(end.y) : n(a.x) !== n(end.x);
+  if (!finalPerp && swappable) {
+    out[out.length - 2] = entryVertical ? { x: end.x, y: a.y } : { x: a.x, y: end.y };
+  }
 }
 
 /**
@@ -1045,10 +1107,11 @@ export function routeElbow(
   }
   const { exit, entry, start, end } = resolveEnds(from, to, direction, ports);
   const horizontal = exit === "left" || exit === "right";
+  const entryVertical = entry === "top" || entry === "bottom";
   if (waypoints.length > 0) {
     return elbowThrough(start, end, waypoints, {
       exitVertical: !horizontal,
-      entryVertical: entry === "top" || entry === "bottom",
+      entryVertical,
       primaryVertical: !isHorizontalLayout(direction),
     });
   }
@@ -1060,6 +1123,9 @@ export function routeElbow(
     const midY = (start.y + end.y) / 2;
     points = [start, { x: start.x, y: midY }, { x: end.x, y: midY }, end];
   }
+  // FR2 — a perpendicular exit/entry pair (e.g. left-exit → top-entry) leaves the naive
+  // elbow's closing segment flat along the entered border; force it perpendicular.
+  perpendicularizeEntry(points, entryVertical);
   return simplify(points);
 }
 

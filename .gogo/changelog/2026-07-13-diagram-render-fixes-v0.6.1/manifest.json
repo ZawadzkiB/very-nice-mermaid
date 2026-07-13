@@ -1,0 +1,10 @@
+{
+  "slug": "diagram-render-fixes-v0.6.1",
+  "updated": "2026-07-13",
+  "members": ["diagram-render-fixes-v0.6.1"],
+  "note": "v0.6.0 render fixes: FR1 light-edge contrast token, FR2 perpendicularizeEntry() shared helper, FR3 resolveLabelEdgeCollisions parallel-run escape, mirrored in the interactive-export runtime twin; plus generate-heroes.mjs (D5) and reconstructed cache-lookup.mmd hero (D6). before/ holds the plan-time as-is baseline for side-by-side compare.",
+  "diagrams": [
+    { "kind": "flow", "file": "diagram-render-fixes-v0.6.1-flow.mmd", "title": "diagram-render-fixes-v0.6.1: As-built render-edge pipeline with FR1/FR2/FR3 fix sites + byte-parity twin + hero script" },
+    { "kind": "sequence", "file": "diagram-render-fixes-v0.6.1-sequence.mmd", "title": "diagram-render-fixes-v0.6.1: As-built render call path through perpendicularizeEntry (FR2) + resolveLabelEdgeCollisions (FR3), mirrored in the runtime twin" }
+  ]
+}

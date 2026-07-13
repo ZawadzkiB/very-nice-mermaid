@@ -1,0 +1,13 @@
+flowchart TD
+  dsl["examples/src/*.mmd · fixtures/state-machine.mmd"] --> parse["parser → DiagramModel"]
+  parse --> layout["layout() · dagre positions + waypoints"]
+  layout --> ports["computePerimeterPorts()<br/>FR2: final approach segment ⟂ entered side<br/>(idle→Loading arrowhead into the box)"]
+  ports --> route["routeEdge() → points + path + labelPos"]
+  route --> finish["layout.finishEdges()<br/>separateLanes · resolveLabelCollisions<br/>FR3: move label off a parallel run<br/>(give up no longer bisected)"]
+  finish --> emit["5-layer emit → SVG string"]
+  theme["theme tokens (src/theme/index.ts)<br/>FR1: light colors.edge darker"] --> emit
+  theme --> rt
+  emit --> svg["static SVG / HTML"]
+  emit --> png["resvg → PNG (docs/ thumbs · README heroes)"]
+  finish --> rt["vnmRuntime twin (src/render/dom/runtime.ts)<br/>byte-parity: mirror FR2/FR3"]
+  rt --> html["interactive HTML export"]

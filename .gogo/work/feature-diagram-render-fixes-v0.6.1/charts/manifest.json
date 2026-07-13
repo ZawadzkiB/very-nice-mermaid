@@ -1,0 +1,12 @@
+{
+  "slug": "diagram-render-fixes-v0.6.1",
+  "updated": "2026-07-13",
+  "note": "Intended design: how a rendered edge flows through the pipeline and where the three fixes sit. FR1 = a light-theme edge-colour token change feeding the emit/runtime colour (fixes Issue 3 and Issue 2's primary symptom, no geometry change). FR2/FR3 = two targeted edits in shared geometry (computePerimeterPorts final-approach ⟂ side so the idle→Loading arrowhead points into the box; finishEdges/labelPoint moves the give-up label off a near-parallel run), mirrored byte-for-byte in the vnmRuntime twin. charts/before/flow.mmd captures the as-is defects at their real code sites.",
+  "diagrams": [
+    { "kind": "flow", "file": ".gogo/work/feature-diagram-render-fixes-v0.6.1/charts/flow.mmd", "title": "Intended: render-edge pipeline with FR1 (light edge token) + FR2 (⟂ final approach) + FR3 (label off parallel run), byte-parity twin" },
+    { "kind": "flow", "file": ".gogo/work/feature-diagram-render-fixes-v0.6.1/charts/flow-asbuilt.mmd", "title": "As-built: FR2 lands in a shared perpendicularizeEntry() helper on routeElbow (naive + threaded, all sides); FR3 extends resolveLabelEdgeCollisions to parallel runs; FR1 light edge #8a93a6→#69728a; + generate-heroes.mjs (D5) & cache-lookup.mmd (D6)" }
+  ],
+  "before": [
+    { "kind": "flow", "file": ".gogo/work/feature-diagram-render-fixes-v0.6.1/charts/before/flow.mmd", "title": "As-is: the three defects at their code sites (port stub · label bisected · low light-edge contrast)" }
+  ]
+}

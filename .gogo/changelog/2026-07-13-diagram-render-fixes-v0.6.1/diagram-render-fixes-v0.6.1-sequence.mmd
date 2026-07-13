@@ -1,0 +1,23 @@
+sequenceDiagram
+  participant L as layout()
+  participant R as routeElbow() (geometry)
+  participant P as perpendicularizeEntry()
+  participant F as finishEdges()
+  participant E as resolveLabelEdgeCollisions()
+  participant S as SVG sink / resvg PNG
+  participant T as vnmRuntime twin (runtime.ts)
+
+  Note over L,T: One shared geometry, mirrored byte-for-byte in the runtime twin
+  L->>R: route each edge (ports + waypoints)
+  R->>P: closing segment ⟂ entered border?
+  P-->>R: FR2 — swap last corner if parallel (arrowhead into node)
+  R-->>L: routed points + path + labelPos
+  L->>F: post-routing passes
+  F->>E: label bisected by a run?
+  E-->>F: FR3 — slide label off a foreign PARALLEL run (give-up)
+  F-->>L: final labelPos
+  L->>S: 5-layer emit → static SVG / PNG (theme edge #69728a on light)
+  Note over T: interactive HTML export re-derives the same geometry live
+  T->>P: perpendicularizeEntry (mirrored)
+  T->>E: resolveLabelEdgeCollisions parallel-escape (mirrored)
+  Note over S,T: dom-runtime-parity guards toSvgString() == renderSvg

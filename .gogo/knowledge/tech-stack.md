@@ -50,6 +50,12 @@ addon installed.
 ## gogo overrides
 <!-- Preserved across re-runs. -->
 - Entry points: `src/index.ts` (API), `src/element.ts` (web component), `src/cli/index.ts` (CLI bin).
+- **Asset regeneration scripts** (all drive the built CLI; `npm run build` first): `npm run docs`
+  (gallery `docs/`), `npm run examples` (`examples/` png+svg), and **`npm run heroes`** (v0.6.1:
+  `scripts/generate-heroes.mjs` — the 4 README `assets/example-*.png` heroes, previously rendered
+  by hand). Hero sources: `state-machine`·dark, `ci-pipeline`·light, `microservices`·fancy, and
+  `cache-lookup`·light·sketch (`fixtures/cache-lookup.mmd`, added v0.6.1 to capture the sketch
+  hero's source). All renders are byte-deterministic (no clock/RNG in render paths).
 - **v0.5.0 sketch style:** CLI `-s, --style <clean|sketch>` (flowchart + native tiers).
   Bundled asset: `assets/fonts/Kalam-Regular.woff2` (OFL 1.1, `assets/fonts/OFL.txt`),
   embedded as base64 in `src/render/sketch-font.ts` (browser-safe; also fed to resvg
