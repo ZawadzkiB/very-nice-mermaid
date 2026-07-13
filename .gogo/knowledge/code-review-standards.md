@@ -123,3 +123,52 @@ Generated-by: /gogo:build (scaffold)
   exported (Save-SVG) view, carry it on the model node (e.g. `PositionedNode.stateMarker`,
   set by `layoutState`) so it rides serialization, and special-case it in the runtime
   — don't let the generic "every node is rough/card" loop swallow it. (Was TEST-001.)
+
+## Project-specific gotchas (verified — feature `flowchart-render-legibility`, 2026-07-12)
+- **Any geometry added to the static path needs a byte-identical runtime twin.** The
+  FR6/FR7 passes (`resolveLabelCollisions`, `segmentsCross`/`applyEdgeBridges`/
+  `bridgedPath`) are re-implemented inline in `vnmRuntime` — same constants (radius 5,
+  control 10, gap 6, `2·radius=10`, `1e-6`/`1e-9`), same iteration order, same `d`
+  format, same `n`≡`nAt` 2-dp rounding — or `toSvgString()` diverges. The
+  `dom-runtime-parity` guard catches it (add a crossing + close-label fixture for any
+  new geometry). A round-1 miss (runtime `computePorts` still on the old `PORT_STEP`)
+  is exactly what the guard is for.
+- **A layout de-collision is only real if every sink draws the size it assumed.**
+  FR6 de-collided labels using the tight `labelPlateSize`, but the native class/state
+  static SVG still drew the *old looser* plate — so long class/state labels could still
+  overlap while flowchart was fine, and a test that sized plates with `labelPlateSize`
+  on BOTH the de-collision AND the assertion went green anyway (false confidence).
+  Lesson: assert the **emitted** rect against the shared size, and keep every tier's
+  `edgeLabel` on the one `labelPlateSize`. (Was REV-002.)
+- **Parity of a shifted value: de-collide from the ROUNDED centre, only reassign on a
+  shift.** The static and runtime `labelPos` differ by sub-rounding; computing the
+  nudge from `round(labelPos)`/`nAt(labelPos)` (the value both actually emit) and
+  leaving an un-collided label untouched keeps a moved label byte-identical and a
+  still one byte-unchanged. Same trick applies to any future "adjust then emit" pass.
+- **A shared render option must reach EVERY entry, not just the CLI.** The `bridges`
+  toggle was threaded through `renderSvg`/CLI/runtime but initially dropped by
+  `renderSvgAsync` for class/state (`route.ts`) — the opt-out silently ignored on that
+  public path. Grep every `layoutClass`/`layoutState`/`layout(` call site when adding
+  an option. (Was REV-003.)
+- **A port-ordering key computed from mixed sources stays parity-safe only if every
+  source shifts by the SAME constant between the two spaces.** D12 orders a shared
+  border's ports by each edge's heading — its first/last dagre bend when it has one,
+  else the far node's centre. Geometry works in dagre space, the runtime in
+  offset-removed space; the ordering is byte-identical only because within a border
+  group *both* the bend-based and the centre-fallback `along` values shift by the same
+  per-axis constant (waypoint−offset, box-centre−offset), and all coords are integers
+  (no ULP tie flip). When adding any new ordering/comparison key, check that a group
+  mixing two derivations can't reorder between the twins. (Was D12; verified by running
+  `computePerimeterPorts` with-vs-without the new arg across the whole corpus → 0 diffs.)
+- **When a new geometry arg is `undefined`-default, PROVE the no-op by running the
+  corpus both ways.** D12's `bends` param falls back to old behaviour for edges with no
+  detour — the review didn't trust "no snapshot changed," it re-ran the port computation
+  with/without `bends` over every fixture (flowchart 42/171 edges carry bends → 0 port
+  diffs; class 0 waypoints → provable no-op) to attribute an unrelated example delta to
+  pre-existing FR4 drift, not the new arg.
+- **Each geometry CALL SITE that feeds the runtime needs its own parity guard, not just
+  transitive coverage.** `native/state/layout.ts` re-routes against shrunk pseudo-state
+  boxes — a distinct `computePerimeterPorts` call site. It was only covered transitively
+  by the flowchart parity fixture until REV-009 added a dedicated `order-state` guard
+  (baked `renderStateSvg` vs live `mountState`, offset-invariant relative geometry;
+  bite-verified by reverting the wiring). (Was REV-009.)

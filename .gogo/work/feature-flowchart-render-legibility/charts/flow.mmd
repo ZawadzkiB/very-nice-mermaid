@@ -1,0 +1,16 @@
+flowchart TD
+  model["PositionedModel<br/>nodes · edges · subgraphs · labels"] --> ports["computePerimeterPorts<br/>PORT_STEP=26 · spread=0.85 (FR4)"]
+  ports --> route["routeEdge → points + path + labelPos<br/>+ same-pair label stagger (TEST-006)"]
+  route --> lanes["separateLanes (NEW · FR9)<br/>bundle near-parallel/collinear runs →<br/>lane offset ≥ LANE_GAP (cascade elbow) + endpoint comb"]
+  lanes --> decol["resolveLabelCollisions (FR6)<br/>all-pairs plate AABB → reserved-gap nudge<br/>(labels ride the re-laned midpoints)"]
+  decol --> bridge["applyEdgeBridges (FR7)<br/>segmentsCross → hop arc in ONE edge's d<br/>(bridges any crossing the lane jogs add)"]
+  bridge --> L1["layer 1: subgraph boxes"]
+  bridge --> L2["layer 2: edges (re-laned paths + hop arcs + arrowheads)"]
+  bridge --> L3["layer 3: edge-label plates (de-collided)"]
+  bridge --> L4["layer 4: subgraph titles (opaque plate)"]
+  bridge --> L5["layer 5: node cards (on top)"]
+  L2 --> svg["static SVG (svg.ts) + state/class svg"]
+  L3 --> svg
+  L2 --> rt["inlined DOM runtime (runtime.ts)<br/>separateLanes/buildSvg - toSvgString byte-parity"]
+  L3 --> rt
+  seq["sequence tier (own routing)"] -.excluded.-> lanes

@@ -1,0 +1,13 @@
+{
+  "slug": "flowchart-render-legibility",
+  "updated": "2026-07-12",
+  "note": "UAT round 1 re-plan (+FR9, additive on shipped FR1-FR8): a THIRD deterministic post-layout pass slots FIRST into layout.finishEdges(), mirrored byte-for-byte in the inlined DOM runtime. FR9 separateLanes - detect bundles of near-parallel + near-collinear edge runs sharing a channel (measured 20-26px = one PORT_STEP apart on the repro's Ingress-out / batch-load-feed mid-channel / HUB fan-in) and offset them to distinct lanes >= LANE_GAP, cascading each offset through the connected elbow so paths stay orthogonal + connected; endpoint fan bundles wider than their node get a staggered-depth comb. Runs lanes -> labels (FR6) -> bridges (FR7): labels ride the re-laned midpoints, bridges hop any crossings the lane jogs add. Reaches flow + state + class via finishEdges (D5); sequence excluded; clean elbow only (curved/sketch deferred, per the FR7 gate). This is the lane-routing the first plan DEFERRED, now pulled into scope. OPEN forks D6-D9 (approach / LANE_GAP / scope / endpoint-comb-vs-widen). [Shipped FR6/FR7: resolveLabelCollisions all-pairs plate de-collision fixes TEST-001; segmentsCross + applyEdgeBridges quadratic overpass hops (D2/D3), bridges toggle D4.] flow.mmd = pipeline placement (FR9 slotted in); lanes.mmd = the FR9 bundle->lane->comb flow; bridges.mmd = the FR7 decision flow; charts/before/ keeps the pre-FR1 baseline.",
+  "diagrams": [
+    { "kind": "flow", "file": ".gogo/work/feature-flowchart-render-legibility/charts/flow.mmd", "title": "Intended (UAT r1): FR9 lane separation + FR6 label de-collision + FR7 bridges in the finishEdges pipeline (both renderers, byte-parity)" },
+    { "kind": "flow", "file": ".gogo/work/feature-flowchart-render-legibility/charts/lanes.mmd", "title": "Intended (UAT r1): FR9 edge-lane separation decision flow (bundle -> lane offset + cascade / endpoint comb-stagger; D6-D9 open)" },
+    { "kind": "flow", "file": ".gogo/work/feature-flowchart-render-legibility/charts/bridges.mmd", "title": "As-built: FR7 edge-crossing bridge decision flow (arc hop D2 / more-horizontal D3 / bridges toggle D4 / flow+state+class D5)" }
+  ],
+  "before": [
+    { "kind": "flow", "file": ".gogo/work/feature-flowchart-render-legibility/charts/before/flow.mmd", "title": "As-is: single-pass emit + weak spread -> title/label/fan-in overlaps" }
+  ]
+}

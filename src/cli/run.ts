@@ -34,7 +34,7 @@ import type { Diagnostic, PositionedModel } from "../model/index.js";
 
 type Format = "html" | "svg" | "png" | "md";
 
-const VERSION = "0.5.1";
+const VERSION = "0.6.0";
 
 interface RenderOpts {
   output?: string;
@@ -47,6 +47,7 @@ interface RenderOpts {
   scale?: string;
   background?: string;
   title?: string;
+  bridges?: boolean;
 }
 
 /** Run the CLI. Returns an exit code (0 ok, 1 error, 2 usage). */
@@ -69,6 +70,7 @@ export async function run(argv: string[]): Promise<number> {
     .option("-f, --format <fmt>", "html | svg | png | md (inferred from -o if omitted)")
     .option("-t, --theme <name|path>", "theme name (light|dark|fancy) or path to a theme .json", "light")
     .option("-s, --style <clean|sketch>", "drawing style: clean (default) or hand-drawn sketch (flowchart)", "clean")
+    .option("--no-bridges", "disable edge-crossing bridges (default: on for clean elbow edges in flow/state/class)")
     .option("--strict", "treat parser warnings AND fallback degradations as errors")
     .option("--quiet", "mute info-level diagnostics (fallback notices) on stderr")
     .option("--layout <file>", "apply a portable layout.json (node positions, sizes, edge anchors)")
@@ -197,7 +199,7 @@ async function doClassRender(
       return 1;
     }
     printParseDiagnostics(model.warnings);
-    cls = layoutClass(model, { theme });
+    cls = layoutClass(model, { theme, bridges: opts.bridges });
   } catch (err) {
     process.stderr.write(`error: ${(err as Error).message}\n`);
     return 1;
@@ -217,7 +219,7 @@ async function doClassRender(
     }
     const out =
       format === "html"
-        ? renderHtml(cls.model, { theme, title: opts.title, style })
+        ? renderHtml(cls.model, { theme, title: opts.title, style, bridges: opts.bridges })
         : renderClassSvg(cls, theme, opts.background, style);
     if (opts.output) writeFileSync(opts.output, out, "utf8");
     else process.stdout.write(out.endsWith("\n") ? out : out + "\n");
@@ -246,7 +248,7 @@ async function doStateRender(
       return 1;
     }
     printParseDiagnostics(model.warnings);
-    st = layoutState(model, { theme });
+    st = layoutState(model, { theme, bridges: opts.bridges });
   } catch (err) {
     process.stderr.write(`error: ${(err as Error).message}\n`);
     return 1;
@@ -266,7 +268,7 @@ async function doStateRender(
     }
     const out =
       format === "html"
-        ? renderHtml(st.model, { theme, title: opts.title, style })
+        ? renderHtml(st.model, { theme, title: opts.title, style, bridges: opts.bridges })
         : renderStateSvg(st, theme, opts.background, style);
     if (opts.output) writeFileSync(opts.output, out, "utf8");
     else process.stdout.write(out.endsWith("\n") ? out : out + "\n");
@@ -345,7 +347,7 @@ async function doNativeRender(
   }
   printParseDiagnostics(model.warnings);
 
-  let positioned: PositionedModel = layout(model, { theme });
+  let positioned: PositionedModel = layout(model, { theme, bridges: opts.bridges });
 
   // D6: rendering nothing is a silent failure. Input that yields zero renderable
   // nodes is a CLI error in both lenient and strict modes.
@@ -371,7 +373,7 @@ async function doNativeRender(
         : undefined;
       // Per-anchor overrides (FR7) pin an edge end's {side,offset}; honored so a
       // `vnm render -f svg --layout …` reproduces the pinned anchors (parity).
-      positioned = applyPositions(positioned, positions, { theme, sizes, anchors: data.anchors });
+      positioned = applyPositions(positioned, positions, { theme, sizes, anchors: data.anchors, bridges: opts.bridges });
     } catch (err) {
       process.stderr.write(`error: cannot apply layout '${opts.layout}': ${(err as Error).message}\n`);
       return 1;
@@ -388,7 +390,7 @@ async function doNativeRender(
       return 0;
     }
     let out: string;
-    if (format === "html") out = renderHtml(positioned, { theme, title: opts.title, style });
+    if (format === "html") out = renderHtml(positioned, { theme, title: opts.title, style, bridges: opts.bridges });
     else if (format === "md") out = renderMarkdown(positioned, { theme });
     else out = renderSvg(positioned, { theme, background: opts.background, style });
     if (opts.output) writeFileSync(opts.output, out, "utf8");

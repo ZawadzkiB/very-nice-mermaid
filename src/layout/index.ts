@@ -21,10 +21,132 @@ import {
   routeEdge,
   computePerimeterPorts,
   computeSubgraphBoxes,
+  resolveLabelCollisions,
+  resolveLabelNodeCollisions,
+  resolveLabelEdgeCollisions,
+  applyEdgeBridges,
+  separateLanes,
   type NodeBox,
   type EdgeAnchorOverride,
+  type PlateRect,
 } from "../geometry/index.js";
 import { measureNode } from "./measure.js";
+
+/**
+ * FR7 — bake edge-crossing bridges into the hopping edges' `path`. Gated (D4): ON
+ * by default for **clean elbow** edges (`edgeStyle === "elbow"`), OFF for curved
+ * (its beziers this pass can't splice); the `bridges` option forces on/off. Sketch
+ * draws from `points` (not `path`), so it never shows a bridge regardless. Mirrored
+ * in the runtime twin. Runs after routing + label de-collision.
+ */
+function applyBridges(edges: RoutedEdge[], theme: Theme, bridges?: boolean): void {
+  const enabled = theme.edgeStyle === "elbow" && (bridges ?? true);
+  const bridged = applyEdgeBridges(edges, enabled);
+  edges.forEach((e, i) => {
+    if (bridged[i]) e.path = bridged[i]!;
+  });
+}
+
+/**
+ * The FR9 + FR6 + (label-vs-node) + FR7 **post-routing** passes, applied in place
+ * to a fully-routed edge set. Shared by `layout()`, `applyPositions()`, and the
+ * native **state** re-route (which re-routes its edges after shrinking
+ * pseudo-states, so it must re-run these) so flowchart + state + class all get the
+ * fix identically (D5). Mirrored in the runtime twin. Order matters: lane-separate
+ * first, de-collide labels against other labels, then off any foreign edge line, then
+ * push any label off a node box (the last word on node clearance), then bridge
+ * (bridges read only edge geometry, which the label passes never change).
+ * `nodeBoxes` (in stable model-node order) powers the label-vs-node pass; omit it only
+ * where node boxes aren't available (the pass then no-ops).
+ */
+export function finishEdges(
+  edges: RoutedEdge[],
+  theme: Theme,
+  bridges?: boolean,
+  nodeBoxes?: ReadonlyArray<NodeBox>,
+): void {
+  separateLanes(edges, theme.edgeStyle); // FR9 — give each merged run its own lane (compact, local)
+  deCollideLabels(edges, theme);
+  deCollideLabelsFromEdges(edges, theme); // UAT-round: off other edges' crossing lines
+  if (nodeBoxes) deCollideLabelsFromNodes(edges, theme, nodeBoxes); // UAT-1: off any node box
+  applyBridges(edges, theme, bridges);
+}
+
+/**
+ * Label-vs-edge de-collision (UAT-round, "gRPC stream" fix): after labels are placed
+ * + de-collided against each other, slide any edge-label plate that sits ON another
+ * edge's crossing line along its own edge until it clears, folding the shift back into
+ * `edge.labelPos`. Mirrored byte-for-byte in the runtime twin, on the *rounded* plate
+ * centre — same parity contract as {@link deCollideLabels}.
+ */
+function deCollideLabelsFromEdges(edges: RoutedEdge[], theme: Theme): void {
+  const plates: Array<PlateRect | undefined> = edges.map((e) => {
+    if (!e.label || !e.labelPos) return undefined;
+    const s = labelPlateSize(e.label, theme)!;
+    return { x: round(e.labelPos.x), y: round(e.labelPos.y), w: s.w, h: s.h };
+  });
+  const shifts = resolveLabelEdgeCollisions(plates, edges.map((e) => e.points));
+  edges.forEach((e, i) => {
+    const sh = shifts[i]!;
+    if (e.labelPos && (sh.x !== 0 || sh.y !== 0)) {
+      e.labelPos = { x: round(e.labelPos.x) + sh.x, y: round(e.labelPos.y) + sh.y };
+    }
+  });
+}
+
+/**
+ * Label-vs-node de-collision (UAT round 1, issue 1): after labels are placed +
+ * de-collided against each other, push any edge-label plate that overlaps a NODE
+ * box off it (smallest push, away from the node), folding the shift back into
+ * `edge.labelPos`. Mirrored byte-for-byte in the runtime twin. Runs on the
+ * *rounded* plate centre (the value the sink emits), same parity contract as
+ * {@link deCollideLabels}.
+ */
+function deCollideLabelsFromNodes(
+  edges: RoutedEdge[],
+  theme: Theme,
+  nodeBoxes: ReadonlyArray<NodeBox>,
+): void {
+  const plates: Array<PlateRect | undefined> = edges.map((e) => {
+    if (!e.label || !e.labelPos) return undefined;
+    const s = labelPlateSize(e.label, theme)!;
+    return { x: round(e.labelPos.x), y: round(e.labelPos.y), w: s.w, h: s.h };
+  });
+  const shifts = resolveLabelNodeCollisions(plates, nodeBoxes);
+  edges.forEach((e, i) => {
+    const sh = shifts[i]!;
+    if (e.labelPos && (sh.x !== 0 || sh.y !== 0)) {
+      e.labelPos = { x: round(e.labelPos.x) + sh.x, y: round(e.labelPos.y) + sh.y };
+    }
+  });
+}
+
+/**
+ * FR6 — de-collide edge-label plates in place: build each labelled edge's plate
+ * rect (routed `labelPos` centre + `labelPlateSize`), resolve all-pairs overlap,
+ * and fold the resulting shift back into `edge.labelPos`. Mirrored byte-for-byte
+ * in the runtime twin. Runs after routing (a collision is a property of the whole
+ * label set), so it never perturbs how edges route.
+ */
+function deCollideLabels(edges: RoutedEdge[], theme: Theme): void {
+  // De-collide from the *rounded* plate centre (`round(labelPos)` — the exact value
+  // the SVG sink emits), and only move a label when it actually collides. This is
+  // the parity contract: the runtime twin de-collides from `nAt(labelPos)` (== this
+  // rounded centre, since the two already emit-match) and shifts identically, so a
+  // moved label stays byte-identical and an unmoved label is untouched.
+  const plates: Array<PlateRect | undefined> = edges.map((e) => {
+    if (!e.label || !e.labelPos) return undefined;
+    const s = labelPlateSize(e.label, theme)!;
+    return { x: round(e.labelPos.x), y: round(e.labelPos.y), w: s.w, h: s.h };
+  });
+  const shifts = resolveLabelCollisions(plates);
+  edges.forEach((e, i) => {
+    const sh = shifts[i]!;
+    if (e.labelPos && (sh.x !== 0 || sh.y !== 0)) {
+      e.labelPos = { x: round(e.labelPos.x) + sh.x, y: round(e.labelPos.y) + sh.y };
+    }
+  });
+}
 
 // Interop: dagre ships CJS; under ESM the namespace may nest the real exports
 // on `.default`. Normalize once.
@@ -37,6 +159,12 @@ export interface LayoutOptions {
   nodesep?: number;
   /** Override the theme's inter-rank spacing. */
   ranksep?: number;
+  /**
+   * Edge-crossing bridges (FR7 / D4). `undefined` → the per-style default (ON for
+   * clean elbow edges, OFF for curved); `true`/`false` force it. Sketch never shows
+   * bridges (it draws from `points`).
+   */
+  bridges?: boolean;
 }
 
 const BOUNDS_PADDING = 20;
@@ -134,7 +262,12 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
   // each sit on their own edge; the label plate sizes let it also stagger
   // colliding labels (TEST-006).
   const labelSizes = model.edges.map((e) => labelPlateSize(e.label, theme));
-  const ports = computePerimeterPorts(model.edges, nodeBoxes, labelSizes);
+  // Extract dagre's detour bends up front so the port spreader can order a shared
+  // border's ports by each edge's actual heading (its first/last bend), not the
+  // far node's centre — an edge dagre steered sideways then takes the port on that
+  // side instead of crossing a straight sibling.
+  const waypointsList = model.edges.map((edge, i) => edgeWaypoints(g, edge.from, edge.to, `e${i}`));
+  const ports = computePerimeterPorts(model.edges, nodeBoxes, labelSizes, undefined, waypointsList);
 
   const edges: RoutedEdge[] = [];
   model.edges.forEach((edge, i) => {
@@ -146,7 +279,7 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
     // that would cut through the nodes in between. Adjacent edges (dagre emits
     // ≤3 points: two border-attach ends + a single rank-gap bend) keep the
     // border-anchored elbow, so their routing is unchanged.
-    const waypoints = edgeWaypoints(g, edge.from, edge.to, `e${i}`);
+    const waypoints = waypointsList[i]!;
     const port = ports[i]!;
     const routed = routeEdge(from, to, model.direction, theme.edgeStyle, waypoints, port);
     const out: RoutedEdge = { ...edge, points: routed.points, path: routed.path };
@@ -155,6 +288,12 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
     if (edge.label) out.labelPos = routed.labelPos;
     edges.push(out);
   });
+
+  // FR9 lane-separate + FR6 (de-collide overlapping label plates) + label-vs-node
+  // (push a label off any node box, UAT-1) + FR7 (crossing bridges, D4-gated),
+  // after all edges are routed. Node boxes in model-node order (matches the
+  // runtime twin's iteration). Mirrored in the runtime twin.
+  finishEdges(edges, theme, opts.bridges, positionedNodes.map(toBox));
 
   const allEdgePoints = edges.flatMap((e) => e.points);
   const bounds = contentBounds(
@@ -226,6 +365,8 @@ export function applyPositions(
     sizes?: Record<string, { width: number; height: number }>;
     /** Per-anchor overrides (FR7), keyed by edge index; pins one/both ends. */
     anchors?: Record<string, EdgeAnchorOverride>;
+    /** Edge-crossing bridges (FR7 / D4); see {@link LayoutOptions.bridges}. */
+    bridges?: boolean;
   } = {},
 ): PositionedModel {
   const theme = opts.theme ?? themes.light!;
@@ -259,7 +400,11 @@ export function applyPositions(
   const anchorOverrides = opts.anchors
     ? resolveAnchorOverrides(model.edges, opts.anchors)
     : undefined;
-  const ports = computePerimeterPorts(model.edges, nodeBoxes, labelSizes, anchorOverrides);
+  // Same heading-order as layout(): reuse each edge's kept detour bends (offset
+  // space matches nodeBoxes here) so a repositioned/anchored render orders ports
+  // the way the live runtime's computePorts does (parity).
+  const bends = model.edges.map((e) => e.waypoints ?? []);
+  const ports = computePerimeterPorts(model.edges, nodeBoxes, labelSizes, anchorOverrides, bends);
 
   const edges: RoutedEdge[] = model.edges.map((edge, i) => {
     const from = nodeBoxes.get(edge.from);
@@ -275,8 +420,15 @@ export function applyPositions(
     return out;
   });
 
-  // Auto-contain (FR6): re-hug every subgraph to its (possibly moved/resized)
-  // members via the shared recompute, matching the live runtime for parity.
+  // FR9 + FR6 + label-vs-node + FR7: same post-routing passes as layout(), so a
+  // dragged/resized layout keeps its lanes separated, labels non-overlapping (of
+  // each other AND of node boxes) and its crossings bridged (parity). Node boxes
+  // in model-node order to match the runtime twin.
+  finishEdges(edges, theme, opts.bridges, nodes.map(toBox));
+
+  // Auto-contain (subgraph FR6, prior feature): re-hug every subgraph to its
+  // (possibly moved/resized) members via the shared recompute, matching the live
+  // runtime for parity.
   const sgBoxes = computeSubgraphBoxes(model.subgraphs, nodeBoxes);
   const subgraphs: PositionedSubgraph[] = model.subgraphs.map((sg) => {
     const b = sgBoxes.get(sg.id)!;
@@ -324,7 +476,11 @@ export function labelPlateSize(label: string | undefined, theme: Theme): { w: nu
   const f = theme.tokens.font;
   const lines = label.split("\n");
   const maxChars = lines.reduce((m, l) => Math.max(m, l.length), 0);
-  return { w: maxChars * f.size * 0.62 + 10, h: lines.length * f.lineHeight + 4 };
+  // FR3 — tightened plate padding (was 0.62·size + 10 / lines·lh + 4). The width
+  // basis uses `size` while the text draws at `size - 1`, so 0.6 still clears the
+  // widest real labels without clipping. Keep this formula identical in the SVG
+  // sink (`edgeLabel`) and the DOM runtime twin, or the stagger math drifts.
+  return { w: maxChars * f.size * 0.6 + 6, h: lines.length * f.lineHeight + 2 };
 }
 
 function toBox(node: PositionedNode): NodeBox {

@@ -1,0 +1,28 @@
+{
+  "slug": "flowchart-render-legibility",
+  "phase": "report",
+  "status": "ok",
+  "inputs": [
+    ".gogo/work/feature-flowchart-render-legibility/plan.md",
+    ".gogo/work/feature-flowchart-render-legibility/decisions.md",
+    ".gogo/work/feature-flowchart-render-legibility/review/issues.json",
+    ".gogo/work/feature-flowchart-render-legibility/test/issues.json",
+    ".gogo/work/feature-flowchart-render-legibility/charts/manifest.json",
+    ".gogo/work/feature-flowchart-render-legibility/charts/before/flow.mmd"
+  ],
+  "outputs": [
+    ".gogo/work/feature-flowchart-render-legibility/report/report.md",
+    ".gogo/work/feature-flowchart-render-legibility/report/flow.mmd",
+    ".gogo/work/feature-flowchart-render-legibility/report/sequence.mmd",
+    ".gogo/work/feature-flowchart-render-legibility/report/diagrams.html",
+    ".gogo/work/feature-flowchart-render-legibility/report/manifest.json",
+    ".gogo/work/feature-flowchart-render-legibility/report/before/flow.mmd",
+    ".gogo/work/feature-flowchart-render-legibility/report/before/manifest.json",
+    ".gogo/knowledge/code-review-standards.md",
+    ".gogo/knowledge/test-strategy.md",
+    ".gogo/knowledge/project-knowledge.md"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "summary": "As-built report for the legibility feature (FR1-FR9, refreshed for UAT rounds 1-2 + D12): 5-layer draw order + opaque title plate + tightened & de-collided edge labels (vs labels/nodes/edges) + border-filling fan spread + FR9 lane separation + crossing GAPS (arc->gap pivot, D11) + heading-order fan ports (D12 API-fan de-knot), all deterministic and byte-parity-mirrored in the interactive runtime; toggleable via `bridges`/--no-bridges; flow+state+class covered, sequence excluded. All phases green: 388 unit / 79 e2e / hands-on (incl. live drag); review round 6 APPROVE (caught+fixed REV-002 earlier, REV-009 in-round); test round 6 GREEN. TEST-004 (extreme-drag re-merge) dispositioned wontfix as a documented follow-up at the user's D13 accept; left/right side attachment also a follow-up. Refreshed as-built flow diagram, updated report.md, plan.md, and code-review-standards / test-strategy knowledge. Awaiting UAT (/gogo:done to ship)."
+}

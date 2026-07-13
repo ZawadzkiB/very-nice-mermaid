@@ -31,6 +31,9 @@ import {
 import { resolveNodeStyle } from "../src/render/style.js";
 import { applyPositions } from "../src/layout/index.js";
 import { renderSvgFromModel } from "../src/render/svg.js";
+import { readStateModel } from "../src/native/state/read.js";
+import { layoutState } from "../src/native/state/layout.js";
+import { renderStateSvg } from "../src/native/state/svg.js";
 import { themes, type Theme } from "../src/theme/index.js";
 
 // ---- minimal fake DOM (only what vnmRuntime touches at boot) ----
@@ -168,10 +171,12 @@ function expectedPaths(
   theme: (typeof themes)["light"],
 ): string[] {
   const off = model.bounds;
-  const ports = computePerimeterPorts(model.edges, boxes);
+  // Waypoints in the runtime's offset-removed space (same as `boxes`), so the port
+  // spreader orders ports by heading exactly as the live runtime's computePorts.
+  const wbends = model.edges.map((e) => (e.waypoints ?? []).map((p) => ({ x: p.x - off.x, y: p.y - off.y })));
+  const ports = computePerimeterPorts(model.edges, boxes, undefined, undefined, wbends);
   return model.edges.map((e, i) => {
-    const wps = (e.waypoints ?? []).map((p) => ({ x: p.x - off.x, y: p.y - off.y }));
-    return routeEdge(boxes.get(e.from)!, boxes.get(e.to)!, model.direction, theme!.edgeStyle, wps, ports[i]).path;
+    return routeEdge(boxes.get(e.from)!, boxes.get(e.to)!, model.direction, theme!.edgeStyle, wbends[i]!, ports[i]).path;
   });
 }
 
@@ -580,6 +585,138 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
       expect(XMLValidator.validate(got)).toBe(true);
     });
   }
+
+  // ---- FR6 + FR7 parity: the runtime's inlined label-de-collision and
+  // crossing-gap passes must produce byte-identical output to the static
+  // layout()/applyPositions() twins. Drive a diagram that genuinely has BOTH a
+  // close-label collision and a true edge crossing, then byte-compare.
+  it("toSvgString() == renderSvg for a diagram with de-collided labels + a crossing gap (FR6/FR7)", () => {
+    const { model, theme } = prepare(
+      "flowchart TD\nX[X] -->|aaaa| M[M]\nY[Y] -->|bbbb| M\nM --> P[P]\nM --> Q[Q]\nX --> Q\nY --> P",
+      { theme: "light" },
+    );
+    const { handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+    const expected = renderSvgFromModel(editedModel(model, theme, handle), theme);
+    const got = handle.toSvgString();
+    expect(got).toBe(expected);
+    expect(XMLValidator.validate(got)).toBe(true);
+    // a genuine crossing gap (pen-up: an L endpoint immediately followed by an M restart)
+    expect(/ L [-\d.]+ [-\d.]+ M [-\d.]+ [-\d.]+/.test(got)).toBe(true);
+  });
+
+  // ---- FR9 lane-separation + label-vs-node parity: the runtime's inlined
+  // separateLanes + resolveLabelNodeCollisions twins must produce byte-identical
+  // output to the static finishEdges. The UAT repro genuinely triggers BOTH (a
+  // ≥3-edge mid-channel bundle that re-lanes, and the "gRPC stream" plate pushed
+  // off the Ingress box), so a drift in either twin fails here — clean AND sketch.
+  const reproDsl = [
+    "flowchart TD",
+    "  subgraph VE[Validation Engine Verische]",
+    "    V1[Schema check]",
+    "    V2[Rule eval]",
+    "  end",
+    "  subgraph KU[Kukuvara subsystem]",
+    "    K1[Parse inbound]",
+    "    K2[Route message]",
+    "  end",
+    "  IN[Ingress] -->|REST admin| V1",
+    "  IN -->|gRPC stream| V2",
+    "  IN -->|batch load| K1",
+    "  API[API Gateway] -->|feed| V1",
+    "  API -->|alt path| K2",
+    "  V1 --> HUB",
+    "  V2 --> HUB",
+    "  K1 --> HUB",
+    "  K2 --> HUB",
+    "  API --> HUB",
+    "  IN --> HUB",
+    "  HUB[Aggregator hub]",
+  ].join("\n");
+
+  it("toSvgString() == renderSvg for the FR9 lane fixture (re-laned bundle + label-off-node)", () => {
+    const { model, theme } = prepare(reproDsl, { theme: "light" });
+    // sanity: the fixture genuinely re-lanes a bundle — at least 3 interior
+    // vertical runs sit on distinct lanes exactly LANE_GAP (26) apart.
+    const lanes = new Set<number>();
+    for (const e of model.edges) {
+      for (let i = 1; i + 2 < e.points.length; i++) {
+        const a = e.points[i]!;
+        const b = e.points[i + 1]!;
+        if (Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 40) lanes.add(Math.round(a.x));
+      }
+    }
+    expect(lanes.size).toBeGreaterThanOrEqual(3);
+
+    const { handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+    const got = handle.toSvgString();
+    expect(got).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+    expect(XMLValidator.validate(got)).toBe(true);
+  });
+
+  it("toSvgString() == renderSvg for the FR9 lane fixture in SKETCH mode", () => {
+    const { model, theme } = prepare(reproDsl, { theme: "light" });
+    const { handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false, style: "sketch" }));
+    const got = handle.toSvgString();
+    expect(got).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme, undefined, "sketch"));
+    expect(XMLValidator.validate(got)).toBe(true);
+    expect(got).toContain(" Q "); // genuinely sketch (rough bowed strokes)
+  });
+
+  it("toSvgString() == renderSvg for the crossing diagram after a drag re-routes it (FR7)", () => {
+    const { model, theme } = prepare("flowchart TD\nX-->M\nY-->M\nM-->P\nM-->Q\nX-->Q\nY-->P", { theme: "light" });
+    const { handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+    const m = model.nodes.find((n) => n.id === "M")!;
+    handle.importLayout({ version: 1, positions: { M: { x: m.x + 40, y: m.y + 30 } } });
+    expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+  });
+
+  it("STATE re-route: baked renderStateSvg edges match the live runtime (native/state/layout.ts parity, REV-009)", async () => {
+    // native/state/layout.ts re-routes transitions against SHRUNK pseudo-state boxes
+    // and BAKES their heading-order ports (D12); renderStateSvg draws those baked
+    // paths, while the live runtime re-derives ports from the same model on mount.
+    // order-state fans into the [*] end state AND out of `Running`, so D12 genuinely
+    // reorders — a drift between the baked static and the runtime would be a visual
+    // pop on load. Static is in layout space, the runtime in offset-removed space,
+    // so compare each edge's RELATIVE geometry (invariant to the constant viewport
+    // translation); a real port/route difference changes the shape and fails.
+    const dsl = [
+      "stateDiagram-v2",
+      "[*] --> Idle",
+      "Idle --> Running : start",
+      "Running --> Paused : pause",
+      "Paused --> Running : resume",
+      "Running --> Idle : stop",
+      "Running --> Crashed : fault",
+      "Crashed --> [*]",
+      "Idle --> [*]",
+    ].join("\n");
+    const theme = themes.light!;
+    const lay = layoutState(await readStateModel(dsl), { theme });
+    const staticSvg = renderStateSvg(lay, theme);
+    // readStateModel boots mermaid's real jsdom, which overwrites the FakeEl-friendly
+    // getComputedStyle stub — restore it before mounting the runtime.
+    (globalThis as unknown as { getComputedStyle: () => { position: string } }).getComputedStyle =
+      () => ({ position: "relative" });
+    const { handle } = mountFakeH(buildPayload(lay.model, theme, { minimap: false, persist: false }));
+    const edgeD = (s: string): string[] =>
+      [...s.matchAll(/<path\b[^>]*>/g)]
+        .map((m) => m[0])
+        .filter((t) => t.includes('fill="none"'))
+        .map((t) => (t.match(/\bd="([^"]*)"/) ?? ["", ""])[1]!)
+        .filter(Boolean);
+    // normalize each path by its own first point → RELATIVE geometry (offset-free)
+    const rel = (d: string): string => {
+      const nums = (d.match(/-?[\d.]+/g) ?? []).map(Number);
+      const ox = nums[0] ?? 0;
+      const oy = nums[1] ?? 0;
+      return nums.map((v, i) => (i % 2 ? v - oy : v - ox).toFixed(2)).join(",");
+    };
+    const relSet = (a: string[]): string[] => a.map(rel).sort();
+    const staticEdges = edgeD(staticSvg);
+    expect(staticEdges.length).toBeGreaterThanOrEqual(6); // fixture genuinely has edges
+    expect(relSet(edgeD(handle.toSvgString()))).toEqual(relSet(staticEdges));
+  });
+
 
   // ---- sketch-style parity (D2/FR6): toSvgString() must byte-match renderSvg in
   // SKETCH mode too, which transitively proves the runtime's inlined rough

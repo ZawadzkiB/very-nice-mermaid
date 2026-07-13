@@ -3,6 +3,7 @@ import { XMLParser } from "fast-xml-parser";
 import { layoutClass } from "../src/native/class/layout.js";
 import { renderClassSvg } from "../src/native/class/svg.js";
 import { renderSvg } from "../src/render/svg.js";
+import { labelPlateSize } from "../src/layout/index.js";
 import type { ClassModel } from "../src/model/class.js";
 import { themes } from "../src/theme/index.js";
 
@@ -133,4 +134,17 @@ describe("renderClassSvg", () => {
       expect(sharingStart).toHaveLength(1);
     },
   );
+
+  // REV-002 guard: the native class label plate MUST be the shared tightened size
+  // (labelPlateSize) — the FR6 de-collision assumes it, so if this drifts back to
+  // the old looser formula, de-collided class labels can overlap while tests pass.
+  it("draws edge-label plates at the shared tightened labelPlateSize (REV-002)", () => {
+    const theme = themes.light!;
+    const svg = renderClassSvg(layoutClass(MODEL, { theme }), theme);
+    const want = labelPlateSize("extends", theme)!;
+    const m = svg.match(/<rect[^>]*width="([\d.]+)"[^>]*height="([\d.]+)"[^>]*\/><text[^>]*>extends</);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeCloseTo(want.w, 6);
+    expect(Number(m![2])).toBeCloseTo(want.h, 6);
+  });
 });

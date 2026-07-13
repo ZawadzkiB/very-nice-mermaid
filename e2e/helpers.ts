@@ -61,12 +61,20 @@ export function exportHtmlStyled(
  * standalone HTML artifact via the built CLI — same path a real `vnm render
  * -o out.html` user gets. Useful for e2e-only diagrams (a hub node, a
  * subgraph + every shape) that exist purely to drive the browser.
+ *
+ * `extraArgs` threads additional CLI flags (e.g. `["--no-bridges"]`, D4)
+ * straight through to `vnm render`.
  */
-export function exportHtmlFromDsl(dsl: string, theme = "light", name = "exported-adhoc.html"): string {
+export function exportHtmlFromDsl(
+  dsl: string,
+  theme = "light",
+  name = "exported-adhoc.html",
+  extraArgs: string[] = [],
+): string {
   const dslPath = join(artifactsDir, name.replace(/\.html$/, ".mmd"));
   writeFileSync(dslPath, dsl, "utf8");
   const out = join(artifactsDir, name);
-  execFileSync("node", [cliPath, "render", dslPath, "-o", out, "--theme", theme]);
+  execFileSync("node", [cliPath, "render", dslPath, "-o", out, "--theme", theme, ...extraArgs]);
   return pathToFileURL(out).href;
 }
 

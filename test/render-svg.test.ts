@@ -109,4 +109,72 @@ describe("renderSvg", () => {
     expect(svg).not.toContain("onmouseover");
     expect(svg).not.toContain("alert(1)");
   });
+
+  // ---- FR1/FR2 legibility: explicit z-layers so edges never cover labels or
+  // subgraph titles, and a titled subgraph gets an opaque plate.
+  describe("layered draw order + opaque subgraph title (FR1/FR2)", () => {
+    const DSL = [
+      "flowchart TD",
+      "subgraph G[Engine]",
+      "  V[Validate]",
+      "  K[Kernel]",
+      "end",
+      "A[In] -->|feed| V",
+      "A -->|alt| K",
+      "V --> K",
+    ].join("\n");
+    const t = themes.light!.tokens;
+
+    it("emits every edge path before any edge label or subgraph title (FR1)", () => {
+      const svg = renderSvg(DSL, { theme: "light" });
+      // edge paths are the only fill="none" strokes here (nodes are rects)
+      const lastEdgePath = svg.lastIndexOf('fill="none"');
+      expect(lastEdgePath).toBeGreaterThan(-1);
+      // labels + the subgraph title all come AFTER the last edge → never covered
+      expect(svg.indexOf(">feed<")).toBeGreaterThan(lastEdgePath);
+      expect(svg.indexOf(">alt<")).toBeGreaterThan(lastEdgePath);
+      expect(svg.indexOf(">Engine<")).toBeGreaterThan(lastEdgePath);
+    });
+
+    it("draws the title on an opaque plate, with node groups painted last (FR2/FR1)", () => {
+      const svg = renderSvg(DSL, { theme: "light" });
+      // an opaque plate (the subgraph fill) is drawn immediately before the title
+      // text — the box rect carries a stroke, so this match is the plate alone.
+      expect(svg).toContain('fill="' + t.colors.subgraphFill + '"/><text');
+      // node <g> groups are the last layer: after the title and after every label
+      expect(svg.lastIndexOf("<g")).toBeGreaterThan(svg.indexOf(">Engine<"));
+      expect(svg.indexOf("<g")).toBeGreaterThan(svg.indexOf(">feed<"));
+    });
+  });
+
+  // ---- FR7 edge-crossing gaps (line-jumps: the under-line breaks; UAT-round pivot)
+  describe("edge-crossing gaps (FR7 / D4)", () => {
+    // this diagram forces one true crossing dagre cannot remove
+    const CROSS = ["flowchart TD", "X-->M", "Y-->M", "M-->P", "M-->Q", "X-->Q", "Y-->P"].join("\n");
+    // a pen-up gap: an `L` endpoint immediately followed by an `M` restart (a break
+    // that never appears in a plain continuous elbow path or a node rect/marker).
+    const gapRe = / L [-\d.]+ [-\d.]+ M [-\d.]+ [-\d.]+/;
+
+    it("cuts a gap into the under-line at a crossing by default for clean elbow edges", () => {
+      const svg = renderSvg(CROSS, { theme: "light" });
+      expect(gapRe.test(svg)).toBe(true); // a pen-up gap is spliced into the under edge
+    });
+
+    it("bridges: false removes every gap (the D4 per-style toggle)", () => {
+      expect(gapRe.test(renderSvg(CROSS, { theme: "light", bridges: false }))).toBe(false);
+    });
+
+    it("the curved (fancy) tier is left un-gapped in v1 — its beziers are unchanged by the toggle", () => {
+      // fancy uses curved beziers; gaps never touch them, so toggling bridges leaves
+      // the curved output byte-identical.
+      const on = renderSvg(CROSS, { theme: "fancy" });
+      const off = renderSvg(CROSS, { theme: "fancy", bridges: false });
+      expect(on).toBe(off);
+    });
+
+    it("a diagram with no crossings is byte-identical with or without bridges", () => {
+      const NOCROSS = "flowchart TD\n A[Start] --> B[Mid] --> C[End]";
+      expect(renderSvg(NOCROSS, { theme: "light" })).toBe(renderSvg(NOCROSS, { theme: "light", bridges: false }));
+    });
+  });
 });

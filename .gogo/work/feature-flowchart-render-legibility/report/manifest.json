@@ -1,0 +1,12 @@
+{
+  "slug": "flowchart-render-legibility",
+  "updated": "2026-07-13",
+  "note": "As-built (phase ⑤, refreshed for UAT rounds 1-2 + D12). The shipped legibility pipeline: FR1-FR5 (5-layer draw order, opaque subgraph-title plate, tightened label plate, border-filling fan-in spread, parity+determinism) plus D1=A FR6 (all-pairs edge-label de-collision, fixes TEST-001), FR9 (separateLanes lane separation), three-way label de-collision (label-vs-label/node/edge), FR7 crossing GAPS (arc->gap pivot, D11 - pen-up gap in the more-vertical under-line), and D12 heading-order fan ports (API-fan de-knot) - all run via layout.finishEdges() and mirrored byte-for-byte in the inlined DOM runtime. D4 `bridges` config toggle (default ON clean-elbow, OFF curved/sketch); D5 reaches flowchart + state + class, sequence excluded. flow.mmd = the pipeline; sequence.mmd = the render interaction across the toggle. before/ keeps the pre-fix single-pass baseline.",
+  "diagrams": [
+    { "kind": "flow", "file": ".gogo/work/feature-flowchart-render-legibility/report/flow.mmd", "title": "As-built pipeline: finishEdges (lanes -> label de-collision -> crossing gaps) + heading-order ports, 5-layer emit, both renderers byte-parity" },
+    { "kind": "sequence", "file": ".gogo/work/feature-flowchart-render-legibility/report/sequence.mmd", "title": "Render interaction: caller -> layout/finishEdges -> geometry -> static SVG; runtime twin re-runs the same passes (parity)" }
+  ],
+  "before": [
+    { "kind": "flow", "file": ".gogo/work/feature-flowchart-render-legibility/report/before/flow.mmd", "title": "As-is baseline: single-pass emit + weak spread -> title/label/fan-in overlaps" }
+  ]
+}

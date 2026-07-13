@@ -156,9 +156,18 @@ test.describe("interactive renderer — themes & structure", () => {
     const elbowDs = await page
       .locator("svg.vnm-edges path[marker-end]")
       .evaluateAll((paths) => paths.map((p) => p.getAttribute("d") ?? ""));
-    // orthogonal elbows are line segments, never beziers
+    // orthogonal elbows are line segments, never full cubic beziers (C is reserved
+    // for the fancy/curved theme), and never a Q either — FR7's crossing glyph was
+    // an arc bump (D2 original) at TEST-003 but was PIVOTED to a pen-up GAP (an `L`
+    // endpoint immediately followed by an `M` restart) at the UAT-round D11 redirect
+    // ("instead of bridges/elbows ... just a space"), so a genuine crossing now shows
+    // up as a gap, not a curve command.
     expect(elbowDs.every((d) => !/[CQ]/.test(d))).toBe(true);
     expect(elbowDs.some((d) => /L/.test(d))).toBe(true);
+    // state-machine.mmd has genuine unavoidable crossings, so at least one elbow
+    // edge should carry an FR7 gap (pen-up `L .. M ..` break) here.
+    const GAP_RE = / L [-\d.]+ [-\d.]+ M [-\d.]+ [-\d.]+/;
+    expect(elbowDs.some((d) => GAP_RE.test(d))).toBe(true);
   });
 
   test("subgraph containers render for a nested-subgraph diagram", async ({ page }) => {

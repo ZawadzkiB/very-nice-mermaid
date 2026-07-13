@@ -23,6 +23,8 @@ import { classCardLines } from "./card.js";
 
 export interface ClassLayoutOptions {
   theme?: Theme;
+  /** Edge-crossing bridges (FR7 / D4); forwarded to the shared `layout()`. */
+  bridges?: boolean;
 }
 
 /** Lay out a {@link ClassModel} into a positioned {@link ClassLayout}. */
@@ -58,7 +60,7 @@ export function layoutClass(model: ClassModel, opts: ClassLayoutOptions = {}): C
     warnings: [],
   };
 
-  const positioned = layout(diagram, { theme });
+  const positioned = layout(diagram, { theme, bridges: opts.bridges });
   return {
     kind: "class-layout",
     model: positioned,

@@ -14,6 +14,8 @@ export type RenderInput = string | DiagramModel | PositionedModel;
 export interface PrepareOptions {
   theme?: string | Theme | PartialTokenSet;
   strict?: boolean;
+  /** Edge-crossing bridges (FR7 / D4); forwarded to `layout()`. */
+  bridges?: boolean;
 }
 
 export interface Prepared {
@@ -47,10 +49,10 @@ export function ensureSyncRenderable(input: RenderInput, asyncApi: string): void
 export function prepare(input: RenderInput, opts: PrepareOptions = {}): Prepared {
   const theme = resolveTheme(opts.theme);
   if (typeof input === "string") {
-    return { model: layout(parse(input, { strict: opts.strict }), { theme }), theme };
+    return { model: layout(parse(input, { strict: opts.strict }), { theme, bridges: opts.bridges }), theme };
   }
   if (isPositionedModel(input)) {
     return { model: input, theme };
   }
-  return { model: layout(input, { theme }), theme };
+  return { model: layout(input, { theme, bridges: opts.bridges }), theme };
 }

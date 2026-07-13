@@ -27,3 +27,6 @@ e2e/.artifacts/
 
 # transient gogo run event logs
 .gogo/work/*/events.jsonl
+
+# session scratch (repro/demo files)
+scratchpad/

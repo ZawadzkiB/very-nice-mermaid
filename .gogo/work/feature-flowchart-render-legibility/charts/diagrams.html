@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo diagrams - flowchart-render-legibility</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo diagrams - <code>flowchart-render-legibility</code></h1>
+    <p class="hint">Offline viewer · mermaid is vendored with the plugin (no network, no CLI) · regenerate via the gogo-mermaid skill.</p>
+  </header>
+
+  <h2>Intended: FR6 label de-collision + FR7 crossing-bridge passes added to the shipped pipeline</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  model["PositionedModel&lt;br/&gt;nodes · edges · subgraphs · labels"] --> ports["computePerimeterPorts&lt;br/&gt;PORT_STEP=26 · spread=0.85 (FR4)"]
+  ports --> route["routeEdge → points + path + labelPos&lt;br/&gt;+ same-pair label stagger (TEST-006)"]
+  route --> decol["resolveLabelCollisions (NEW · FR6)&lt;br/&gt;all-pairs plate AABB → reserved-gap nudge"]
+  decol --> bridge["applyEdgeBridges (NEW · FR7)&lt;br/&gt;segmentsCross → hop arc in ONE edge's d"]
+  bridge --> L1["layer 1: subgraph boxes"]
+  bridge --> L2["layer 2: edges (paths + hop arcs + arrowheads)"]
+  bridge --> L3["layer 3: edge-label plates (de-collided)"]
+  bridge --> L4["layer 4: subgraph titles (opaque plate)"]
+  bridge --> L5["layer 5: node cards (on top)"]
+  L2 --> svg["static SVG (svg.ts) + state/class svg"]
+  L3 --> svg
+  L2 --> rt["inlined DOM runtime (runtime.ts)&lt;br/&gt;computePorts/buildSvg - toSvgString byte-parity"]
+  L3 --> rt
+  seq["sequence tier (own routing)"] -.excluded.-&gt; bridge
+  </pre></div>
+
+  <h2>Intended: FR7 edge-crossing bridge decision flow (hop glyph D2 / which-line D3 / style D4 / tier D5)</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  start["applyEdgeBridges(edges)&lt;br/&gt;after routing, all edges in hand"] --> pairs["for each unordered edge pair&lt;br/&gt;(fixed index order = deterministic)"]
+  pairs --> seg["for each segment pair&lt;br/&gt;segmentsCross(a, b)?"]
+  seg --&gt;|no crossing| pairs
+  seg --&gt;|proper crossing| pick{"which line hops? (D3)&lt;br/&gt;more-horizontal edge,&lt;br/&gt;ties by edge index"}
+  pick --> glyph{"hop glyph (D2)"}
+  glyph --&gt;|arc bump&lt;br/&gt;recommended| arc["splice small A/Q arc&lt;br/&gt;into hopping edge's d&lt;br/&gt;at the crossing point"]
+  glyph --&gt;|gap/notch&lt;br/&gt;alt| gap["erase short gap in&lt;br/&gt;under-line at crossing"]
+  arc --> style{"edge style (D4)"}
+  gap --> style
+  style --&gt;|clean elbow&lt;br/&gt;default-on| out["rewrite edge.path&lt;br/&gt;→ svg.ts + runtime byte-parity"]
+  style --&gt;|curved / sketch| skip["left as-is in v1&lt;br/&gt;(scoped follow-up)"]
+  out --> tiers["flowchart + state + class (D5)"]
+  skip --> tiers
+  </pre></div>
+
+  <script src="../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from: ../../../resources/mermaid.min.js\n' +
+          'Re-run the gogo-mermaid skill, or read the .mmd source files directly.</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

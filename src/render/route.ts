@@ -64,9 +64,9 @@ export async function renderSvgAsync(dsl: string, opts: SvgRenderOptions = {}): 
     case "sequence":
       return renderSequenceSvg(layoutSequence(await readSequenceModel(dsl), { theme }), theme, opts.background, opts.style);
     case "class":
-      return renderClassSvg(layoutClass(await readClassModel(dsl), { theme }), theme, opts.background, opts.style);
+      return renderClassSvg(layoutClass(await readClassModel(dsl), { theme, bridges: opts.bridges }), theme, opts.background, opts.style);
     case "state":
-      return renderStateSvg(layoutState(await readStateModel(dsl), { theme }), theme, opts.background, opts.style);
+      return renderStateSvg(layoutState(await readStateModel(dsl), { theme, bridges: opts.bridges }), theme, opts.background, opts.style);
     default: {
       const detected = c.detected ?? c.type;
       if (opts.style === "sketch") warnSketchFallback(detected);
@@ -86,9 +86,9 @@ export async function renderHtmlAsync(dsl: string, opts: HtmlExportOptions = {})
     case "sequence":
       return renderHtml(layoutSequence(await readSequenceModel(dsl), { theme }), opts);
     case "class":
-      return renderHtml(layoutClass(await readClassModel(dsl), { theme }), opts);
+      return renderHtml(layoutClass(await readClassModel(dsl), { theme, bridges: opts.bridges }), opts);
     case "state":
-      return renderHtml(layoutState(await readStateModel(dsl), { theme }), opts);
+      return renderHtml(layoutState(await readStateModel(dsl), { theme, bridges: opts.bridges }), opts);
     default: {
       const detected = c.detected ?? c.type;
       if (opts.style === "sketch") warnSketchFallback(detected);

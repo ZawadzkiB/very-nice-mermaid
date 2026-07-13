@@ -1,0 +1,15 @@
+flowchart TD
+  start["separateLanes(edges, theme) - FR9<br/>after routing, first in finishEdges"] --> gate{"style gate (FR7 rule)<br/>clean elbow?"}
+  gate -->|curved / sketch| skip["leave as-is (deferred)"]
+  gate -->|clean elbow| bundle["bundle segments:<br/>near-parallel + near-collinear (≤ LANE_GAP perp)<br/>+ overlap ≥ LANE_MIN_OVERLAP"]
+  bundle --> classify{"bundle kind?"}
+  classify -->|shared mid-channel<br/>box 2| mid["offset runs to lanes ≥ LANE_GAP<br/>cascade into the two H-neighbours<br/>(path stays orthogonal + connected)"]
+  classify -->|endpoint fan<br/>box 1 / box 3| fan{"bundle wider<br/>than the node?"}
+  fan -->|no| widen["widen the lane spread"]
+  fan -->|yes| comb["staggered-depth comb:<br/>each edge turns at a different depth<br/>→ fans into a traceable comb"]
+  mid --> relax["bounded deterministic relaxation<br/>(fixed order, no RNG) → fixpoint"]
+  widen --> relax
+  comb --> relax
+  relax --> out["rewrite edge.points + path<br/>→ FR6 labels → FR7 bridges<br/>→ svg.ts + runtime byte-parity"]
+  out --> tiers["flowchart + state + class (D5)"]
+  skip --> tiers
