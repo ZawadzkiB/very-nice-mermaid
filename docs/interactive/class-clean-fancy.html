@@ -74,9 +74,24 @@ var vnmRuntime = function vnmRuntime(root, payload) {
   const defs5 = doc.createElementNS(SVGNS, "defs");
   defs5.innerHTML = '<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M0 0 L10 5 L0 10 z"></path></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M10 0 L0 5 L10 10 z"></path></marker>';
   svg.appendChild(defs5);
+  const gBoxes = doc.createElementNS(SVGNS, "g");
+  const gEdges = doc.createElementNS(SVGNS, "g");
+  const gLabels = doc.createElementNS(SVGNS, "g");
+  const gTitles = doc.createElementNS(SVGNS, "g");
+  const gNodes = doc.createElementNS(SVGNS, "g");
+  gBoxes.setAttribute("class", "vnm-subgraph-layer");
+  gEdges.setAttribute("class", "vnm-edge-layer");
+  gLabels.setAttribute("class", "vnm-label-layer");
+  gTitles.setAttribute("class", "vnm-title-layer");
+  gNodes.setAttribute("class", "vnm-node-layer");
+  svg.appendChild(gBoxes);
+  svg.appendChild(gEdges);
+  svg.appendChild(gLabels);
+  svg.appendChild(gTitles);
+  svg.appendChild(gNodes);
   world.appendChild(svg);
   const SG_PAD = 14;
-  const SG_TITLE = 18;
+  const SG_TITLE = 22;
   const subgraphMembers = {};
   {
     const childrenById = {};
@@ -127,16 +142,22 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     r.setAttribute("fill", "var(--vnm-subgraph-fill)");
     r.setAttribute("stroke", "var(--vnm-subgraph-stroke)");
     r.setAttribute("stroke-dasharray", "4 4");
-    svg.insertBefore(r, svg.firstChild);
+    gBoxes.appendChild(r);
     const rec = { sg, rect: r };
     if (sg.title) {
+      const plate = doc.createElementNS(SVGNS, "rect");
+      plate.setAttribute("class", "vnm-subgraph-title-plate");
+      plate.setAttribute("fill", "var(--vnm-subgraph-fill)");
+      plate.setAttribute("rx", String(tokens.radii.label));
+      gTitles.appendChild(plate);
       const tnode = doc.createElementNS(SVGNS, "text");
       tnode.setAttribute("class", "vnm-subgraph-title");
       tnode.setAttribute("fill", "var(--vnm-subgraph-text)");
       tnode.setAttribute("font-size", String(tokens.font.size - 1));
       tnode.setAttribute("font-weight", "600");
       tnode.textContent = sg.title;
-      svg.appendChild(tnode);
+      gTitles.appendChild(tnode);
+      rec.plate = plate;
       rec.text = tnode;
     }
     subgraphEls.push(rec);
@@ -149,8 +170,19 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       rec.rect.setAttribute("width", String(b.w));
       rec.rect.setAttribute("height", String(b.h));
       if (rec.text) {
-        rec.text.setAttribute("x", String(b.x - b.w / 2 + 12));
-        rec.text.setAttribute("y", String(b.y - b.h / 2 + 18));
+        const tx2 = b.x - b.w / 2 + 12;
+        const ty2 = b.y - b.h / 2 + 18;
+        rec.text.setAttribute("x", String(tx2));
+        rec.text.setAttribute("y", String(ty2));
+        if (rec.plate) {
+          const fs = tokens.font.size - 1;
+          const pad = 5;
+          const pw = rec.sg.title.length * fs * 0.6 + pad * 2;
+          rec.plate.setAttribute("x", String(nAt(tx2 - pad)));
+          rec.plate.setAttribute("y", String(nAt(ty2 - fs + 1)));
+          rec.plate.setAttribute("width", String(nAt(pw)));
+          rec.plate.setAttribute("height", String(fs + 4));
+        }
       }
     }
   }
@@ -165,7 +197,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     if (e.kind === "dotted") path.setAttribute("stroke-dasharray", "2 5");
     if (!sketch && e.arrows.end) path.setAttribute("marker-end", "url(#vnm-arrow)");
     if (!sketch && e.arrows.start) path.setAttribute("marker-start", "url(#vnm-arrow-start)");
-    svg.appendChild(path);
+    gEdges.appendChild(path);
     const rec = { from: e.from, to: e.to, kind: e.kind, arrows: e.arrows, path };
     if (sketch && (e.arrows.end || e.arrows.start)) {
       const head = doc.createElementNS(SVGNS, "path");
@@ -174,7 +206,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       head.setAttribute("stroke-width", String(e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width));
       head.setAttribute("stroke-linejoin", "round");
       head.setAttribute("stroke-linecap", "round");
-      svg.appendChild(head);
+      gEdges.appendChild(head);
       rec.headPath = head;
     }
     if (e.waypoints && e.waypoints.length) {
@@ -185,14 +217,14 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const plate = doc.createElementNS(SVGNS, "rect");
       plate.setAttribute("fill", "var(--vnm-edge-label-bg)");
       plate.setAttribute("rx", String(tokens.radii.label));
-      svg.appendChild(plate);
+      gLabels.appendChild(plate);
       const text = doc.createElementNS(SVGNS, "text");
       text.setAttribute("fill", "var(--vnm-edge-label-text)");
       text.setAttribute("font-size", String(tokens.font.size - 1));
       text.setAttribute("text-anchor", "middle");
       text.setAttribute("dominant-baseline", "central");
       text.textContent = e.label;
-      svg.appendChild(text);
+      gLabels.appendChild(text);
       rec.plate = plate;
       rec.text = text;
     }
@@ -223,7 +255,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
         const circles = [];
         const mk = () => {
           const c = doc.createElementNS(SVGNS, "circle");
-          svg.appendChild(c);
+          gNodes.appendChild(c);
           circles.push(c);
           return c;
         };
@@ -244,7 +276,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const fillEl = doc.createElementNS(SVGNS, "path");
       fillEl.setAttribute("fill", st.fill);
       fillEl.setAttribute("stroke", "none");
-      svg.appendChild(fillEl);
+      gNodes.appendChild(fillEl);
       const probe = sketchShapePoints2(nd.shape, 0, 0, 100, 100);
       const strokeCount = SK_OUTLINE_STROKES + probe.extras.length * SK_OUTLINE_STROKES;
       const strokes = [];
@@ -256,7 +288,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
         p.setAttribute("stroke-linejoin", "round");
         p.setAttribute("stroke-linecap", "round");
         if (st.strokeDasharray) p.setAttribute("stroke-dasharray", st.strokeDasharray);
-        svg.appendChild(p);
+        gNodes.appendChild(p);
         strokes.push(p);
       }
       nodeShapeEls[nd.id] = { fill: fillEl, strokes };
@@ -698,14 +730,14 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     return "M " + nAt(p[0].x) + " " + nAt(p[0].y) + " C " + nAt(p[1].x) + " " + nAt(p[1].y) + " " + nAt(p[2].x) + " " + nAt(p[2].y) + " " + nAt(p[3].x) + " " + nAt(p[3].y);
   }
   function labelPoly(points) {
-    if (points.length === 2) return { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 };
+    if (points.length === 2) return { x: nAt((points[0].x + points[1].x) / 2), y: nAt((points[0].y + points[1].y) / 2) };
     const mid = Math.floor(points.length / 2);
-    return { x: (points[mid - 1].x + points[mid].x) / 2, y: (points[mid - 1].y + points[mid].y) / 2 };
+    return { x: nAt((points[mid - 1].x + points[mid].x) / 2), y: nAt((points[mid - 1].y + points[mid].y) / 2) };
   }
   function labelBezier(p) {
     return {
-      x: 0.125 * p[0].x + 0.375 * p[1].x + 0.375 * p[2].x + 0.125 * p[3].x,
-      y: 0.125 * p[0].y + 0.375 * p[1].y + 0.375 * p[2].y + 0.125 * p[3].y
+      x: nAt(0.125 * p[0].x + 0.375 * p[1].x + 0.375 * p[2].x + 0.125 * p[3].x),
+      y: nAt(0.125 * p[0].y + 0.375 * p[1].y + 0.375 * p[2].y + 0.125 * p[3].y)
     };
   }
   function computePorts() {
@@ -726,20 +758,23 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       if (from.x === to.x && from.y === to.y) return;
       const exit = raySide2(from, to.x - from.x, to.y - from.y);
       const entry = raySide2(to, from.x - to.x, from.y - to.y);
+      const wp = e.waypoints;
+      const srcHead = wp && wp.length ? wp[0] : to;
+      const tgtHead = wp && wp.length ? wp[wp.length - 1] : from;
       const ov = anchorsOv[i];
       if (ov && ov.source) {
         res[i].source = { side: ov.source.side, offset: ov.source.offset };
       } else {
         res[i].source = { side: exit, offset: 0 };
         const gs = e.from + "|" + exit;
-        (groups[gs] || (groups[gs] = [])).push({ i, role: "source", along: axisX(exit) ? to.x : to.y });
+        (groups[gs] || (groups[gs] = [])).push({ i, role: "source", along: axisX(exit) ? srcHead.x : srcHead.y });
       }
       if (ov && ov.target) {
         res[i].target = { side: ov.target.side, offset: ov.target.offset };
       } else {
         res[i].target = { side: entry, offset: 0 };
         const gt = e.to + "|" + entry;
-        (groups[gt] || (groups[gt] = [])).push({ i, role: "target", along: axisX(entry) ? from.x : from.y });
+        (groups[gt] || (groups[gt] = [])).push({ i, role: "target", along: axisX(entry) ? tgtHead.x : tgtHead.y });
       }
     });
     for (const key in groups) {
@@ -750,7 +785,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const borderLen = side === "top" || side === "bottom" ? b.w : b.h;
       recs.sort((a, c) => a.along - c.along || a.i - c.i || a.role.localeCompare(c.role));
       const k = recs.length;
-      const step = Math.min(20, borderLen * 0.7 / (k - 1));
+      const step = Math.min(30, (borderLen - 2 * 6) / (k - 1));
       recs.forEach((r, slot) => {
         res[r.i][r.role].offset = (slot - (k - 1) / 2) * step;
       });
@@ -775,7 +810,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const extent = (i) => {
         const lns = edgeEls[i].label.split("\n");
         const maxChars = lns.reduce((m, l) => Math.max(m, l.length), 0);
-        return runX ? maxChars * (tokens.font.size * 0.62) + 10 : lns.length * tokens.font.lineHeight + 4;
+        return runX ? maxChars * (tokens.font.size * 0.6) + 6 : lns.length * tokens.font.lineHeight + 2;
       };
       const pos = [0];
       for (let s = 1; s < idxs.length; s++) {
@@ -789,6 +824,329 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     }
     return res;
   }
+  function plateSizeOf(label) {
+    const lns = label.split("\n");
+    const maxChars = lns.reduce((m, l) => Math.max(m, l.length), 0);
+    return { w: maxChars * tokens.font.size * 0.6 + 6, h: lns.length * tokens.font.lineHeight + 2 };
+  }
+  function resolveLabelCollisions2(plates) {
+    const shifts = plates.map(() => ({ x: 0, y: 0 }));
+    const idxs = [];
+    plates.forEach((p, i) => {
+      if (p) idxs.push(i);
+    });
+    if (idxs.length < 2) return shifts;
+    const cx = plates.map((p) => p ? p.x : 0);
+    const cy = plates.map((p) => p ? p.y : 0);
+    for (let pass = 0; pass < 8; pass++) {
+      let moved2 = false;
+      for (let a = 0; a < idxs.length; a++) {
+        for (let b = a + 1; b < idxs.length; b++) {
+          const i = idxs[a];
+          const j = idxs[b];
+          const pi = plates[i];
+          const pj = plates[j];
+          const dx = cx[j] - cx[i];
+          const dy = cy[j] - cy[i];
+          const ox = (pi.w + pj.w) / 2 + 6 - Math.abs(dx);
+          const oy = (pi.h + pj.h) / 2 + 6 - Math.abs(dy);
+          if (ox <= 0 || oy <= 0) continue;
+          moved2 = true;
+          if (ox <= oy) {
+            const push = ox / 2;
+            const dir = dx === 0 ? 1 : Math.sign(dx);
+            cx[i] = cx[i] - push * dir;
+            cx[j] = cx[j] + push * dir;
+          } else {
+            const push = oy / 2;
+            const dir = dy === 0 ? 1 : Math.sign(dy);
+            cy[i] = cy[i] - push * dir;
+            cy[j] = cy[j] + push * dir;
+          }
+        }
+      }
+      if (!moved2) break;
+    }
+    for (const i of idxs) shifts[i] = { x: nAt(cx[i] - plates[i].x), y: nAt(cy[i] - plates[i].y) };
+    return shifts;
+  }
+  function segmentsCross2(a1, a2, b1, b2) {
+    const rx = a2.x - a1.x;
+    const ry = a2.y - a1.y;
+    const sx = b2.x - b1.x;
+    const sy = b2.y - b1.y;
+    const denom = rx * sy - ry * sx;
+    if (denom === 0) return null;
+    const qpx = b1.x - a1.x;
+    const qpy = b1.y - a1.y;
+    const t = (qpx * sy - qpy * sx) / denom;
+    const u = (qpx * ry - qpy * rx) / denom;
+    if (t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6) return { x: a1.x + t * rx, y: a1.y + t * ry };
+    return null;
+  }
+  function gappedPath2(points, gaps) {
+    const bySeg = {};
+    for (const g of gaps) (bySeg[g.seg] || (bySeg[g.seg] = [])).push({ at: g.at, dist: g.dist });
+    for (const k in bySeg) bySeg[k].sort((p, q) => p.dist - q.dist);
+    let d = "M " + nAt(points[0].x) + " " + nAt(points[0].y);
+    for (let s = 0; s + 1 < points.length; s++) {
+      const p = points[s];
+      const q = points[s + 1];
+      const segGaps = bySeg[s];
+      if (!segGaps || !segGaps.length) {
+        d += " L " + nAt(q.x) + " " + nAt(q.y);
+        continue;
+      }
+      const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+      const ux = (q.x - p.x) / len;
+      const uy = (q.y - p.y) / len;
+      let lastGapDist = -Infinity;
+      for (const g of segGaps) {
+        if (g.dist - lastGapDist < 8) continue;
+        lastGapDist = g.dist;
+        const ex = g.at.x - ux * 4;
+        const ey = g.at.y - uy * 4;
+        const xx = g.at.x + ux * 4;
+        const xy = g.at.y + uy * 4;
+        d += " L " + nAt(ex) + " " + nAt(ey) + " M " + nAt(xx) + " " + nAt(xy);
+      }
+      d += " L " + nAt(q.x) + " " + nAt(q.y);
+    }
+    return d;
+  }
+  function applyEdgeBridges2(polys, enabled) {
+    const out = polys.map(() => null);
+    if (!enabled) return out;
+    const rp = polys.map((pts) => pts.map((p) => ({ x: nAt(p.x), y: nAt(p.y) })));
+    const gaps = polys.map(() => []);
+    for (let i = 0; i < rp.length; i++) {
+      const pi = rp[i];
+      if (pi.length < 2) continue;
+      for (let j = i + 1; j < rp.length; j++) {
+        const pj = rp[j];
+        if (pj.length < 2) continue;
+        for (let si = 0; si + 1 < pi.length; si++) {
+          const a1 = pi[si];
+          const a2 = pi[si + 1];
+          for (let sj = 0; sj + 1 < pj.length; sj++) {
+            const b1 = pj[sj];
+            const b2 = pj[sj + 1];
+            const x = segmentsCross2(a1, a2, b1, b2);
+            if (!x) continue;
+            const horizI = Math.abs(a2.x - a1.x) >= Math.abs(a2.y - a1.y);
+            const horizJ = Math.abs(b2.x - b1.x) >= Math.abs(b2.y - b1.y);
+            const iGaps = horizI === horizJ ? true : !horizI;
+            const ge = iGaps ? i : j;
+            const gs = iGaps ? si : sj;
+            const s1 = iGaps ? a1 : b1;
+            const s2 = iGaps ? a2 : b2;
+            const dEntry = Math.hypot(x.x - s1.x, x.y - s1.y);
+            const dExit = Math.hypot(x.x - s2.x, x.y - s2.y);
+            if (dEntry < 4 || dExit < 4) continue;
+            gaps[ge].push({ seg: gs, at: x, dist: dEntry });
+          }
+        }
+      }
+    }
+    for (let e = 0; e < rp.length; e++) if (gaps[e].length) out[e] = gappedPath2(rp[e], gaps[e]);
+    return out;
+  }
+  function shiftLabelOnSeg2(e, vertical, seg, target) {
+    const lp = e.labelPos;
+    if (!lp) return;
+    if (vertical) {
+      if (Math.abs(lp.x - seg.along) < 26 && lp.y >= seg.lo - 1 && lp.y <= seg.hi + 1) {
+        e.labelPos = { x: nAt(lp.x + (target - seg.along)), y: lp.y };
+      }
+    } else if (Math.abs(lp.y - seg.along) < 26 && lp.x >= seg.lo - 1 && lp.x <= seg.hi + 1) {
+      e.labelPos = { x: lp.x, y: nAt(lp.y + (target - seg.along)) };
+    }
+  }
+  function separateLanes2(edges) {
+    if (edgeStyle !== "elbow") return;
+    const LANE_GAP2 = 26;
+    const LANE_MIN_OVERLAP2 = 40;
+    const LANE_PASSES2 = 8;
+    const moved2 = {};
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    for (let pass = 0; pass < LANE_PASSES2; pass++) {
+      let changed = false;
+      for (const vertical of [true, false]) {
+        const segs = [];
+        edges.forEach((e, ei) => {
+          const p = e.points;
+          for (let i = 1; i + 2 < p.length; i++) {
+            const a = p[i];
+            const b = p[i + 1];
+            const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+            const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+            if (vertical ? !isVert : !isHorz) continue;
+            const along3 = vertical ? a.x : a.y;
+            const lo = vertical ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+            const hi = vertical ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+            segs.push({ edge: ei, i, along: along3, lo, hi });
+          }
+        });
+        segs.sort((s, t) => s.along - t.along || s.edge - t.edge || s.i - t.i);
+        for (let a = 0; a < segs.length; a++) {
+          for (let b = a + 1; b < segs.length; b++) {
+            const sa = segs[a];
+            const sb = segs[b];
+            if (sa.edge === sb.edge) continue;
+            if (Math.min(sa.hi, sb.hi) - Math.max(sa.lo, sb.lo) < LANE_MIN_OVERLAP2) continue;
+            const d = LANE_GAP2 - Math.abs(sb.along - sa.along);
+            if (d <= 1e-6) continue;
+            const dir = sb.along >= sa.along ? 1 : -1;
+            const push = d / 2;
+            moveLane2(edges[sa.edge], vertical, sa, nAt(sa.along - push * dir));
+            moveLane2(edges[sb.edge], vertical, sb, nAt(sb.along + push * dir));
+            moved2[sa.edge] = true;
+            moved2[sb.edge] = true;
+            changed = true;
+          }
+        }
+      }
+      if (!changed) break;
+    }
+    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+  }
+  function resolveLabelNodeCollisions2(plates, nodeBoxes) {
+    const shifts = plates.map(() => ({ x: 0, y: 0 }));
+    if (!nodeBoxes.length) return shifts;
+    const cx = plates.map((p) => p ? p.x : 0);
+    const cy = plates.map((p) => p ? p.y : 0);
+    for (let pass = 0; pass < 4; pass++) {
+      let moved2 = false;
+      for (let i = 0; i < plates.length; i++) {
+        const p = plates[i];
+        if (!p) continue;
+        for (const nb of nodeBoxes) {
+          const dx = cx[i] - nb.x;
+          const dy = cy[i] - nb.y;
+          const ox = (p.w + nb.w) / 2 + 10 - Math.abs(dx);
+          const oy = (p.h + nb.h) / 2 + 10 - Math.abs(dy);
+          if (ox <= 0 || oy <= 0) continue;
+          moved2 = true;
+          if (oy <= ox) cy[i] = cy[i] + oy * (dy < 0 ? -1 : 1);
+          else cx[i] = cx[i] + ox * (dx < 0 ? -1 : 1);
+        }
+      }
+      if (!moved2) break;
+    }
+    for (let i = 0; i < plates.length; i++) if (plates[i]) shifts[i] = { x: nAt(cx[i] - plates[i].x), y: nAt(cy[i] - plates[i].y) };
+    return shifts;
+  }
+  function nearestRunAxis2(points, cx, cy) {
+    let best = Infinity;
+    let axis = null;
+    for (let s = 0; s + 1 < points.length; s++) {
+      const a = points[s];
+      const b = points[s + 1];
+      const horiz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 0.5;
+      const vert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 0.5;
+      if (!horiz && !vert) continue;
+      let dx;
+      let dy;
+      if (horiz) {
+        const lo = Math.min(a.x, b.x);
+        const hi = Math.max(a.x, b.x);
+        dx = cx < lo ? cx - lo : cx > hi ? cx - hi : 0;
+        dy = cy - a.y;
+      } else {
+        const lo = Math.min(a.y, b.y);
+        const hi = Math.max(a.y, b.y);
+        dx = cx - a.x;
+        dy = cy < lo ? cy - lo : cy > hi ? cy - hi : 0;
+      }
+      const dd = dx * dx + dy * dy;
+      if (dd < best) {
+        best = dd;
+        axis = horiz ? "x" : "y";
+      }
+    }
+    return axis;
+  }
+  function resolveLabelEdgeCollisions2(plates, polylines) {
+    const shifts = plates.map(() => ({ x: 0, y: 0 }));
+    const cx = plates.map((p) => p ? p.x : 0);
+    const cy = plates.map((p) => p ? p.y : 0);
+    for (let pass = 0; pass < 4; pass++) {
+      let moved2 = false;
+      for (let i = 0; i < plates.length; i++) {
+        const p = plates[i];
+        if (!p) continue;
+        const axis = nearestRunAxis2(polylines[i] ?? [], cx[i], cy[i]);
+        if (!axis) continue;
+        const hw = p.w / 2;
+        const hh = p.h / 2;
+        let hasHit = false;
+        let hiTarget = -Infinity;
+        let loTarget = Infinity;
+        for (let j = 0; j < polylines.length; j++) {
+          if (j === i) continue;
+          const pts = polylines[j] ?? [];
+          for (let s = 0; s + 1 < pts.length; s++) {
+            const a = pts[s];
+            const b = pts[s + 1];
+            if (axis === "x") {
+              if (Math.abs(a.x - b.x) >= 0.5) continue;
+              const gx = a.x;
+              if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
+              if (cy[i] + hh <= Math.min(a.y, b.y) || cy[i] - hh >= Math.max(a.y, b.y)) continue;
+              hasHit = true;
+              hiTarget = Math.max(hiTarget, gx + hw + 6);
+              loTarget = Math.min(loTarget, gx - hw - 6);
+            } else {
+              if (Math.abs(a.y - b.y) >= 0.5) continue;
+              const gy = a.y;
+              if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
+              if (cx[i] + hw <= Math.min(a.x, b.x) || cx[i] - hw >= Math.max(a.x, b.x)) continue;
+              hasHit = true;
+              hiTarget = Math.max(hiTarget, gy + hh + 6);
+              loTarget = Math.min(loTarget, gy - hh - 6);
+            }
+          }
+        }
+        if (!hasHit) continue;
+        const cur = axis === "x" ? cx[i] : cy[i];
+        const target = hiTarget - cur <= cur - loTarget ? hiTarget : loTarget;
+        if (axis === "x") cx[i] = target;
+        else cy[i] = target;
+        moved2 = true;
+      }
+      if (!moved2) break;
+    }
+    for (let i = 0; i < plates.length; i++) if (plates[i]) shifts[i] = { x: nAt(cx[i] - plates[i].x), y: nAt(cy[i] - plates[i].y) };
+    return shifts;
+  }
+  function labelPlatesOf(routed) {
+    return edgeEls.map((e, i) => {
+      if (!e.label) return void 0;
+      const s = plateSizeOf(e.label);
+      return { x: nAt(routed[i].labelPos.x), y: nAt(routed[i].labelPos.y), w: s.w, h: s.h };
+    });
+  }
+  function foldLabelShifts(routed, shifts) {
+    routed.forEach((r, i) => {
+      const sh = shifts[i];
+      if (edgeEls[i].label && (sh.x !== 0 || sh.y !== 0)) {
+        r.labelPos = { x: nAt(r.labelPos.x) + sh.x, y: nAt(r.labelPos.y) + sh.y };
+      }
+    });
+  }
+  const bridgesEnabled = () => edgeStyle === "elbow" && (opt.bridges ?? true);
   function routeBoxes(from, to, waypoints, ports, isSelf) {
     const shift = ports && ports.labelShift;
     const withShift = (p) => shift ? { x: p.x + shift.x, y: p.y + shift.y } : p;
@@ -910,25 +1268,33 @@ var vnmRuntime = function vnmRuntime(root, payload) {
   }
   function renderEdges() {
     const ports = computePorts();
+    const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
+    separateLanes2(routed);
+    foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
+    foldLabelShifts(routed, resolveLabelEdgeCollisions2(labelPlatesOf(routed), routed.map((r) => r.points)));
+    const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id].x, y: positions[nd.id].y, w: sizes[nd.id].w, h: sizes[nd.id].h }));
+    foldLabelShifts(routed, resolveLabelNodeCollisions2(labelPlatesOf(routed), nodeBoxesL));
+    const bridgedL = applyEdgeBridges2(routed.map((r) => r.points), bridgesEnabled());
     edgeEls.forEach((e, i) => {
-      const routed = routeEdgePath(e.from, e.to, e.waypoints, ports[i]);
+      const r = routed[i];
       if (sketch) {
-        const sk = sketchEdgeParts(routed.points, e.from + "->" + e.to, e.arrows, tokens.edge.arrowSize);
+        const sk = sketchEdgeParts(r.points, e.from + "->" + e.to, e.arrows, tokens.edge.arrowSize);
         e.path.setAttribute("d", sk.line);
         if (e.headPath) e.headPath.setAttribute("d", sk.head);
       } else {
-        e.path.setAttribute("d", routed.path);
+        e.path.setAttribute("d", bridgedL[i] ?? r.path);
       }
       if (e.plate && e.text && e.label) {
-        const lp = routed.labelPos;
-        const w = e.label.length * (tokens.font.size * 0.62) + 10;
-        const h = tokens.font.lineHeight + 4;
-        e.plate.setAttribute("x", String(nAt(lp.x - w / 2)));
-        e.plate.setAttribute("y", String(nAt(lp.y - h / 2)));
+        const lx = r.labelPos.x;
+        const ly = r.labelPos.y;
+        const w = e.label.length * (tokens.font.size * 0.6) + 6;
+        const h = tokens.font.lineHeight + 2;
+        e.plate.setAttribute("x", String(nAt(lx - w / 2)));
+        e.plate.setAttribute("y", String(nAt(ly - h / 2)));
         e.plate.setAttribute("width", String(nAt(w)));
         e.plate.setAttribute("height", String(nAt(h)));
-        e.text.setAttribute("x", String(nAt(lp.x)));
-        e.text.setAttribute("y", String(nAt(lp.y)));
+        e.text.setAttribute("x", String(nAt(lx)));
+        e.text.setAttribute("y", String(nAt(ly)));
       }
     });
     positionEdgeHandles(ports);
@@ -1422,21 +1788,27 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     const b = sgBoxFrom(boxes, !!sg.title);
     return b ?? { x: sg.x, y: sg.y, w: sg.width, h: sg.height };
   }
-  function svgSubgraph(sg) {
+  function svgSubgraphBox(sg) {
     const b = subgraphAbsBox(sg);
     const x = nAt(b.x - b.w / 2);
     const y = nAt(b.y - b.h / 2);
-    let out = '<rect x="' + x + '" y="' + y + '" width="' + nAt(b.w) + '" height="' + nAt(b.h) + '" rx="' + tokens.radii.card + '" fill="' + tokens.colors.subgraphFill + '" stroke="' + tokens.colors.subgraphStroke + '" stroke-dasharray="4 4"/>';
-    if (sg.title) {
-      out += '<text x="' + nAt(x + 12) + '" y="' + nAt(y + 18) + '" fill="' + tokens.colors.subgraphText + '" font-size="' + (tokens.font.size - 1) + '" font-weight="600">' + xmlEsc(sg.title) + "</text>";
-    }
-    return out;
+    return '<rect x="' + x + '" y="' + y + '" width="' + nAt(b.w) + '" height="' + nAt(b.h) + '" rx="' + tokens.radii.card + '" fill="' + tokens.colors.subgraphFill + '" stroke="' + tokens.colors.subgraphStroke + '" stroke-dasharray="4 4"/>';
+  }
+  function svgSubgraphTitle(sg) {
+    if (!sg.title) return "";
+    const b = subgraphAbsBox(sg);
+    const x = nAt(b.x - b.w / 2);
+    const y = nAt(b.y - b.h / 2);
+    const fs = tokens.font.size - 1;
+    const pad = 5;
+    const pw = sg.title.length * fs * 0.6 + pad * 2;
+    return '<rect x="' + nAt(x + 12 - pad) + '" y="' + nAt(y + 18 - fs + 1) + '" width="' + nAt(pw) + '" height="' + (fs + 4) + '" rx="' + tokens.radii.label + '" fill="' + tokens.colors.subgraphFill + '"/><text x="' + nAt(x + 12) + '" y="' + nAt(y + 18) + '" fill="' + tokens.colors.subgraphText + '" font-size="' + fs + '" font-weight="600">' + xmlEsc(sg.title) + "</text>";
   }
   function svgEdgeLabel(label, cx, cy) {
     const lines = label.split("\n");
     const maxChars = lines.reduce((m, l) => Math.max(m, l.length), 0);
-    const w = maxChars * tokens.font.size * 0.62 + 10;
-    const h = lines.length * tokens.font.lineHeight + 4;
+    const w = maxChars * tokens.font.size * 0.6 + 6;
+    const h = lines.length * tokens.font.lineHeight + 2;
     const x = nAt(cx - w / 2);
     const y = nAt(cy - h / 2);
     let out = '<rect x="' + x + '" y="' + y + '" width="' + nAt(w) + '" height="' + nAt(h) + '" rx="' + tokens.radii.label + '" fill="' + tokens.colors.edgeLabelBg + '"/>';
@@ -1446,7 +1818,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     });
     return out;
   }
-  function svgEdge(e, path, labelPos, points) {
+  function svgEdge(e, path, points) {
     const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
     const dash = e.kind === "dotted" ? ' stroke-dasharray="2 5"' : "";
     let out;
@@ -1468,7 +1840,6 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const mStart = e.arrows.start ? ' marker-start="url(#vnm-arrow-start)"' : "";
       out = '<path d="' + path + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"' + dash + mStart + mEnd + "/>";
     }
-    if (e.label && labelPos) out += svgEdgeLabel(e.label, labelPos.x, labelPos.y);
     return out;
   }
   function svgPolygon(pts, common) {
@@ -1585,13 +1956,29 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     const boxes = [];
     for (const sg of model.subgraphs) boxes.push(subgraphAbsBox(sg));
     for (const nd of model.nodes) boxes.push(absBox(nd.id));
-    const edgeParts = [];
+    const edgePathParts = [];
+    const edgeLabelParts = [];
     const allPts = [];
-    edgeEls.forEach((e, i) => {
+    const routesB = edgeEls.map((e, i) => {
       const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : void 0;
-      const r = routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
+      return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
+    });
+    separateLanes2(routesB);
+    foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
+    foldLabelShifts(routesB, resolveLabelEdgeCollisions2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
+    const nodeBoxesB = model.nodes.map((nd) => {
+      const b2 = absBox(nd.id);
+      return { x: b2.x, y: b2.y, w: b2.w, h: b2.h };
+    });
+    foldLabelShifts(routesB, resolveLabelNodeCollisions2(labelPlatesOf(routesB), nodeBoxesB));
+    const bridgedB = applyEdgeBridges2(routesB.map((r) => r.points), bridgesEnabled());
+    edgeEls.forEach((e, i) => {
+      const r = routesB[i];
       for (const p of r.points) allPts.push(p);
-      edgeParts.push(svgEdge(e, r.path, r.labelPos, r.points));
+      edgePathParts.push(svgEdge(e, bridgedB[i] ?? r.path, r.points));
+      if (e.label) {
+        edgeLabelParts.push(svgEdgeLabel(e.label, r.labelPos.x, r.labelPos.y));
+      }
     });
     const b = boundsAbs(boxes, allPts);
     const parts = [];
@@ -1602,8 +1989,10 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     parts.push(
       '<rect x="' + nAt(b.x) + '" y="' + nAt(b.y) + '" width="' + nAt(b.width) + '" height="' + nAt(b.height) + '" fill="' + tokens.colors.background + '"/>'
     );
-    for (const sg of model.subgraphs) parts.push(svgSubgraph(sg));
-    for (const ep of edgeParts) parts.push(ep);
+    for (const sg of model.subgraphs) parts.push(svgSubgraphBox(sg));
+    for (const ep of edgePathParts) parts.push(ep);
+    for (const lp of edgeLabelParts) parts.push(lp);
+    for (const sg of model.subgraphs) parts.push(svgSubgraphTitle(sg));
     for (const nd of model.nodes) parts.push(svgNode(nd));
     parts.push("</svg>");
     return { svg: parts.join("\n"), width: b.width, height: b.height };
@@ -1685,7 +2074,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     toSvgString
   };
 };
-var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"Animal","label":"Animal\n+int age\n+makeSound()","shape":"rect","classes":[],"x":129,"y":50.5,"width":141,"height":85},{"id":"Dog","label":"Dog\n+bark()","shape":"rect","classes":[],"x":56.5,"y":198,"width":97,"height":66},{"id":"Cat","label":"Cat\n+meow()","shape":"rect","classes":[],"x":201.5,"y":198,"width":97,"height":66}],"edges":[{"from":"Animal","to":"Dog","kind":"solid","arrows":{"start":true,"end":false},"length":2,"points":[{"x":119,"y":93},{"x":119,"y":129},{"x":56.5,"y":129},{"x":56.5,"y":165}],"path":"M 119 93 C 119 129 56.5 129 56.5 165","ports":{"source":{"side":"bottom","offset":-10},"target":{"side":"top","offset":0}}},{"from":"Animal","to":"Cat","kind":"solid","arrows":{"start":true,"end":false},"length":2,"points":[{"x":139,"y":93},{"x":139,"y":129},{"x":201.5,"y":129},{"x":201.5,"y":165}],"path":"M 139 93 C 139 129 201.5 129 201.5 165","ports":{"source":{"side":"bottom","offset":10},"target":{"side":"top","offset":0}}}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":-12,"width":282,"height":263}},"theme":{"name":"fancy","edgeStyle":"curved","tokens":{"colors":{"background":"#0b1020","surface":"#151b34","surfaceStroke":"#3b4a7a","text":"#eef1ff","textMuted":"#9fa9d6","edge":"#7d88c4","edgeLabelBg":"#0b1020","edgeLabelText":"#c8cffb","subgraphFill":"#111834","subgraphStroke":"#3b4a7a","subgraphText":"#9fa9d6","accent":"#8b6cff","minimapBg":"rgba(12,16,34,0.9)","minimapViewport":"rgba(139,108,255,0.35)","roles":{"accent":{"fill":"#2a2160","stroke":"#8b6cff","text":"#eef1ff"},"success":{"fill":"#123a2e","stroke":"#3fd39b","text":"#d6ffef"},"warn":{"fill":"#3a2f0f","stroke":"#e6c04d","text":"#fff4cf"},"danger":{"fill":"#3f1830","stroke":"#ff6bb0","text":"#ffd9ec"}}},"radii":{"node":14,"card":14,"label":6},"spacing":{"nodePadX":18,"nodePadY":14,"nodesep":48,"ranksep":72,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":19,"weight":600},"edge":{"style":"curved","width":1.75,"thickWidth":3.5,"arrowSize":9},"effects":{"nodeShadow":"0 6px 22px rgba(80,60,180,0.35)","gradient":true,"hoverLift":3}}},"cssVars":"--vnm-bg: #0b1020; --vnm-surface: #151b34; --vnm-surface-stroke: #3b4a7a; --vnm-text: #eef1ff; --vnm-text-muted: #9fa9d6; --vnm-edge: #7d88c4; --vnm-edge-label-bg: #0b1020; --vnm-edge-label-text: #c8cffb; --vnm-subgraph-fill: #111834; --vnm-subgraph-stroke: #3b4a7a; --vnm-subgraph-text: #9fa9d6; --vnm-accent: #8b6cff; --vnm-minimap-bg: rgba(12,16,34,0.9); --vnm-minimap-viewport: rgba(139,108,255,0.35); --vnm-radius: 14px; --vnm-label-radius: 6px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 600; --vnm-node-shadow: 0 6px 22px rgba(80,60,180,0.35); --vnm-hover-lift: 3px; --vnm-edge-width: 1.75px;","options":{"fitPadding":60,"persistKey":"vnm-layout:os2u9f","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean"}};
+var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"Animal","label":"Animal\n+int age\n+makeSound()","shape":"rect","classes":[],"x":129,"y":50.5,"width":141,"height":85},{"id":"Dog","label":"Dog\n+bark()","shape":"rect","classes":[],"x":56.5,"y":198,"width":97,"height":66},{"id":"Cat","label":"Cat\n+meow()","shape":"rect","classes":[],"x":201.5,"y":198,"width":97,"height":66}],"edges":[{"from":"Animal","to":"Dog","kind":"solid","arrows":{"start":true,"end":false},"length":2,"points":[{"x":114,"y":93},{"x":114,"y":129},{"x":56.5,"y":129},{"x":56.5,"y":165}],"path":"M 114 93 C 114 129 56.5 129 56.5 165","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}}},{"from":"Animal","to":"Cat","kind":"solid","arrows":{"start":true,"end":false},"length":2,"points":[{"x":144,"y":93},{"x":144,"y":129},{"x":201.5,"y":129},{"x":201.5,"y":165}],"path":"M 144 93 C 144 129 201.5 129 201.5 165","ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}}}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":-12,"width":282,"height":263}},"theme":{"name":"fancy","edgeStyle":"curved","tokens":{"colors":{"background":"#0b1020","surface":"#151b34","surfaceStroke":"#3b4a7a","text":"#eef1ff","textMuted":"#9fa9d6","edge":"#7d88c4","edgeLabelBg":"#0b1020","edgeLabelText":"#c8cffb","subgraphFill":"#111834","subgraphStroke":"#3b4a7a","subgraphText":"#9fa9d6","accent":"#8b6cff","minimapBg":"rgba(12,16,34,0.9)","minimapViewport":"rgba(139,108,255,0.35)","roles":{"accent":{"fill":"#2a2160","stroke":"#8b6cff","text":"#eef1ff"},"success":{"fill":"#123a2e","stroke":"#3fd39b","text":"#d6ffef"},"warn":{"fill":"#3a2f0f","stroke":"#e6c04d","text":"#fff4cf"},"danger":{"fill":"#3f1830","stroke":"#ff6bb0","text":"#ffd9ec"}}},"radii":{"node":14,"card":14,"label":6},"spacing":{"nodePadX":18,"nodePadY":14,"nodesep":48,"ranksep":72,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":19,"weight":600},"edge":{"style":"curved","width":1.75,"thickWidth":3.5,"arrowSize":9},"effects":{"nodeShadow":"0 6px 22px rgba(80,60,180,0.35)","gradient":true,"hoverLift":3}}},"cssVars":"--vnm-bg: #0b1020; --vnm-surface: #151b34; --vnm-surface-stroke: #3b4a7a; --vnm-text: #eef1ff; --vnm-text-muted: #9fa9d6; --vnm-edge: #7d88c4; --vnm-edge-label-bg: #0b1020; --vnm-edge-label-text: #c8cffb; --vnm-subgraph-fill: #111834; --vnm-subgraph-stroke: #3b4a7a; --vnm-subgraph-text: #9fa9d6; --vnm-accent: #8b6cff; --vnm-minimap-bg: rgba(12,16,34,0.9); --vnm-minimap-viewport: rgba(139,108,255,0.35); --vnm-radius: 14px; --vnm-label-radius: 6px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 600; --vnm-node-shadow: 0 6px 22px rgba(80,60,180,0.35); --vnm-hover-lift: 3px; --vnm-edge-width: 1.75px;","options":{"fitPadding":60,"persistKey":"vnm-layout:os2u9f","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true}};
 vnmRuntime(document.getElementById("vnm-root"), __vnm_payload);
 </script>
 </body>
