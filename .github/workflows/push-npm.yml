@@ -1,0 +1,97 @@
+name: Publish to npm (OIDC)
+
+# Tokenless npm publish via OIDC Trusted Publishing.
+#
+# How it fires: bump `version` in package.json in a PR; when that merges to the
+# default branch this workflow runs, and — if that version is not already on npm —
+# builds, tests, and publishes it (npm generates provenance automatically). You can
+# also run it by hand from the Actions tab (safety net for any merge-order case).
+#
+# Auth is tokenless: npm's "Trusted Publisher" is configured for THIS repo and THIS
+# workflow filename. Do NOT rename this file (push-npm.yml) or move it without
+# updating the trusted-publisher config on npmjs.com — the filename is matched
+# exactly and publishing will fail otherwise. No NPM_TOKEN secret is used.
+#
+# Requirements (npm docs, verified 2026-07-13): OIDC trusted publishing needs
+# Node >= 22.14.0 and npm >= 11.5.1, and the job needs `id-token: write`.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - package.json
+  workflow_dispatch: {}
+
+# Least privilege: id-token for OIDC; contents to push the release tag.
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: build, test & publish (tokenless OIDC)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node >= 22.14 + npm >= 11.5.1 are required for OIDC trusted publishing.
+      # setup-node ships an older npm, so upgrade it explicitly below.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+      - name: Upgrade npm to an OIDC-capable version (>= 11.5.1)
+        run: npm install -g npm@latest && npm --version
+
+      # Publish only a version that isn't already on npm, so an unrelated
+      # package.json edit (deps/description/scripts) never tries to re-publish.
+      - name: Resolve version and check npm
+        id: v
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$NAME@$VERSION is already published — nothing to do"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::will publish $NAME@$VERSION"
+          fi
+
+      - name: Install, build, typecheck, test
+        if: steps.v.outputs.publish == 'true'
+        run: |
+          npm ci
+          npm run build
+          npm run typecheck
+          npm test
+
+      # No token: with the trusted publisher configured, npm authenticates via the
+      # job's OIDC identity and attaches provenance automatically (do NOT pass
+      # --provenance — it's implicit for trusted publishing).
+      - name: Publish to npm
+        if: steps.v.outputs.publish == 'true'
+        run: npm publish --access public
+
+      - name: Tag the release and create a GitHub release
+        if: steps.v.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.v.outputs.version }}"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "tag v$VERSION already exists — skipping"
+          else
+            git tag "v$VERSION"
+            git push origin "v$VERSION"
+            gh release create "v$VERSION" \
+              --title "v$VERSION" \
+              --notes "Published to npm: https://www.npmjs.com/package/very-nice-mermaid/v/$VERSION" \
+              || echo "release create failed (non-fatal — the publish + tag succeeded)"
+          fi
