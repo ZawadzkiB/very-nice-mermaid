@@ -42,6 +42,9 @@ themeable** diagrams with **no `mermaid.js` runtime and no headless browser**.
   → [Themes & styles]({{ '/themes' | relative_url }})
 - **Sketch style** — a hand-drawn (Excalidraw-like) look via `--style sketch`,
   a separate axis from the theme, so it composes with any palette.
+- **Claude Code plugin** — a bundled skill that teaches Claude Code to render your
+  Mermaid diagrams (inline ASCII, a PNG it can check, interactive HTML, or SVG)
+  instead of printing raw DSL. → [Claude Code plugin]({{ '/plugin' | relative_url }})
 
 ## Quick start
 
