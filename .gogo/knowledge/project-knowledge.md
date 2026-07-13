@@ -72,3 +72,18 @@ look (surfaced via a CLI note + library `console.warn`).
   native tiers; `src/render/sketch-font.ts` embeds the OFL **Kalam** woff2 as
   base64 (`@font-face`, zero network; resvg-registered for PNG).
 - Clean mode is byte-unchanged (sketch is strictly additive `if (sketch)` forks).
+
+## flowchart-render-legibility (2026-07-12)
+Legibility pass on the flowchart family (flowchart + native state/class; sequence
+has its own routing and is excluded from the line work). Two deterministic
+**post-layout passes** in shared geometry, run via `layout.finishEdges()` and
+mirrored byte-for-byte in `vnmRuntime`:
+- **5-layer draw order** (boxes → edges → labels → titles → nodes) + opaque
+  subgraph-title plate + tightened label plate + wider fan-in spread.
+- **`resolveLabelCollisions`** — all-pairs edge-label plate de-collision (no two
+  plates overlap); every tier's `edgeLabel` shares the one `labelPlateSize`.
+- **`applyEdgeBridges`** — a small arc **hop** where two edge lines cross (the
+  more-horizontal hops), so crossings stay traceable without moving nodes.
+- **`bridges` option** — `renderX({ bridges })` / CLI `--no-bridges` / runtime
+  payload; default ON for clean elbow, OFF for curved + sketch (deferred). Full
+  lane/bus routing stays deferred (bridges deliver traceability instead).

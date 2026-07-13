@@ -14,6 +14,7 @@ import type { ClassLayout, ClassEntity, ClassRelation, ClassRelationType } from 
 import type { Theme } from "../../theme/index.js";
 import type { RenderStyle } from "../../theme/index.js";
 import { n } from "../../geometry/index.js";
+import { labelPlateSize } from "../../layout/index.js";
 import { escapeXml, escapeXmlAttr } from "../../render/style.js";
 import { SKETCH_FONT_FAMILY } from "../../render/sketch-font.js";
 import { sketchFontDefs, sketchRectSvg, sketchLineSvg } from "../../render/sketch-svg.js";
@@ -151,8 +152,10 @@ function renderRelation(edge: RoutedEdge, rel: ClassRelation, theme: Theme, sket
 
 function edgeLabel(label: string, cx: number, cy: number, theme: Theme): string {
   const t = theme.tokens;
-  const w = label.length * t.font.size * 0.62 + 10;
-  const h = t.font.lineHeight + 4;
+  // Use the shared tightened plate size (FR3/FR6) so the drawn plate matches what
+  // the FR6 label de-collision (layout.deCollideLabels) assumed — otherwise a
+  // de-collided class label could still overlap its neighbour (REV-002).
+  const { w, h } = labelPlateSize(label, theme)!;
   return (
     `<rect x="${n(cx - w / 2)}" y="${n(cy - h / 2)}" width="${n(w)}" height="${n(
       h,

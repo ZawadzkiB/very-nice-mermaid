@@ -1,6 +1,6 @@
 {
   "name": "very-nice-mermaid",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "A framework-agnostic Mermaid flowchart renderer: parse the DSL, auto-layout with dagre, and render beautiful interactive HTML, static SVG, PNG, or ASCII — no mermaid.js runtime, no headless browser.",
   "type": "module",
   "license": "MIT",

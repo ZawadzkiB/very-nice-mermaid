@@ -1,0 +1,8 @@
+{
+  "slug": "flowchart-render-legibility",
+  "updated": "2026-07-12",
+  "note": "Plan-time as-is baseline (copied into the report bundle for a self-contained before/after compare): the pre-fix single-pass emit + weak spread + over-padded label plate that caused the title/label/fan-in overlaps.",
+  "diagrams": [
+    { "kind": "flow", "file": ".gogo/work/feature-flowchart-render-legibility/report/before/flow.mmd", "title": "As-is baseline: single-pass emit + weak spread → title/label/fan-in overlaps" }
+  ]
+}

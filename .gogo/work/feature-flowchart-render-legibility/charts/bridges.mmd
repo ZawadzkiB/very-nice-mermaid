@@ -1,0 +1,14 @@
+flowchart TD
+  start["applyEdgeBridges(edges)<br/>after routing, all edges in hand"] --> pairs["for each unordered edge pair<br/>(fixed index order = deterministic)"]
+  pairs --> seg["for each segment pair<br/>segmentsCross(a, b)?"]
+  seg -->|no crossing| pairs
+  seg -->|proper crossing| pick{"which line hops? (D3)<br/>more-horizontal edge,<br/>ties by edge index"}
+  pick --> glyph{"hop glyph (D2)"}
+  glyph -->|arc bump<br/>recommended| arc["splice small A/Q arc<br/>into hopping edge's d<br/>at the crossing point"]
+  glyph -->|gap/notch<br/>alt| gap["erase short gap in<br/>under-line at crossing"]
+  arc --> style{"edge style (D4)"}
+  gap --> style
+  style -->|clean elbow<br/>default-on| out["rewrite edge.path<br/>→ svg.ts + runtime byte-parity"]
+  style -->|curved / sketch| skip["left as-is in v1<br/>(scoped follow-up)"]
+  out --> tiers["flowchart + state + class (D5)"]
+  skip --> tiers

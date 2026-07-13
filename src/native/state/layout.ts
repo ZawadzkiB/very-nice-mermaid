@@ -17,11 +17,13 @@ import type {
 } from "../../model/index.js";
 import type { StateModel, StateLayout } from "../../model/state.js";
 import { themes, type Theme } from "../../theme/index.js";
-import { layout, labelPlateSize } from "../../layout/index.js";
+import { layout, labelPlateSize, finishEdges } from "../../layout/index.js";
 import { routeEdge, computePerimeterPorts, contentBounds, type NodeBox } from "../../geometry/index.js";
 
 export interface StateLayoutOptions {
   theme?: Theme;
+  /** Edge-crossing bridges (FR7 / D4); see {@link LayoutOptions.bridges}. */
+  bridges?: boolean;
 }
 
 /** Diameter of the start/end pseudo-state circles. */
@@ -68,7 +70,7 @@ export function layoutState(model: StateModel, opts: StateLayoutOptions = {}): S
     warnings: [],
   };
 
-  const positioned = layout(diagram, { theme });
+  const positioned = layout(diagram, { theme, bridges: opts.bridges });
   if (pseudo.size === 0) {
     return { kind: "state-layout", model: positioned, states: model.states };
   }
@@ -92,7 +94,10 @@ export function layoutState(model: StateModel, opts: StateLayoutOptions = {}): S
   // (matching the live runtime / applyPositions) so transitions re-distribute
   // around the small markers cleanly.
   const labelSizes = positioned.edges.map((e) => labelPlateSize(e.label, theme));
-  const ports = computePerimeterPorts(positioned.edges, boxes, labelSizes);
+  // Order ports by heading (each edge's kept detour bends), matching layout() and
+  // the shared runtime's computePorts, so the shrunk-marker re-route stays parity.
+  const bends = positioned.edges.map((e) => e.waypoints ?? []);
+  const ports = computePerimeterPorts(positioned.edges, boxes, labelSizes, undefined, bends);
   const routed: RoutedEdge[] = positioned.edges.map((e, i) => {
     const from = boxes.get(e.from);
     const to = boxes.get(e.to);
@@ -106,6 +111,16 @@ export function layoutState(model: StateModel, opts: StateLayoutOptions = {}): S
     if (e.label) out.labelPos = r.labelPos;
     return out;
   });
+  // The re-route above overwrote layout()'s FR9/FR6/FR7 output, so re-apply the
+  // lane-separation + label de-collision (incl. label-vs-node) + crossing-bridge
+  // passes to the shrunk-marker routes (D5). Node boxes are the drawn (shrunk)
+  // boxes in model-node order, matching the runtime twin.
+  finishEdges(
+    routed,
+    theme,
+    opts.bridges,
+    shrunk.map((nd) => ({ x: nd.x, y: nd.y, width: nd.width, height: nd.height })),
+  );
 
   const bounds = contentBounds(
     shrunk.map((nd) => ({ x: nd.x, y: nd.y, width: nd.width, height: nd.height })),

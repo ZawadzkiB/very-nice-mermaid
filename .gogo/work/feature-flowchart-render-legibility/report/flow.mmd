@@ -1,0 +1,19 @@
+flowchart TD
+  model["PositionedModel<br/>nodes · edges · subgraphs · labels"] --> ports["computePerimeterPorts<br/>PORT_STEP=30 · border-fill cap (FR4)<br/>order by HEADING / first bend (D12)"]
+  ports --> route["routeEdge → points + path + labelPos<br/>+ same-pair label stagger (TEST-006)"]
+  route --> finish["layout.finishEdges(edges, theme, bridges?, nodeBoxes?)<br/>shared by layout() · applyPositions() · state re-route"]
+  finish --> lanes["FR9 separateLanes<br/>all-pairs push → LANE_GAP=26 (LANE_PASSES=8)"]
+  lanes --> decolL["FR6 resolveLabelCollisions<br/>all-pairs plate AABB → reserved-gap nudge<br/>(from ROUNDED centre ⇒ byte-parity)"]
+  decolL --> decolE["label-vs-edge: slide label along its own run<br/>off a perpendicular foreign crossing line"]
+  decolE --> decolN["label-vs-node: push plate off any node box<br/>(LABEL_NODE_PAD=10)"]
+  decolN --> gap["FR7 applyEdgeBridges / gappedPath (bridges gate)<br/>segmentsCross → pen-up GAP in the more-VERTICAL under-line"]
+  gap --> L1["layer 1: subgraph boxes"]
+  gap --> L2["layer 2: edges (paths + crossing gaps + arrowheads)"]
+  gap --> L3["layer 3: edge-label plates (de-collided, tightened)"]
+  gap --> L4["layer 4: subgraph titles (opaque plate)"]
+  gap --> L5["layer 5: node cards (on top)"]
+  L2 --> svg["static SVG: svg.ts (flowchart) + native class/state svg<br/>(class/state label plate unified to labelPlateSize — REV-002)"]
+  L3 --> svg
+  L2 --> rt["inlined DOM runtime (runtime.ts)<br/>computePorts/buildSvg — toSvgString byte-parity"]
+  L3 --> rt
+  seq["sequence tier — own routing"] -.excluded.-> finish

@@ -31,6 +31,11 @@ export interface SvgRenderOptions {
   background?: string;
   /** Drawing style axis (D1): `clean` (default) or hand-drawn `sketch`. */
   style?: RenderStyle;
+  /**
+   * Edge-crossing bridges (FR7 / D4). `undefined` → the per-style default (ON for
+   * clean elbow edges, OFF for curved); `true`/`false` force it.
+   */
+  bridges?: boolean;
 }
 
 /** Render a diagram to a standalone SVG string. */
@@ -48,7 +53,7 @@ export function renderSvg(
     return renderStateSvg(input, resolveTheme(opts.theme), opts.background);
   }
   ensureSyncRenderable(input, "renderSvgAsync");
-  const prepared = prepare(input, { theme: opts.theme, strict: opts.strict });
+  const prepared = prepare(input, { theme: opts.theme, strict: opts.strict, bridges: opts.bridges });
   return renderSvgFromModel(prepared.model, prepared.theme, opts.background, opts.style);
 }
 
@@ -82,9 +87,18 @@ export function renderSvgFromModel(
     );
   }
 
-  for (const sg of model.subgraphs) parts.push(renderSubgraph(sg, theme));
-  for (const edge of model.edges) parts.push(renderEdge(edge, theme, sketch));
-  for (const node of model.nodes) parts.push(renderNode(node, model, theme, sketch));
+  // Explicit z-layers (FR1), painted bottom→top so nothing legible is covered:
+  //   1 subgraph boxes → 2 edges → 3 edge labels → 4 subgraph titles → 5 nodes.
+  // Emitting all edges before any label/title means a later edge can never paint
+  // over an earlier label (issue 2) or a subgraph title (issue 1); the runtime
+  // twin (buildSvg) mirrors this order for byte-parity.
+  for (const sg of model.subgraphs) parts.push(renderSubgraphBox(sg, theme)); // 1
+  for (const edge of model.edges) parts.push(renderEdge(edge, theme, sketch)); // 2
+  for (const edge of model.edges) {
+    if (edge.label && edge.labelPos) parts.push(edgeLabel(edge.label, edge.labelPos.x, edge.labelPos.y, theme)); // 3
+  }
+  for (const sg of model.subgraphs) parts.push(renderSubgraphTitle(sg, theme)); // 4
+  for (const node of model.nodes) parts.push(renderNode(node, model, theme, sketch)); // 5
 
   parts.push("</svg>");
   return parts.join("\n");
@@ -117,23 +131,39 @@ function defs(theme: Theme, sketch: boolean): string {
   );
 }
 
-function renderSubgraph(sg: PositionedSubgraph, theme: Theme): string {
+/** Layer 1: a subgraph's dashed container box (drawn behind everything). */
+function renderSubgraphBox(sg: PositionedSubgraph, theme: Theme): string {
   const t = theme.tokens;
   const x = n(sg.x - sg.width / 2);
   const y = n(sg.y - sg.height / 2);
-  const parts = [
-    `<rect x="${x}" y="${y}" width="${n(sg.width)}" height="${n(
-      sg.height,
-    )}" rx="${t.radii.card}" fill="${t.colors.subgraphFill}" stroke="${t.colors.subgraphStroke}" stroke-dasharray="4 4"/>`,
-  ];
-  if (sg.title) {
-    parts.push(
-      `<text x="${n(x + 12)}" y="${n(y + 18)}" fill="${t.colors.subgraphText}" font-size="${
-        t.font.size - 1
-      }" font-weight="600">${esc(sg.title)}</text>`,
-    );
-  }
-  return parts.join("");
+  return `<rect x="${x}" y="${y}" width="${n(sg.width)}" height="${n(
+    sg.height,
+  )}" rx="${t.radii.card}" fill="${t.colors.subgraphFill}" stroke="${t.colors.subgraphStroke}" stroke-dasharray="4 4"/>`;
+}
+
+/**
+ * Layer 4 (FR2): a subgraph's title on an **opaque** rounded plate (the subgraph
+ * fill, sized to the text), drawn *after* the edges so any edge crossing the
+ * title band reads as passing behind the title. Emits `""` for an untitled
+ * subgraph. The plate geometry is mirrored verbatim in the runtime twin
+ * (`svgSubgraphTitle` / live `renderSubgraphs`) — keep them in lockstep.
+ */
+function renderSubgraphTitle(sg: PositionedSubgraph, theme: Theme): string {
+  if (!sg.title) return "";
+  const t = theme.tokens;
+  const x = n(sg.x - sg.width / 2);
+  const y = n(sg.y - sg.height / 2);
+  const fs = t.font.size - 1;
+  const pad = 5;
+  const pw = sg.title.length * fs * 0.6 + pad * 2;
+  return (
+    `<rect x="${n(x + 12 - pad)}" y="${n(y + 18 - fs + 1)}" width="${n(pw)}" height="${
+      fs + 4
+    }" rx="${t.radii.label}" fill="${t.colors.subgraphFill}"/>` +
+    `<text x="${n(x + 12)}" y="${n(y + 18)}" fill="${t.colors.subgraphText}" font-size="${fs}" font-weight="600">${esc(
+      sg.title,
+    )}</text>`
+  );
 }
 
 function renderEdge(edge: RoutedEdge, theme: Theme, sketch: boolean): string {
@@ -151,7 +181,8 @@ function renderEdge(edge: RoutedEdge, theme: Theme, sketch: boolean): string {
       `<path d="${edge.path}" fill="none" stroke="${t.colors.edge}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"${dash}${markerStart}${markerEnd}/>`,
     );
   }
-  if (edge.label && edge.labelPos) parts.push(edgeLabel(edge.label, edge.labelPos.x, edge.labelPos.y, theme));
+  // The label is emitted in its own later layer (FR1) by renderSvgFromModel, not
+  // here, so a subsequent edge's path can never paint over it.
   return parts.join("");
 }
 
@@ -181,8 +212,9 @@ function edgeLabel(label: string, cx: number, cy: number, theme: Theme): string 
   const t = theme.tokens;
   const lines = label.split("\n");
   const maxChars = lines.reduce((m, l) => Math.max(m, l.length), 0);
-  const w = maxChars * t.font.size * 0.62 + 10;
-  const h = lines.length * t.font.lineHeight + 4;
+  // FR3 — tightened plate (keep in lockstep with layout.labelPlateSize + runtime).
+  const w = maxChars * t.font.size * 0.6 + 6;
+  const h = lines.length * t.font.lineHeight + 2;
   const x = n(cx - w / 2);
   const y = n(cy - h / 2);
   const parts = [

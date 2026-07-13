@@ -1,0 +1,13 @@
+{
+  "slug": "flowchart-render-legibility",
+  "updated": "2026-07-13",
+  "members": ["flowchart-render-legibility"],
+  "note": "Shipped 2026-07-13. Legible flowchart/state/class rendering: 5-layer draw order + opaque subgraph-title plate, tightened label plate, border-filling fan-in spread, three-way label de-collision (label-vs-label/node/edge), separateLanes lane separation, crossing GAPS (pen-up gap in the more-vertical under-line, D11 arc->gap pivot), and D12 heading-order fan ports - all run via layout.finishEdges() and mirrored byte-for-byte in the inlined DOM runtime. D4 `bridges` toggle (default ON clean-elbow, OFF curved/sketch); reaches flowchart + state + class, sequence excluded. Deterministic + byte-parity guarded. flow.mmd = the pipeline; sequence.mmd = the render interaction; before/ keeps the pre-fix single-pass baseline.",
+  "diagrams": [
+    { "kind": "flow", "file": "flowchart-render-legibility-flow.mmd", "title": "flowchart-render-legibility: As-built pipeline - finishEdges (lanes -> label de-collision -> crossing gaps) + heading-order ports, 5-layer emit, both renderers byte-parity" },
+    { "kind": "sequence", "file": "flowchart-render-legibility-sequence.mmd", "title": "flowchart-render-legibility: Render interaction - caller -> layout/finishEdges -> geometry -> static SVG; runtime twin re-runs the same passes (parity)" }
+  ],
+  "before": [
+    { "kind": "flow", "file": "before/flowchart-render-legibility-flow.mmd", "title": "flowchart-render-legibility: As-is baseline - single-pass emit + weak spread -> title/label/fan-in overlaps" }
+  ]
+}

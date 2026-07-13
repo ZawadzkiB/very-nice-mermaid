@@ -1,0 +1,13 @@
+flowchart TD
+  model["PositionedModel"] --> ports["computePerimeterPorts<br/>PORT_STEP=20 · spread=0.7"]
+  ports --> route["routeEdge → paths + labelPos"]
+  route --> S1["renderSubgraph:<br/>box + title (NO plate)"]
+  route --> S2["renderEdge:<br/>path + label (interleaved per edge)"]
+  route --> S3["renderNode: cards"]
+  S1 --> emit["emit order:<br/>subgraphs(+titles) → edges(+labels) → nodes"]
+  S2 --> emit
+  S3 --> emit
+  emit --> bug1["BUG: edges paint OVER subgraph titles"]
+  emit --> bug2["BUG: a later edge paints OVER an earlier label"]
+  ports --> bug3["BUG: 5-edge fan-in bunches<br/>(~80px span · 20px approaches)"]
+  route --> bug4["over-padded label plate<br/>(0.62·chars + 10 / lines + 4)"]

@@ -35,8 +35,9 @@ test.describe("interactive sketch flowchart (--style sketch)", () => {
 
   test("renders hand-drawn wavy node outlines and edges (not crisp rects)", async ({ page }) => {
     // Sketch mode draws each node's outline as rough multi-stroke <path>s (with
-    // quadratic " Q " bows) into svg.vnm-edges, not a clean CSS-styled div box.
-    const shapePaths = page.locator("svg.vnm-edges > path[stroke]:not([stroke='none'])");
+    // quadratic " Q " bows) into svg.vnm-edges (nested in the FR1 z-layer <g>
+    // groups — vnm-edge-layer / vnm-node-layer — not a direct child of the svg).
+    const shapePaths = page.locator("svg.vnm-edges path[stroke]:not([stroke='none'])");
     const ds = await shapePaths.evaluateAll((ps) => ps.map((p) => p.getAttribute("d") ?? ""));
     expect(ds.length).toBeGreaterThan(0);
     expect(ds.some((d) => d.includes(" Q "))).toBe(true);
@@ -52,7 +53,7 @@ test.describe("interactive sketch flowchart (--style sketch)", () => {
   });
 
   test("dragging a node re-routes its rough edges live and keeps the wobble", async ({ page }) => {
-    const edges = page.locator("svg.vnm-edges > path");
+    const edges = page.locator("svg.vnm-edges path");
     const before = await edges.evaluateAll((ps) => ps.map((p) => p.getAttribute("d")));
 
     const node = page.locator(".vnm-node", { hasText: "Push to main" }).first();
@@ -161,7 +162,7 @@ test.describe("sketch native tiers — sequence / class / state render without c
     const url = exportHtmlStyled("shop-class.mmd", "sketch", "light", "sketch-class.html");
     await page.goto(url);
     await page.waitForSelector(".vnm-node");
-    const shapePaths = page.locator("svg.vnm-edges > path[stroke]:not([stroke='none'])");
+    const shapePaths = page.locator("svg.vnm-edges path[stroke]:not([stroke='none'])");
     const ds = await shapePaths.evaluateAll((ps) => ps.map((p) => p.getAttribute("d") ?? ""));
     expect(ds.some((d) => d.includes(" Q "))).toBe(true);
     await page.waitForTimeout(50);

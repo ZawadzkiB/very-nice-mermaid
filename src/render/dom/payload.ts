@@ -19,6 +19,8 @@ export interface InteractiveOptions {
   maxScale?: number;
   /** Drawing style axis (D1): `clean` (default) or hand-drawn `sketch`. */
   style?: RenderStyle;
+  /** Edge-crossing bridges (FR7 / D4); forwarded to the runtime. */
+  bridges?: boolean;
 }
 
 /** Stable, non-cryptographic hash (djb2) for deriving a persistence key. */
@@ -57,6 +59,7 @@ export function buildPayload(
       minScale: opts.minScale ?? 0.2,
       maxScale: opts.maxScale ?? 4,
       style: sketch ? "sketch" : "clean",
+      bridges: opts.bridges,
     },
   };
   if (sketch) payload.sketch = { fontFace: sketchFontFaceCss(), fontFamily: SKETCH_FONT_FAMILY };

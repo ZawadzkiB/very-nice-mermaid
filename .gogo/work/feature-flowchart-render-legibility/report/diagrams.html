@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo report diagrams - flowchart-render-legibility</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo report diagrams - <code>flowchart-render-legibility</code></h1>
+    <p class="hint">As-built · Offline viewer · mermaid vendored with the plugin (no network) · regenerate via the gogo-mermaid skill.</p>
+  </header>
+
+  <h2>As-built pipeline — finishEdges (lanes → label de-collision → crossing gaps) + heading-order ports (both renderers, byte-parity)</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  model["PositionedModel&lt;br/&gt;nodes · edges · subgraphs · labels"] --&gt; ports["computePerimeterPorts&lt;br/&gt;PORT_STEP=30 · border-fill cap (FR4)&lt;br/&gt;order by HEADING / first bend (D12)"]
+  ports --&gt; route["routeEdge → points + path + labelPos&lt;br/&gt;+ same-pair label stagger (TEST-006)"]
+  route --&gt; finish["layout.finishEdges(edges, theme, bridges?, nodeBoxes?)&lt;br/&gt;shared by layout() · applyPositions() · state re-route"]
+  finish --&gt; lanes["FR9 separateLanes&lt;br/&gt;all-pairs push → LANE_GAP=26 (LANE_PASSES=8)"]
+  lanes --&gt; decolL["FR6 resolveLabelCollisions&lt;br/&gt;all-pairs plate AABB → reserved-gap nudge&lt;br/&gt;(from ROUNDED centre ⇒ byte-parity)"]
+  decolL --&gt; decolE["label-vs-edge: slide label along its own run&lt;br/&gt;off a perpendicular foreign crossing line"]
+  decolE --&gt; decolN["label-vs-node: push plate off any node box&lt;br/&gt;(LABEL_NODE_PAD=10)"]
+  decolN --&gt; gap["FR7 applyEdgeBridges / gappedPath (bridges gate)&lt;br/&gt;segmentsCross → pen-up GAP in the more-VERTICAL under-line"]
+  gap --&gt; L1["layer 1: subgraph boxes"]
+  gap --&gt; L2["layer 2: edges (paths + crossing gaps + arrowheads)"]
+  gap --&gt; L3["layer 3: edge-label plates (de-collided, tightened)"]
+  gap --&gt; L4["layer 4: subgraph titles (opaque plate)"]
+  gap --&gt; L5["layer 5: node cards (on top)"]
+  L2 --&gt; svg["static SVG: svg.ts (flowchart) + native class/state svg&lt;br/&gt;(class/state label plate unified to labelPlateSize — REV-002)"]
+  L3 --&gt; svg
+  L2 --&gt; rt["inlined DOM runtime (runtime.ts)&lt;br/&gt;computePorts/buildSvg — toSvgString byte-parity"]
+  L3 --&gt; rt
+  seq["sequence tier — own routing"] -.excluded.-&gt; finish
+  </pre></div>
+
+  <h2>Render interaction — caller → layout/finishEdges → FR6/FR7 geometry → static SVG; runtime twin re-runs the same passes</h2>
+  <div class="diagram"><pre class="mermaid">
+sequenceDiagram
+  actor U as caller (CLI / API)
+  participant R as renderSvg / renderHtml
+  participant P as prepare → layout()
+  participant F as finishEdges
+  participant G as geometry (FR6/FR7)
+  participant S as svg.ts / native class·state svg
+  participant RT as runtime twin (toSvgString)
+  U-&gt;&gt;R: render(dsl, { bridges })
+  R-&gt;&gt;P: layout(model, { theme, bridges })
+  P-&gt;&gt;F: finishEdges(edges, theme, bridges)
+  F-&gt;&gt;G: resolveLabelCollisions(plates)
+  G--&gt;&gt;F: per-edge shifts → nudge labelPos (FR6)
+  F-&gt;&gt;G: applyEdgeBridges(edges, elbow &amp;&amp; bridges ?? true)
+  G--&gt;&gt;F: bridged d per hopping edge → edge.path (FR7)
+  P--&gt;&gt;R: PositionedModel (labels de-collided, crossings bridged)
+  R-&gt;&gt;S: renderSvgFromModel(model) — bakes edge.path
+  S--&gt;&gt;U: static SVG / PNG
+  Note over RT: interactive HTML export re-runs the SAME FR6/FR7&lt;br/&gt;twins in buildSvg → dom-runtime-parity byte guard
+  </pre></div>
+
+  <script src="../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from: ../../../resources/mermaid.min.js\n' +
+          'Re-run the gogo-mermaid skill, or read the .mmd source files directly.</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+sequenceDiagram
+  actor U as caller (CLI / API)
+  participant R as renderSvg / renderHtml
+  participant P as prepare → layout()
+  participant F as finishEdges
+  participant G as geometry (FR6/FR7)
+  participant S as svg.ts / native class·state svg
+  participant RT as runtime twin (toSvgString)
+  U->>R: render(dsl, { bridges })
+  R->>P: layout(model, { theme, bridges })
+  P->>F: finishEdges(edges, theme, bridges)
+  F->>G: resolveLabelCollisions(plates)
+  G-->>F: per-edge shifts → nudge labelPos (FR6)
+  F->>G: applyEdgeBridges(edges, elbow && bridges ?? true)
+  G-->>F: bridged d per hopping edge → edge.path (FR7)
+  P-->>R: PositionedModel (labels de-collided, crossings bridged)
+  R->>S: renderSvgFromModel(model) — bakes edge.path
+  S-->>U: static SVG / PNG
+  Note over RT: interactive HTML export re-runs the SAME FR6/FR7<br/>twins in buildSvg → dom-runtime-parity byte guard

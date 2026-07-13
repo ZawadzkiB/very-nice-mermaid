@@ -17,7 +17,7 @@ import { JSDOM } from "jsdom";
 import { renderHtml } from "../src/export/html.js";
 import { layoutState } from "../src/native/state/layout.js";
 import { layoutClass } from "../src/native/class/layout.js";
-import { routeEdge, computePerimeterPorts, type NodeBox } from "../src/geometry/index.js";
+import { routeEdge, computePerimeterPorts, applyEdgeBridges, type NodeBox } from "../src/geometry/index.js";
 import { themes, type Theme } from "../src/theme/index.js";
 import type { PositionedModel } from "../src/model/index.js";
 import type { StateModel } from "../src/model/state.js";
@@ -28,10 +28,12 @@ function mountedEdgePaths(html: string): string[] {
   const dom = new JSDOM(html, { runScripts: "dangerously", pretendToBeVisual: true });
   const svg = dom.window.document.querySelector("svg.vnm-edges");
   if (!svg) throw new Error("no edge layer rendered");
-  // Edge <path>s are direct children of the svg (in model.edges order); the
-  // arrowhead marker <path> is nested inside <defs>, so filtering direct
-  // children to paths yields exactly the edges.
-  const kids = Array.from(svg.children) as Element[];
+  // Edge <path>s live in the dedicated z-layer group `g.vnm-edge-layer` (FR1),
+  // in model.edges order; the arrowhead marker <path> is nested inside <defs>,
+  // so reading that group's direct path children yields exactly the edges.
+  const layer = svg.querySelector("g.vnm-edge-layer");
+  if (!layer) throw new Error("no edge-layer group rendered");
+  const kids = Array.from(layer.children) as Element[];
   return kids
     .filter((c) => c.tagName.toLowerCase() === "path")
     .map((p) => p.getAttribute("d") ?? "");
@@ -45,10 +47,13 @@ function expectedPaths(model: PositionedModel, theme: Theme): string[] {
     boxes.set(nd.id, { x: nd.x - off.x, y: nd.y - off.y, width: nd.width, height: nd.height });
   }
   const ports = computePerimeterPorts(model.edges, boxes);
-  return model.edges.map((e, i) => {
+  const routed = model.edges.map((e, i) => {
     const wps = (e.waypoints ?? []).map((p) => ({ x: p.x - off.x, y: p.y - off.y }));
-    return routeEdge(boxes.get(e.from)!, boxes.get(e.to)!, model.direction, theme.edgeStyle, wps, ports[i]).path;
+    return routeEdge(boxes.get(e.from)!, boxes.get(e.to)!, model.direction, theme.edgeStyle, wps, ports[i]);
   });
+  // The runtime bakes FR7 crossing bridges into elbow paths, so the expectation must too.
+  const bridged = applyEdgeBridges(routed, theme.edgeStyle === "elbow");
+  return routed.map((r, i) => bridged[i] ?? r.path);
 }
 
 /** Normalize a path to its unordered point set — mirror-duplicates compare equal. */

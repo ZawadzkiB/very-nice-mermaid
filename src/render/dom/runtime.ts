@@ -29,6 +29,8 @@ export interface RuntimeOptions {
   maxScale: number;
   /** Drawing style axis (D1): `clean` (default) or hand-drawn `sketch`. */
   style?: RenderStyle;
+  /** Edge-crossing bridges (FR7 / D4); `undefined` → per-style default. */
+  bridges?: boolean;
 }
 
 export interface RuntimePayload {
@@ -189,12 +191,33 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     tokens.edge.arrowSize +
     '" orient="auto"><path d="M10 0 L0 5 L10 10 z"></path></marker>';
   svg.appendChild(defs);
+  // Explicit z-layer groups (FR1): append order = paint order, so nothing legible
+  // is ever covered — 1 subgraph boxes, 2 edges (paths + arrowheads), 3 edge
+  // labels, 4 subgraph titles (opaque plate). Node bodies sit on top of all of
+  // them (clean = HTML cards in `world`; sketch = rough outlines in gNodes).
+  // Mirrors the static SVG layer order in src/render/svg.ts (renderSvgFromModel).
+  const gBoxes = doc.createElementNS(SVGNS, "g");
+  const gEdges = doc.createElementNS(SVGNS, "g");
+  const gLabels = doc.createElementNS(SVGNS, "g");
+  const gTitles = doc.createElementNS(SVGNS, "g");
+  const gNodes = doc.createElementNS(SVGNS, "g");
+  gBoxes.setAttribute("class", "vnm-subgraph-layer");
+  gEdges.setAttribute("class", "vnm-edge-layer");
+  gLabels.setAttribute("class", "vnm-label-layer");
+  gTitles.setAttribute("class", "vnm-title-layer");
+  gNodes.setAttribute("class", "vnm-node-layer");
+  svg.appendChild(gBoxes);
+  svg.appendChild(gEdges);
+  svg.appendChild(gLabels);
+  svg.appendChild(gTitles);
+  svg.appendChild(gNodes);
   world.appendChild(svg);
 
   // ---- subgraph containers (FR6 / D6=C) ----
   // Auto-contain constants — mirror src/geometry (SUBGRAPH_PADDING/TITLE_BAND).
+  // SG_TITLE bumped to 22 (FR2) so the title's opaque plate clears the top member.
   const SG_PAD = 14;
-  const SG_TITLE = 18;
+  const SG_TITLE = 22;
   // Static membership from the DSL: resolve each container's full member NODE ids
   // (expanding nested subgraph ids recursively). Dragging a child OUT never
   // un-groups it — the box just re-hugs (auto-contain).
@@ -250,6 +273,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   interface SubgraphEls {
     sg: SvgSub;
     rect: SVGRectElement;
+    plate?: SVGRectElement;
     text?: SVGTextElement;
   }
   const subgraphEls: SubgraphEls[] = [];
@@ -260,21 +284,30 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     r.setAttribute("fill", "var(--vnm-subgraph-fill)");
     r.setAttribute("stroke", "var(--vnm-subgraph-stroke)");
     r.setAttribute("stroke-dasharray", "4 4");
-    svg.insertBefore(r, svg.firstChild);
+    gBoxes.appendChild(r); // layer 1
     const rec: SubgraphEls = { sg, rect: r };
     if (sg.title) {
+      // Opaque title plate (FR2): the subgraph fill, sized to the text, in the
+      // titles layer (after edges) so a crossing edge reads as passing behind it.
+      const plate = doc.createElementNS(SVGNS, "rect");
+      plate.setAttribute("class", "vnm-subgraph-title-plate");
+      plate.setAttribute("fill", "var(--vnm-subgraph-fill)");
+      plate.setAttribute("rx", String(tokens.radii.label));
+      gTitles.appendChild(plate); // layer 4 (plate behind text)
       const tnode = doc.createElementNS(SVGNS, "text");
       tnode.setAttribute("class", "vnm-subgraph-title");
       tnode.setAttribute("fill", "var(--vnm-subgraph-text)");
       tnode.setAttribute("font-size", String(tokens.font.size - 1));
       tnode.setAttribute("font-weight", "600");
       tnode.textContent = sg.title;
-      svg.appendChild(tnode);
+      gTitles.appendChild(tnode); // layer 4
+      rec.plate = plate;
       rec.text = tnode;
     }
     subgraphEls.push(rec);
   }
-  // Recompute + reposition every container rect (+ title) from its live members.
+  // Recompute + reposition every container rect (+ title plate + title) from its
+  // live members. The plate geometry mirrors src/render/svg.ts renderSubgraphTitle.
   function renderSubgraphs(): void {
     for (const rec of subgraphEls) {
       const b = subgraphWorldBox(rec.sg);
@@ -283,8 +316,19 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       rec.rect.setAttribute("width", String(b.w));
       rec.rect.setAttribute("height", String(b.h));
       if (rec.text) {
-        rec.text.setAttribute("x", String(b.x - b.w / 2 + 12));
-        rec.text.setAttribute("y", String(b.y - b.h / 2 + 18));
+        const tx = b.x - b.w / 2 + 12;
+        const ty = b.y - b.h / 2 + 18;
+        rec.text.setAttribute("x", String(tx));
+        rec.text.setAttribute("y", String(ty));
+        if (rec.plate) {
+          const fs = tokens.font.size - 1;
+          const pad = 5;
+          const pw = rec.sg.title!.length * fs * 0.6 + pad * 2;
+          rec.plate.setAttribute("x", String(nAt(tx - pad)));
+          rec.plate.setAttribute("y", String(nAt(ty - fs + 1)));
+          rec.plate.setAttribute("width", String(nAt(pw)));
+          rec.plate.setAttribute("height", String(fs + 4));
+        }
       }
     }
   }
@@ -318,7 +362,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // arrowheads directly into the (multi-subpath) edge `d`, so no marker.
     if (!sketch && e.arrows.end) path.setAttribute("marker-end", "url(#vnm-arrow)");
     if (!sketch && e.arrows.start) path.setAttribute("marker-start", "url(#vnm-arrow-start)");
-    svg.appendChild(path);
+    gEdges.appendChild(path); // layer 2
     const rec: EdgeEls = { from: e.from, to: e.to, kind: e.kind, arrows: e.arrows, path };
     // Sketch: a separate SOLID arrowhead path (never dashed), so a dotted line's
     // dash can't fragment the open V (REV-002).
@@ -329,7 +373,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       head.setAttribute("stroke-width", String(e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width));
       head.setAttribute("stroke-linejoin", "round");
       head.setAttribute("stroke-linecap", "round");
-      svg.appendChild(head);
+      gEdges.appendChild(head); // layer 2 (sketch open arrowhead)
       rec.headPath = head;
     }
     if (e.waypoints && e.waypoints.length) {
@@ -340,14 +384,14 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const plate = doc.createElementNS(SVGNS, "rect");
       plate.setAttribute("fill", "var(--vnm-edge-label-bg)");
       plate.setAttribute("rx", String(tokens.radii.label));
-      svg.appendChild(plate);
+      gLabels.appendChild(plate); // layer 3 (after all edges)
       const text = doc.createElementNS(SVGNS, "text");
       text.setAttribute("fill", "var(--vnm-edge-label-text)");
       text.setAttribute("font-size", String(tokens.font.size - 1));
       text.setAttribute("text-anchor", "middle");
       text.setAttribute("dominant-baseline", "central");
       text.textContent = e.label;
-      svg.appendChild(text);
+      gLabels.appendChild(text); // layer 3
       rec.plate = plate;
       rec.text = text;
     }
@@ -394,7 +438,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
         const circles: SVGCircleElement[] = [];
         const mk = (): SVGCircleElement => {
           const c = doc.createElementNS(SVGNS, "circle") as SVGCircleElement;
-          svg.appendChild(c);
+          gNodes.appendChild(c); // layer 5 (node bodies on top)
           circles.push(c);
           return c;
         };
@@ -415,7 +459,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const fillEl = doc.createElementNS(SVGNS, "path");
       fillEl.setAttribute("fill", st.fill);
       fillEl.setAttribute("stroke", "none");
-      svg.appendChild(fillEl);
+      gNodes.appendChild(fillEl); // layer 5 (sketch node body on top)
       const probe = sketchShapePoints(nd.shape, 0, 0, 100, 100);
       const strokeCount = SK_OUTLINE_STROKES + probe.extras.length * SK_OUTLINE_STROKES;
       const strokes: SVGPathElement[] = [];
@@ -427,7 +471,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
         p.setAttribute("stroke-linejoin", "round");
         p.setAttribute("stroke-linecap", "round");
         if (st.strokeDasharray) p.setAttribute("stroke-dasharray", st.strokeDasharray);
-        svg.appendChild(p);
+        gNodes.appendChild(p); // layer 5
         strokes.push(p);
       }
       nodeShapeEls[nd.id] = { fill: fillEl, strokes };
@@ -958,15 +1002,20 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       nAt(p[2]!.x) + " " + nAt(p[2]!.y) + " " + nAt(p[3]!.x) + " " + nAt(p[3]!.y)
     );
   }
+  // mirrors geometry.labelPoint(): the routed label anchor, ROUNDED to 2dp exactly
+  // like geometry (n(...)). Rounding here (not just at the SVG sink) keeps
+  // `labelPos` byte-identical to the static side *before* the FR9 lane pass reads
+  // it (shiftLabelOnSeg), and folds a labelShift in the same order geometry does
+  // (round the midpoint, then add the shift).
   function labelPoly(points: Pt[]): Pt {
-    if (points.length === 2) return { x: (points[0]!.x + points[1]!.x) / 2, y: (points[0]!.y + points[1]!.y) / 2 };
+    if (points.length === 2) return { x: nAt((points[0]!.x + points[1]!.x) / 2), y: nAt((points[0]!.y + points[1]!.y) / 2) };
     const mid = Math.floor(points.length / 2);
-    return { x: (points[mid - 1]!.x + points[mid]!.x) / 2, y: (points[mid - 1]!.y + points[mid]!.y) / 2 };
+    return { x: nAt((points[mid - 1]!.x + points[mid]!.x) / 2), y: nAt((points[mid - 1]!.y + points[mid]!.y) / 2) };
   }
   function labelBezier(p: Pt[]): Pt {
     return {
-      x: 0.125 * p[0]!.x + 0.375 * p[1]!.x + 0.375 * p[2]!.x + 0.125 * p[3]!.x,
-      y: 0.125 * p[0]!.y + 0.375 * p[1]!.y + 0.375 * p[2]!.y + 0.125 * p[3]!.y,
+      x: nAt(0.125 * p[0]!.x + 0.375 * p[1]!.x + 0.375 * p[2]!.x + 0.125 * p[3]!.x),
+      y: nAt(0.125 * p[0]!.y + 0.375 * p[1]!.y + 0.375 * p[2]!.y + 0.125 * p[3]!.y),
     };
   }
   type Anchor = { side: string; offset: number };
@@ -996,6 +1045,13 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       if (from.x === to.x && from.y === to.y) return; // self-loop
       const exit = raySide(from, to.x - from.x, to.y - from.y);
       const entry = raySide(to, from.x - to.x, from.y - to.y);
+      // Order ports by the edge's actual heading (first bend at the source, last at
+      // the target) so a detoured edge takes the port on its detour's side; a
+      // straight edge (no kept bends) falls back to the far node's centre. Mirrors
+      // geometry.computePerimeterPorts' `bends` handling for byte parity.
+      const wp = e.waypoints;
+      const srcHead = wp && wp.length ? wp[0]! : to;
+      const tgtHead = wp && wp.length ? wp[wp.length - 1]! : from;
       // A manually pinned end (FR7) is used verbatim + excluded from the spread
       // groups, so it stays put while its unpinned siblings auto-distribute —
       // mirrors computePerimeterPorts' override handling for byte parity.
@@ -1005,14 +1061,14 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       } else {
         res[i]!.source = { side: exit, offset: 0 };
         const gs = e.from + "|" + exit;
-        (groups[gs] || (groups[gs] = [])).push({ i, role: "source", along: axisX(exit) ? to.x : to.y });
+        (groups[gs] || (groups[gs] = [])).push({ i, role: "source", along: axisX(exit) ? srcHead.x : srcHead.y });
       }
       if (ov && ov.target) {
         res[i]!.target = { side: ov.target.side, offset: ov.target.offset };
       } else {
         res[i]!.target = { side: entry, offset: 0 };
         const gt = e.to + "|" + entry;
-        (groups[gt] || (groups[gt] = [])).push({ i, role: "target", along: axisX(entry) ? from.x : from.y });
+        (groups[gt] || (groups[gt] = [])).push({ i, role: "target", along: axisX(entry) ? tgtHead.x : tgtHead.y });
       }
     });
     for (const key in groups) {
@@ -1023,7 +1079,11 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const borderLen = side === "top" || side === "bottom" ? b.w : b.h;
       recs.sort((a, c) => a.along - c.along || a.i - c.i || a.role.localeCompare(c.role));
       const k = recs.length;
-      const step = Math.min(20, (borderLen * 0.7) / (k - 1));
+      // FR4 spread — keep in lockstep with geometry.computePerimeterPorts: the
+      // preferred PORT_STEP (30) caps a small fan, while a large fan on a wide
+      // border uses the border-filling step that lands the extreme anchors on
+      // anchorBound (borderLen/2 − PORT_MARGIN, PORT_MARGIN = 6).
+      const step = Math.min(30, (borderLen - 2 * 6) / (k - 1));
       recs.forEach((r, slot) => {
         res[r.i]![r.role].offset = (slot - (k - 1) / 2) * step;
       });
@@ -1052,7 +1112,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const extent = (i: number): number => {
         const lns = edgeEls[i]!.label!.split("\n");
         const maxChars = lns.reduce((m, l) => Math.max(m, l.length), 0);
-        return runX ? maxChars * (tokens.font.size * 0.62) + 10 : lns.length * tokens.font.lineHeight + 4;
+        // FR3 tightened plate — keep in lockstep with layout.labelPlateSize.
+        return runX ? maxChars * (tokens.font.size * 0.6) + 6 : lns.length * tokens.font.lineHeight + 2;
       };
       const pos: number[] = [0];
       for (let s = 1; s < idxs.length; s++) {
@@ -1066,6 +1127,382 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     }
     return res;
   }
+
+  // FR3-tightened plate size for one label — mirrors layout.labelPlateSize
+  // (0.6·size+6 / lines·lh+2). Used by the FR6 de-collision twin below.
+  function plateSizeOf(label: string): { w: number; h: number } {
+    const lns = label.split("\n");
+    const maxChars = lns.reduce((m, l) => Math.max(m, l.length), 0);
+    return { w: maxChars * tokens.font.size * 0.6 + 6, h: lns.length * tokens.font.lineHeight + 2 };
+  }
+  // mirrors geometry.resolveLabelCollisions() (FR6): all-pairs edge-label plate
+  // de-collision — nudge overlapping plates apart along the axis of least
+  // penetration until they clear by PORT_LABEL_PAD (=6). Deterministic (fixed
+  // pair + tiebreak order, no RNG), so it produces byte-identical shifts to the
+  // static twin. Returns a shift {x,y} per input index. Keep in lockstep.
+  function resolveLabelCollisions(plates: Array<{ x: number; y: number; w: number; h: number } | undefined>): Pt[] {
+    const shifts: Pt[] = plates.map(() => ({ x: 0, y: 0 }));
+    const idxs: number[] = [];
+    plates.forEach((p, i) => {
+      if (p) idxs.push(i);
+    });
+    if (idxs.length < 2) return shifts;
+    const cx = plates.map((p) => (p ? p.x : 0));
+    const cy = plates.map((p) => (p ? p.y : 0));
+    for (let pass = 0; pass < 8; pass++) {
+      let moved = false;
+      for (let a = 0; a < idxs.length; a++) {
+        for (let b = a + 1; b < idxs.length; b++) {
+          const i = idxs[a]!;
+          const j = idxs[b]!;
+          const pi = plates[i]!;
+          const pj = plates[j]!;
+          const dx = cx[j]! - cx[i]!;
+          const dy = cy[j]! - cy[i]!;
+          const ox = (pi.w + pj.w) / 2 + 6 - Math.abs(dx);
+          const oy = (pi.h + pj.h) / 2 + 6 - Math.abs(dy);
+          if (ox <= 0 || oy <= 0) continue;
+          moved = true;
+          if (ox <= oy) {
+            const push = ox / 2;
+            const dir = dx === 0 ? 1 : Math.sign(dx);
+            cx[i] = cx[i]! - push * dir;
+            cx[j] = cx[j]! + push * dir;
+          } else {
+            const push = oy / 2;
+            const dir = dy === 0 ? 1 : Math.sign(dy);
+            cy[i] = cy[i]! - push * dir;
+            cy[j] = cy[j]! + push * dir;
+          }
+        }
+      }
+      if (!moved) break;
+    }
+    for (const i of idxs) shifts[i] = { x: nAt(cx[i]! - plates[i]!.x), y: nAt(cy[i]! - plates[i]!.y) };
+    return shifts;
+  }
+
+  // mirrors geometry.segmentsCross() (FR7): proper crossing of two segments or null.
+  function segmentsCross(a1: Pt, a2: Pt, b1: Pt, b2: Pt): Pt | null {
+    const rx = a2.x - a1.x;
+    const ry = a2.y - a1.y;
+    const sx = b2.x - b1.x;
+    const sy = b2.y - b1.y;
+    const denom = rx * sy - ry * sx;
+    if (denom === 0) return null;
+    const qpx = b1.x - a1.x;
+    const qpy = b1.y - a1.y;
+    const t = (qpx * sy - qpy * sx) / denom;
+    const u = (qpx * ry - qpy * rx) / denom;
+    if (t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6) return { x: a1.x + t * rx, y: a1.y + t * ry };
+    return null;
+  }
+  // mirrors geometry.applyEdgeBridges()/gappedPath() (FR7 gap pivot): a small pen-up
+  // GAP at each crossing (radius 4, ~8px total), byte-identical to the static twin
+  // (same more-vertical-breaks / lower-index-tie rule, same `L .. M ..` d format).
+  // Keep in lockstep.
+  function gappedPath(points: Pt[], gaps: Array<{ seg: number; at: Pt; dist: number }>): string {
+    const bySeg: Record<number, Array<{ at: Pt; dist: number }>> = {};
+    for (const g of gaps) (bySeg[g.seg] || (bySeg[g.seg] = [])).push({ at: g.at, dist: g.dist });
+    for (const k in bySeg) bySeg[k]!.sort((p, q) => p.dist - q.dist);
+    let d = "M " + nAt(points[0]!.x) + " " + nAt(points[0]!.y);
+    for (let s = 0; s + 1 < points.length; s++) {
+      const p = points[s]!;
+      const q = points[s + 1]!;
+      const segGaps = bySeg[s];
+      if (!segGaps || !segGaps.length) {
+        d += " L " + nAt(q.x) + " " + nAt(q.y);
+        continue;
+      }
+      const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+      const ux = (q.x - p.x) / len;
+      const uy = (q.y - p.y) / len;
+      let lastGapDist = -Infinity;
+      for (const g of segGaps) {
+        // Skip a gap overlapping the previous one on this segment (mirrors geometry).
+        if (g.dist - lastGapDist < 8) continue;
+        lastGapDist = g.dist;
+        const ex = g.at.x - ux * 4;
+        const ey = g.at.y - uy * 4;
+        const xx = g.at.x + ux * 4;
+        const xy = g.at.y + uy * 4;
+        d += " L " + nAt(ex) + " " + nAt(ey) + " M " + nAt(xx) + " " + nAt(xy);
+      }
+      d += " L " + nAt(q.x) + " " + nAt(q.y);
+    }
+    return d;
+  }
+  function applyEdgeBridges(polys: Pt[][], enabled: boolean): (string | null)[] {
+    const out: (string | null)[] = polys.map(() => null);
+    if (!enabled) return out;
+    const rp = polys.map((pts) => pts.map((p) => ({ x: nAt(p.x), y: nAt(p.y) })));
+    const gaps: Array<Array<{ seg: number; at: Pt; dist: number }>> = polys.map(() => []);
+    for (let i = 0; i < rp.length; i++) {
+      const pi = rp[i]!;
+      if (pi.length < 2) continue;
+      for (let j = i + 1; j < rp.length; j++) {
+        const pj = rp[j]!;
+        if (pj.length < 2) continue;
+        for (let si = 0; si + 1 < pi.length; si++) {
+          const a1 = pi[si]!;
+          const a2 = pi[si + 1]!;
+          for (let sj = 0; sj + 1 < pj.length; sj++) {
+            const b1 = pj[sj]!;
+            const b2 = pj[sj + 1]!;
+            const x = segmentsCross(a1, a2, b1, b2);
+            if (!x) continue;
+            const horizI = Math.abs(a2.x - a1.x) >= Math.abs(a2.y - a1.y);
+            const horizJ = Math.abs(b2.x - b1.x) >= Math.abs(b2.y - b1.y);
+            const iGaps = horizI === horizJ ? true : !horizI;
+            const ge = iGaps ? i : j;
+            const gs = iGaps ? si : sj;
+            const s1 = iGaps ? a1 : b1;
+            const s2 = iGaps ? a2 : b2;
+            const dEntry = Math.hypot(x.x - s1.x, x.y - s1.y);
+            const dExit = Math.hypot(x.x - s2.x, x.y - s2.y);
+            if (dEntry < 4 || dExit < 4) continue;
+            gaps[ge]!.push({ seg: gs, at: x, dist: dEntry });
+          }
+        }
+      }
+    }
+    for (let e = 0; e < rp.length; e++) if (gaps[e]!.length) out[e] = gappedPath(rp[e]!, gaps[e]!);
+    return out;
+  }
+  // mirrors geometry.shiftLabelOnSeg() (FR9): if an edge's label sits on the run
+  // being re-laned, slide it into the new lane. Keep in lockstep with geometry.
+  type LaneSeg = { edge: number; i: number; along: number; lo: number; hi: number };
+  function shiftLabelOnSeg(e: { labelPos: Pt }, vertical: boolean, seg: LaneSeg, target: number): void {
+    const lp = e.labelPos;
+    if (!lp) return;
+    if (vertical) {
+      if (Math.abs(lp.x - seg.along) < 26 && lp.y >= seg.lo - 1 && lp.y <= seg.hi + 1) {
+        e.labelPos = { x: nAt(lp.x + (target - seg.along)), y: lp.y };
+      }
+    } else if (Math.abs(lp.y - seg.along) < 26 && lp.x >= seg.lo - 1 && lp.x <= seg.hi + 1) {
+      e.labelPos = { x: lp.x, y: nAt(lp.y + (target - seg.along)) };
+    }
+  }
+  // mirrors geometry.separateLanes() (FR9): pull apart bundles of near-parallel,
+  // near-collinear INTERIOR orthogonal runs sharing a channel into distinct lanes
+  // (≥ LANE_GAP apart, centred on the bundle mean), mutating each routed edge's
+  // points/path/labelPos in place. Byte-identical constants + logic to geometry
+  // (LANE_GAP=26 / LANE_MIN_OVERLAP=40 / LANE_PASSES=8, all-pairs push; same
+  // interior-segment detection i>=1 && i+2<len; nAt == geometry's n). Runs FIRST
+  // on the routed results (before FR6 label de-collision + FR7 bridges) so the
+  // live view + Save-SVG re-lane exactly like the static finishEdges. Elbow only.
+  function separateLanes(edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>): void {
+    if (edgeStyle !== "elbow") return;
+    const LANE_GAP = 26;
+    const LANE_MIN_OVERLAP = 40;
+    const LANE_PASSES = 8;
+    const moved: Record<number, boolean> = {};
+    const moveLane = (e: { points: Pt[]; labelPos: Pt }, vertical: boolean, seg: LaneSeg, target: number): void => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i]!.y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1]!.y };
+      } else {
+        shiftLabelOnSeg(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i]!.x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1]!.x, y: target };
+      }
+      seg.along = target;
+    };
+    for (let pass = 0; pass < LANE_PASSES; pass++) {
+      let changed = false;
+      for (const vertical of [true, false]) {
+        const segs: LaneSeg[] = [];
+        edges.forEach((e, ei) => {
+          const p = e.points;
+          for (let i = 1; i + 2 < p.length; i++) {
+            const a = p[i]!;
+            const b = p[i + 1]!;
+            const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+            const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+            if (vertical ? !isVert : !isHorz) continue;
+            const along = vertical ? a.x : a.y;
+            const lo = vertical ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+            const hi = vertical ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+            segs.push({ edge: ei, i, along, lo, hi });
+          }
+        });
+        segs.sort((s, t) => s.along - t.along || s.edge - t.edge || s.i - t.i);
+        // All-pairs push (mirrors geometry.separateLanes — TEST-004): robust to any
+        // drag geometry, unlike the earlier greedy bundle.
+        for (let a = 0; a < segs.length; a++) {
+          for (let b = a + 1; b < segs.length; b++) {
+            const sa = segs[a]!;
+            const sb = segs[b]!;
+            if (sa.edge === sb.edge) continue;
+            if (Math.min(sa.hi, sb.hi) - Math.max(sa.lo, sb.lo) < LANE_MIN_OVERLAP) continue;
+            const d = LANE_GAP - Math.abs(sb.along - sa.along);
+            if (d <= 1e-6) continue;
+            const dir = sb.along >= sa.along ? 1 : -1;
+            const push = d / 2;
+            moveLane(edges[sa.edge]!, vertical, sa, nAt(sa.along - push * dir));
+            moveLane(edges[sb.edge]!, vertical, sb, nAt(sb.along + push * dir));
+            moved[sa.edge] = true;
+            moved[sb.edge] = true;
+            changed = true;
+          }
+        }
+      }
+      if (!changed) break;
+    }
+    for (const kk in moved) edges[Number(kk)]!.path = pathPoly(edges[Number(kk)]!.points);
+  }
+  // mirrors geometry.resolveLabelNodeCollisions() (UAT-1): push any edge-label
+  // plate that overlaps a NODE box off it by the smallest move (least-penetration
+  // axis, away from the node centre; centred tie → +y then +x). Nodes are fixed
+  // obstacles. Deterministic (fixed plate×node order, LABEL_NODE_PAD=10, 4 bounded
+  // passes, no RNG). Returns a shift {x,y} per input index. Keep in lockstep.
+  function resolveLabelNodeCollisions(
+    plates: Array<{ x: number; y: number; w: number; h: number } | undefined>,
+    nodeBoxes: Array<{ x: number; y: number; w: number; h: number }>,
+  ): Pt[] {
+    const shifts: Pt[] = plates.map(() => ({ x: 0, y: 0 }));
+    if (!nodeBoxes.length) return shifts;
+    const cx = plates.map((p) => (p ? p.x : 0));
+    const cy = plates.map((p) => (p ? p.y : 0));
+    for (let pass = 0; pass < 4; pass++) {
+      let moved = false;
+      for (let i = 0; i < plates.length; i++) {
+        const p = plates[i];
+        if (!p) continue;
+        for (const nb of nodeBoxes) {
+          const dx = cx[i]! - nb.x;
+          const dy = cy[i]! - nb.y;
+          const ox = (p.w + nb.w) / 2 + 10 - Math.abs(dx);
+          const oy = (p.h + nb.h) / 2 + 10 - Math.abs(dy);
+          if (ox <= 0 || oy <= 0) continue;
+          moved = true;
+          if (oy <= ox) cy[i] = cy[i]! + oy * (dy < 0 ? -1 : 1);
+          else cx[i] = cx[i]! + ox * (dx < 0 ? -1 : 1);
+        }
+      }
+      if (!moved) break;
+    }
+    for (let i = 0; i < plates.length; i++) if (plates[i]) shifts[i] = { x: nAt(cx[i]! - plates[i]!.x), y: nAt(cy[i]! - plates[i]!.y) };
+    return shifts;
+  }
+  // mirrors geometry.nearestRunAxis(): orientation ("x"/"y"/null) of the polyline's
+  // axis-aligned run closest to (cx,cy); the first run wins a distance tie.
+  function nearestRunAxis(points: Pt[], cx: number, cy: number): "x" | "y" | null {
+    let best = Infinity;
+    let axis: "x" | "y" | null = null;
+    for (let s = 0; s + 1 < points.length; s++) {
+      const a = points[s]!;
+      const b = points[s + 1]!;
+      const horiz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 0.5;
+      const vert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 0.5;
+      if (!horiz && !vert) continue;
+      let dx: number;
+      let dy: number;
+      if (horiz) {
+        const lo = Math.min(a.x, b.x);
+        const hi = Math.max(a.x, b.x);
+        dx = cx < lo ? cx - lo : cx > hi ? cx - hi : 0;
+        dy = cy - a.y;
+      } else {
+        const lo = Math.min(a.y, b.y);
+        const hi = Math.max(a.y, b.y);
+        dx = cx - a.x;
+        dy = cy < lo ? cy - lo : cy > hi ? cy - hi : 0;
+      }
+      const dd = dx * dx + dy * dy;
+      if (dd < best) {
+        best = dd;
+        axis = horiz ? "x" : "y";
+      }
+    }
+    return axis;
+  }
+  // mirrors geometry.resolveLabelEdgeCollisions() (UAT-round, gRPC-stream fix): slide
+  // any label plate sitting ON a foreign edge's crossing run along its OWN edge until
+  // it clears (PORT_LABEL_PAD=6, +axis tiebreak, 4 bounded passes, no RNG). Parallel
+  // grazes are left alone. Byte-identical shifts to the static twin. Keep in lockstep.
+  function resolveLabelEdgeCollisions(
+    plates: Array<{ x: number; y: number; w: number; h: number } | undefined>,
+    polylines: Pt[][],
+  ): Pt[] {
+    const shifts: Pt[] = plates.map(() => ({ x: 0, y: 0 }));
+    const cx = plates.map((p) => (p ? p.x : 0));
+    const cy = plates.map((p) => (p ? p.y : 0));
+    for (let pass = 0; pass < 4; pass++) {
+      let moved = false;
+      for (let i = 0; i < plates.length; i++) {
+        const p = plates[i];
+        if (!p) continue;
+        const axis = nearestRunAxis(polylines[i] ?? [], cx[i]!, cy[i]!);
+        if (!axis) continue;
+        const hw = p.w / 2;
+        const hh = p.h / 2;
+        let hasHit = false;
+        let hiTarget = -Infinity;
+        let loTarget = Infinity;
+        for (let j = 0; j < polylines.length; j++) {
+          if (j === i) continue;
+          const pts = polylines[j] ?? [];
+          for (let s = 0; s + 1 < pts.length; s++) {
+            const a = pts[s]!;
+            const b = pts[s + 1]!;
+            if (axis === "x") {
+              if (Math.abs(a.x - b.x) >= 0.5) continue;
+              const gx = a.x;
+              if (gx <= cx[i]! - hw || gx >= cx[i]! + hw) continue;
+              if (cy[i]! + hh <= Math.min(a.y, b.y) || cy[i]! - hh >= Math.max(a.y, b.y)) continue;
+              hasHit = true;
+              hiTarget = Math.max(hiTarget, gx + hw + 6);
+              loTarget = Math.min(loTarget, gx - hw - 6);
+            } else {
+              if (Math.abs(a.y - b.y) >= 0.5) continue;
+              const gy = a.y;
+              if (gy <= cy[i]! - hh || gy >= cy[i]! + hh) continue;
+              if (cx[i]! + hw <= Math.min(a.x, b.x) || cx[i]! - hw >= Math.max(a.x, b.x)) continue;
+              hasHit = true;
+              hiTarget = Math.max(hiTarget, gy + hh + 6);
+              loTarget = Math.min(loTarget, gy - hh - 6);
+            }
+          }
+        }
+        if (!hasHit) continue;
+        const cur = axis === "x" ? cx[i]! : cy[i]!;
+        const target = hiTarget - cur <= cur - loTarget ? hiTarget : loTarget;
+        if (axis === "x") cx[i] = target;
+        else cy[i] = target;
+        moved = true;
+      }
+      if (!moved) break;
+    }
+    for (let i = 0; i < plates.length; i++) if (plates[i]) shifts[i] = { x: nAt(cx[i]! - plates[i]!.x), y: nAt(cy[i]! - plates[i]!.y) };
+    return shifts;
+  }
+  // Plate rects (rounded routed centre + FR3 size) for the two label passes,
+  // aligned index-for-index with edgeEls (undefined for an unlabelled edge).
+  function labelPlatesOf(routed: Array<{ labelPos: Pt }>): Array<{ x: number; y: number; w: number; h: number } | undefined> {
+    return edgeEls.map((e, i) => {
+      if (!e.label) return undefined;
+      const s = plateSizeOf(e.label);
+      return { x: nAt(routed[i]!.labelPos.x), y: nAt(routed[i]!.labelPos.y), w: s.w, h: s.h };
+    });
+  }
+  // Fold a per-edge shift back into each routed edge's labelPos (mirrors the
+  // static deCollideLabels / deCollideLabelsFromNodes writeback: round the centre,
+  // then add the shift), so a later label pass reads the already-moved plate.
+  function foldLabelShifts(routed: Array<{ labelPos: Pt }>, shifts: Pt[]): void {
+    routed.forEach((r, i) => {
+      const sh = shifts[i]!;
+      if (edgeEls[i]!.label && (sh.x !== 0 || sh.y !== 0)) {
+        r.labelPos = { x: nAt(r.labelPos.x) + sh.x, y: nAt(r.labelPos.y) + sh.y };
+      }
+    });
+  }
+  // Whether crossing bridges are baked into the clean path (FR7 / D4): ON for
+  // elbow edges unless the option forces off; curved is deferred, sketch draws
+  // from points so never shows a bridge. Matches layout.applyBridges' gate.
+  const bridgesEnabled = (): boolean => edgeStyle === "elbow" && (opt.bridges ?? true);
 
   // mirrors geometry.routeEdge(): recompute path + label from live positions,
   // threading dagre's detour waypoints (kept fixed) when the edge has them, and
@@ -1238,27 +1675,43 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   }
   function renderEdges(): void {
     const ports = computePorts();
+    const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
+    // FR9: lane-separate FIRST (mutates points/path/labelPos), matching finishEdges.
+    separateLanes(routed);
+    // FR6: de-collide label plates, folding the shift back into labelPos so the
+    // label-vs-node pass sees the moved plate (uses the same rounded-centre
+    // resolver as buildSvg → the live view matches the exported SVG).
+    foldLabelShifts(routed, resolveLabelCollisions(labelPlatesOf(routed)));
+    // label-vs-edge (UAT-round): slide any label off a foreign edge's crossing line.
+    foldLabelShifts(routed, resolveLabelEdgeCollisions(labelPlatesOf(routed), routed.map((r) => r.points)));
+    // label-vs-node (UAT-1): push any label off a node box (live world coords).
+    const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id]!.x, y: positions[nd.id]!.y, w: sizes[nd.id]!.w, h: sizes[nd.id]!.h }));
+    foldLabelShifts(routed, resolveLabelNodeCollisions(labelPlatesOf(routed), nodeBoxesL));
+    // FR7: bake crossing hops into the clean path (sketch draws from points).
+    const bridgedL = applyEdgeBridges(routed.map((r) => r.points), bridgesEnabled());
     edgeEls.forEach((e, i) => {
-      const routed = routeEdgePath(e.from, e.to, e.waypoints, ports[i]);
+      const r = routed[i]!;
       // Sketch: the line (rough strokes, may be dashed) and the SOLID open
       // arrowhead go to two separate paths so a dotted dash can't fragment the V.
       if (sketch) {
-        const sk = sketchEdgeParts(routed.points, e.from + "->" + e.to, e.arrows, tokens.edge.arrowSize);
+        const sk = sketchEdgeParts(r.points, e.from + "->" + e.to, e.arrows, tokens.edge.arrowSize);
         e.path.setAttribute("d", sk.line);
         if (e.headPath) e.headPath.setAttribute("d", sk.head);
       } else {
-        e.path.setAttribute("d", routed.path);
+        e.path.setAttribute("d", bridgedL[i] ?? r.path);
       }
       if (e.plate && e.text && e.label) {
-        const lp = routed.labelPos;
-        const w = e.label.length * (tokens.font.size * 0.62) + 10;
-        const h = tokens.font.lineHeight + 4;
-        e.plate.setAttribute("x", String(nAt(lp.x - w / 2)));
-        e.plate.setAttribute("y", String(nAt(lp.y - h / 2)));
+        const lx = r.labelPos.x;
+        const ly = r.labelPos.y;
+        // FR3 tightened plate — keep in lockstep with layout.labelPlateSize.
+        const w = e.label.length * (tokens.font.size * 0.6) + 6;
+        const h = tokens.font.lineHeight + 2;
+        e.plate.setAttribute("x", String(nAt(lx - w / 2)));
+        e.plate.setAttribute("y", String(nAt(ly - h / 2)));
         e.plate.setAttribute("width", String(nAt(w)));
         e.plate.setAttribute("height", String(nAt(h)));
-        e.text.setAttribute("x", String(nAt(lp.x)));
-        e.text.setAttribute("y", String(nAt(lp.y)));
+        e.text.setAttribute("x", String(nAt(lx)));
+        e.text.setAttribute("y", String(nAt(ly)));
       }
     });
     positionEdgeHandles(ports);
@@ -1854,26 +2307,41 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     const b = sgBoxFrom(boxes, !!sg.title);
     return b ?? { x: sg.x, y: sg.y, w: sg.width, h: sg.height };
   }
-  function svgSubgraph(sg: SvgSub): string {
+  // Layer 1: the dashed container box. Byte-parity with src/render/svg.ts
+  // renderSubgraphBox.
+  function svgSubgraphBox(sg: SvgSub): string {
     const b = subgraphAbsBox(sg);
     const x = nAt(b.x - b.w / 2);
     const y = nAt(b.y - b.h / 2);
-    let out =
+    return (
       '<rect x="' + x + '" y="' + y + '" width="' + nAt(b.w) + '" height="' + nAt(b.h) +
       '" rx="' + tokens.radii.card + '" fill="' + tokens.colors.subgraphFill + '" stroke="' +
-      tokens.colors.subgraphStroke + '" stroke-dasharray="4 4"/>';
-    if (sg.title) {
-      out +=
-        '<text x="' + nAt(x + 12) + '" y="' + nAt(y + 18) + '" fill="' + tokens.colors.subgraphText +
-        '" font-size="' + (tokens.font.size - 1) + '" font-weight="600">' + xmlEsc(sg.title) + "</text>";
-    }
-    return out;
+      tokens.colors.subgraphStroke + '" stroke-dasharray="4 4"/>'
+    );
+  }
+  // Layer 4 (FR2): the title on an opaque plate, drawn after edges. Byte-parity
+  // with src/render/svg.ts renderSubgraphTitle (same plate geometry + string).
+  function svgSubgraphTitle(sg: SvgSub): string {
+    if (!sg.title) return "";
+    const b = subgraphAbsBox(sg);
+    const x = nAt(b.x - b.w / 2);
+    const y = nAt(b.y - b.h / 2);
+    const fs = tokens.font.size - 1;
+    const pad = 5;
+    const pw = sg.title.length * fs * 0.6 + pad * 2;
+    return (
+      '<rect x="' + nAt(x + 12 - pad) + '" y="' + nAt(y + 18 - fs + 1) + '" width="' + nAt(pw) +
+      '" height="' + (fs + 4) + '" rx="' + tokens.radii.label + '" fill="' + tokens.colors.subgraphFill + '"/>' +
+      '<text x="' + nAt(x + 12) + '" y="' + nAt(y + 18) + '" fill="' + tokens.colors.subgraphText +
+      '" font-size="' + fs + '" font-weight="600">' + xmlEsc(sg.title) + "</text>"
+    );
   }
   function svgEdgeLabel(label: string, cx: number, cy: number): string {
     const lines = label.split("\n");
     const maxChars = lines.reduce((m, l) => Math.max(m, l.length), 0);
-    const w = maxChars * tokens.font.size * 0.62 + 10;
-    const h = lines.length * tokens.font.lineHeight + 4;
+    // FR3 tightened plate — byte-parity with src/render/svg.ts edgeLabel.
+    const w = maxChars * tokens.font.size * 0.6 + 6;
+    const h = lines.length * tokens.font.lineHeight + 2;
     const x = nAt(cx - w / 2);
     const y = nAt(cy - h / 2);
     let out =
@@ -1888,7 +2356,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     });
     return out;
   }
-  function svgEdge(e: EdgeEls, path: string, labelPos: Pt, points: Pt[]): string {
+  // Edge path + arrowhead only (layer 2). The label is emitted separately into
+  // layer 3 by buildSvg, mirroring src/render/svg.ts renderEdge / edgeLabel.
+  function svgEdge(e: EdgeEls, path: string, points: Pt[]): string {
     const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
     const dash = e.kind === "dotted" ? ' stroke-dasharray="2 5"' : "";
     let out: string;
@@ -1917,7 +2387,6 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
         '<path d="' + path + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width +
         '" stroke-linejoin="round" stroke-linecap="round"' + dash + mStart + mEnd + "/>";
     }
-    if (e.label && labelPos) out += svgEdgeLabel(e.label, labelPos.x, labelPos.y);
     return out;
   }
   function svgPolygon(pts: number[][], common: string): string {
@@ -2061,13 +2530,37 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     const boxes: Box[] = [];
     for (const sg of model.subgraphs) boxes.push(subgraphAbsBox(sg));
     for (const nd of model.nodes) boxes.push(absBox(nd.id));
-    const edgeParts: string[] = [];
+    const edgePathParts: string[] = [];
+    const edgeLabelParts: string[] = [];
     const allPts: Pt[] = [];
-    edgeEls.forEach((e, i) => {
+    const routesB = edgeEls.map((e, i) => {
       const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : undefined;
-      const r = routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
+      return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
+    });
+    // FR9: lane-separate FIRST (mutates points/path/labelPos), matching finishEdges,
+    // so Save-SVG byte-matches the static layout()'s re-laned routes (parity).
+    separateLanes(routesB);
+    // FR6: de-collide label plates from the ROUNDED routed midpoints (== the value
+    // the sink emits), folding each shift into labelPos so the shift byte-matches
+    // the static layout()'s and the label-vs-node pass reads the moved plate.
+    foldLabelShifts(routesB, resolveLabelCollisions(labelPlatesOf(routesB)));
+    // label-vs-edge (UAT-round): slide any label off a foreign edge's crossing line.
+    foldLabelShifts(routesB, resolveLabelEdgeCollisions(labelPlatesOf(routesB), routesB.map((r) => r.points)));
+    // label-vs-node (UAT-1): push any label off a node box (absolute coords).
+    const nodeBoxesB = model.nodes.map((nd) => {
+      const b = absBox(nd.id);
+      return { x: b.x, y: b.y, w: b.w, h: b.h };
+    });
+    foldLabelShifts(routesB, resolveLabelNodeCollisions(labelPlatesOf(routesB), nodeBoxesB));
+    // FR7: bake crossing hops into the clean path (svgEdge sketch ignores `path`).
+    const bridgedB = applyEdgeBridges(routesB.map((r) => r.points), bridgesEnabled());
+    edgeEls.forEach((e, i) => {
+      const r = routesB[i]!;
       for (const p of r.points) allPts.push(p);
-      edgeParts.push(svgEdge(e, r.path, r.labelPos, r.points));
+      edgePathParts.push(svgEdge(e, bridgedB[i] ?? r.path, r.points));
+      if (e.label) {
+        edgeLabelParts.push(svgEdgeLabel(e.label, r.labelPos.x, r.labelPos.y));
+      }
     });
     const b = boundsAbs(boxes, allPts);
     const parts: string[] = [];
@@ -2081,9 +2574,13 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       '<rect x="' + nAt(b.x) + '" y="' + nAt(b.y) + '" width="' + nAt(b.width) + '" height="' + nAt(b.height) +
         '" fill="' + tokens.colors.background + '"/>',
     );
-    for (const sg of model.subgraphs) parts.push(svgSubgraph(sg));
-    for (const ep of edgeParts) parts.push(ep);
-    for (const nd of model.nodes) parts.push(svgNode(nd));
+    // 5-layer order (FR1) mirroring src/render/svg.ts renderSvgFromModel for
+    // byte-parity: 1 boxes → 2 edge paths → 3 edge labels → 4 titles → 5 nodes.
+    for (const sg of model.subgraphs) parts.push(svgSubgraphBox(sg)); // 1
+    for (const ep of edgePathParts) parts.push(ep); // 2
+    for (const lp of edgeLabelParts) parts.push(lp); // 3
+    for (const sg of model.subgraphs) parts.push(svgSubgraphTitle(sg)); // 4
+    for (const nd of model.nodes) parts.push(svgNode(nd)); // 5
     parts.push("</svg>");
     return { svg: parts.join("\n"), width: b.width, height: b.height };
   }

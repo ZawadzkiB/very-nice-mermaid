@@ -1,0 +1,39 @@
+classDiagram
+  class rough["src/rough (source of truth)"] {
+    +roughSeed(key) number
+    +roughShape(pts, key) fill+outline[]
+    +roughEllipse(cx,cy,rx,ry,key)
+    +roughPolyline(pts, key) string[]
+    +openArrowhead(tip, from, size, key) string
+    +ellipsePoints(cx,cy,rx,ry)
+    -mulberry32(seed)
+    -strokePath(pts, closed, rand, rough, bow)
+    +SKETCH consts
+  }
+  class runtimeRough["vnmRuntime inlined mirror"] {
+    +roughSeed / mulberry32 / roughStroke
+    +roughShape / roughPolyline / openArrowhead
+    +sketchShapePoints / sketchEdgeD
+    +SK_* consts (== SKETCH)
+  }
+  class sketchFont["src/render/sketch-font.ts"] {
+    +SKETCH_FONT_NAME "Kalam"
+    +SKETCH_FONT_FAMILY
+    +SKETCH_FONT_BASE64 (woff2)
+    +sketchFontFaceCss() string
+  }
+  class svg["render/svg.ts"] {
+    +renderSvgFromModel(model, theme, bg, style)
+    +sketchShape() / sketchEdgePath()
+  }
+  class payload["dom/payload.ts"] {
+    +buildPayload(model, theme, {style})
+    +sketch: {fontFace, fontFamily}
+  }
+
+  rough <.. svg : import
+  rough <.. runtimeRough : MIRROR (ROUGH-PARITY, byte-identical)
+  sketchFont <.. svg : @font-face + family
+  sketchFont <.. payload : fontFace + family (rides payload)
+  payload ..> runtimeRough : sketch payload
+  svg ..> runtimeRough : dom-runtime-parity guard

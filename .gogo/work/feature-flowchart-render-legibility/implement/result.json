@@ -1,0 +1,26 @@
+{
+  "slug": "flowchart-render-legibility",
+  "phase": "implement",
+  "status": "ok",
+  "round": 5,
+  "inputs": [
+    ".gogo/work/feature-flowchart-render-legibility/plan.md",
+    ".gogo/work/feature-flowchart-render-legibility/decisions.md",
+    ".gogo/work/feature-flowchart-render-legibility/uat.md",
+    ".gogo/knowledge/coding-rules.md"
+  ],
+  "outputs": [
+    "src/geometry/index.ts",
+    "src/layout/index.ts",
+    "src/render/dom/runtime.ts",
+    "src/native/state/layout.ts",
+    "test/geometry.test.ts",
+    "test/layout.test.ts",
+    "test/dom-runtime-parity.test.ts",
+    "examples/",
+    "test/__snapshots__/"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "summary": "FR9 edge-lane separation (UAT round 1) + 2 UAT follow-up fixes. FR9: separateLanes offsets bundles of near-parallel interior orthogonal runs into distinct 26px lanes (compact/local, D10 offset approach after edgesep 'space-at-source' was rejected on sight), wired first in finishEdges, mirrored byte-for-byte in the runtime twin (buildSvg + renderEdges). Issue 1: resolveLabelNodeCollisions pushes any edge-label plate off an overlapping node box (gRPC stream now clears Ingress by 6px), mirrored. Issue 2: hub fan-in spreads to near-full node width (PORT_STEP 26->30, PORT_SPREAD_FRAC replaced by a border-filling cap). Also fixed a latent parity drift: labelPoly/labelBezier now round like geometry.labelPoint so labelPos byte-matches before the lane pass reads it. typecheck+build+378 unit green incl. dom-runtime-parity (34, +FR9 lane fixtures clean+sketch); snapshots + examples regenerated. Flagged for review: the wider-spread churn, the runtime label-rounding change, and box-1 (Ingress comb) only partially improved (node-width-bound, no comb-stagger this pass)."
+}

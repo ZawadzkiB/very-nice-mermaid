@@ -3,6 +3,7 @@ import { XMLParser } from "fast-xml-parser";
 import { layoutState } from "../src/native/state/layout.js";
 import { renderStateSvg } from "../src/native/state/svg.js";
 import { renderSvg } from "../src/render/svg.js";
+import { labelPlateSize } from "../src/layout/index.js";
 import type { StateModel } from "../src/model/state.js";
 import { themes } from "../src/theme/index.js";
 
@@ -90,10 +91,9 @@ describe("renderStateSvg", () => {
 
   it("anti-parallel transition LABEL plates do not overlap/clip (TEST-006)", () => {
     const layout = layoutState(MODEL, { theme: themes.light! });
-    const f = themes.light!.tokens.font;
+    // the shared tightened size — the plate the native renderer actually draws.
     const plate = (label: string, cx: number, cy: number) => {
-      const w = label.length * f.size * 0.62 + 10;
-      const h = f.lineHeight + 4;
+      const { w, h } = labelPlateSize(label, themes.light!)!;
       return { l: cx - w / 2, r: cx + w / 2, t: cy - h / 2, b: cy + h / 2 };
     };
     const start = layout.model.edges.find((e) => e.label === "start")!;
@@ -102,5 +102,18 @@ describe("renderStateSvg", () => {
     const b = plate("stop", stop.labelPos!.x, stop.labelPos!.y);
     // 'start' used to read as 'st' and 'stop' occluded it — the plates must clear.
     expect(a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b).toBe(false);
+  });
+
+  // REV-002 guard: the native state label plate MUST be the shared tightened size
+  // (labelPlateSize), which the FR6 de-collision assumes; a drift back to the old
+  // looser formula would let de-collided state labels overlap while tests pass.
+  it("draws edge-label plates at the shared tightened labelPlateSize (REV-002)", () => {
+    const theme = themes.light!;
+    const svg = renderStateSvg(layoutState(MODEL, { theme }), theme);
+    const want = labelPlateSize("start", theme)!;
+    const m = svg.match(/<rect[^>]*width="([\d.]+)"[^>]*height="([\d.]+)"[^>]*\/><text[^>]*>start</);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeCloseTo(want.w, 6);
+    expect(Number(m![2])).toBeCloseTo(want.h, 6);
   });
 });

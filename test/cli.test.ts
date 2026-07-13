@@ -214,7 +214,7 @@ describe("vnm CLI (child_process)", () => {
   });
 
   it("prints help and version", () => {
-    expect(cli(["--version"]).stdout).toContain("0.5.1");
+    expect(cli(["--version"]).stdout).toContain("0.6.0");
     expect(cli(["--help"]).stdout).toContain("render");
   });
 
