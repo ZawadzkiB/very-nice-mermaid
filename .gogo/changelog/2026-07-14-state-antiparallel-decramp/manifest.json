@@ -1,0 +1,9 @@
+{
+  "slug": "state-antiparallel-decramp",
+  "updated": "2026-07-14",
+  "members": ["state-antiparallel-decramp"],
+  "note": "v0.6.2 state anti-parallel jog de-cramp: a single gated post-pass separateAntiParallelJogs runs inside finishEdges right after separateLanes and staggers a genuine collinear A->B/B->A elbow pair's jogs >= JOG_GAP (26) apart, each biased toward its own target (via the existing moveLane). computePerimeterPorts + routeElbow are UNCHANGED; elbow-only + gated (|Δalong| < 1), so every clean edge and all curved/fancy geometry stay byte-identical. Mirrored byte-for-byte in the vnmRuntime twin at both call sites (renderEdges + buildSvg), guarded by dom-runtime-parity. The state diagram's fail/retry now read as two clearly-separated arrows. before/ holds the as-is baseline (both jogs collinear at y=306, merged crossbar) for side-by-side compare.",
+  "diagrams": [
+    { "kind": "flow", "file": "state-antiparallel-decramp-flow.mmd", "title": "state-antiparallel-decramp: As-built - separateAntiParallelJogs() staggers a collinear anti-parallel pair's jogs in finishEdges (gated, elbow-only), mirrored in the runtime twin" }
+  ]
+}

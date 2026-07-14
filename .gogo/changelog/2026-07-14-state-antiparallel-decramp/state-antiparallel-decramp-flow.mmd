@@ -1,0 +1,10 @@
+flowchart TD
+  ports["computePerimeterPorts() — UNCHANGED<br/>ports still spread 30px on each shared border"] --> route["routeElbow() naive-elbow branch — UNCHANGED<br/>midY = (start.y + end.y) / 2"]
+  route --> finish["layout.finishEdges(edges, theme, bridges?, nodeBoxes?)<br/>shared by layout() · applyPositions() · native-state re-route"]
+  finish --> lanes["separateLanes() — UNCHANGED (overlap &lt; 40 still skips the pair)"]
+  lanes --> anti["separateAntiParallelJogs() — NEW, elbow-only, gated<br/>group by UNORDERED node pair; fire ONLY on a true A→B / B→A bundle<br/>whose interior jog segments are collinear (same 'along')"]
+  anti --> stagger["stagger the pair's jogs ≥ JOG_GAP apart, each biased toward its OWN target<br/>(down-edge jogs low, up-edge jogs high) — via the existing moveLane()<br/>→ two distinct crossbars, up/down arrowheads no longer collide"]
+  stagger --> emit["5-layer emit → static SVG / PNG (docs · examples · heroes)"]
+  stagger --> rt["vnmRuntime twin (src/render/dom/runtime.ts)<br/>mirror separateAntiParallelJogs byte-for-byte (dom-runtime-parity)"]
+  rt --> html["interactive HTML export"]
+  gate["Gate keeps it surgical:<br/>Loading→Ready (no reverse) & every clean edge stay byte-identical;<br/>curved/fancy skipped (elbow-only)"] -.-> anti

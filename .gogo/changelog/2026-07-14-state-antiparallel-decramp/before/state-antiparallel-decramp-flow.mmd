@@ -1,0 +1,8 @@
+flowchart TD
+  ports["computePerimeterPorts()<br/>Loading|bottom &amp; Error|top ports spread PORT_STEP=30 (OK, 30px apart)"] --> route["routeElbow() naive-elbow branch<br/>midY = (start.y + end.y) / 2"]
+  route --> fail["fail  (Loading→Error, down):<br/>M 114 276 L 114 306 L 147 306 L 147 336"]
+  route --> retry["retry (Error→Loading, up):<br/>M 177 336 L 177 306 L 144 306 L 144 276"]
+  fail --> bug["BUG: both anti-parallel edges jog at the SAME y=306<br/>(identical midY) → collinear + contiguous crossbar x[114..177]"]
+  retry --> bug
+  bug --> lanes["finishEdges → separateLanes()<br/>SKIPS the pair: parallel-axis overlap = 3px &lt; LANE_MIN_OVERLAP=40"]
+  lanes --> emit["merged crossbar: up-arrow (x=144) &amp; down-arrow (x=147)<br/>crammed 3px apart → reads as one tangled bar (all elbow themes)"]

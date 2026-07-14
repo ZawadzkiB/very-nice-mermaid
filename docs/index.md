@@ -17,8 +17,9 @@ A framework-agnostic **Mermaid renderer**. Keep Mermaid's DSL, drop the
 
 ---
 
+{%- assign cachebust = site.github.build_revision | default: site.version -%}
 <p align="center">
-  <img src="{{ '/assets/flowchart-clean-fancy.png' | relative_url }}" alt="A flowchart rendered in the fancy theme" width="620">
+  <img src="{{ '/assets/flowchart-clean-fancy.png' | relative_url }}?v={{ cachebust }}" alt="A flowchart rendered in the fancy theme" width="620">
 </p>
 
 very-nice-mermaid keeps Mermaid's DSL and replaces everything after it with
