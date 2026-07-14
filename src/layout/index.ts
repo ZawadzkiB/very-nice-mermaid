@@ -26,6 +26,7 @@ import {
   resolveLabelEdgeCollisions,
   applyEdgeBridges,
   separateLanes,
+  separateAntiParallelJogs,
   type NodeBox,
   type EdgeAnchorOverride,
   type PlateRect,
@@ -66,6 +67,7 @@ export function finishEdges(
   nodeBoxes?: ReadonlyArray<NodeBox>,
 ): void {
   separateLanes(edges, theme.edgeStyle); // FR9 — give each merged run its own lane (compact, local)
+  separateAntiParallelJogs(edges, theme.edgeStyle); // v0.6.2 — de-cramp a collinear anti-parallel elbow pair the lane gate skips
   deCollideLabels(edges, theme);
   deCollideLabelsFromEdges(edges, theme); // UAT-round: off other edges' crossing lines
   if (nodeBoxes) deCollideLabelsFromNodes(edges, theme, nodeBoxes); // UAT-1: off any node box

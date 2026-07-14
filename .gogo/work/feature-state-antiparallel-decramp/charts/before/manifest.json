@@ -1,0 +1,8 @@
+{
+  "slug": "state-antiparallel-decramp",
+  "updated": "2026-07-14",
+  "note": "As-is baseline (before any code change): the anti-parallel Loading<->Error pair in examples/src/state.mmd. Both fail (Loading->Error) and retry (Error->Loading) route as naive elbows whose midY = (start.y+end.y)/2 lands at the SAME y=306, so their horizontal jogs are collinear and contiguous (x[114..147] and x[144..177]) and merge into one crossbar; separateLanes leaves them because their parallel-axis overlap (3px) is below LANE_MIN_OVERLAP=40. Verified against examples/svg/state-clean-light.svg.",
+  "diagrams": [
+    { "kind": "flow", "file": ".gogo/work/feature-state-antiparallel-decramp/charts/before/flow.mmd", "title": "As-is: collinear anti-parallel jogs at y=306 form a merged crossbar; separateLanes skips them (3px < 40)" }
+  ]
+}

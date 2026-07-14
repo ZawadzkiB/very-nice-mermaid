@@ -15,6 +15,7 @@ import {
   segmentsCross,
   applyEdgeBridges,
   separateLanes,
+  separateAntiParallelJogs,
   subgraphBox,
   SUBGRAPH_TITLE_BAND,
   type NodeBox,
@@ -536,6 +537,90 @@ describe("separateLanes gives merged parallel runs distinct lanes (FR9)", () => 
     const curvedBefore = JSON.stringify(curved);
     separateLanes(curved, "curved");
     expect(JSON.stringify(curved)).toBe(curvedBefore); // curved is deferred
+  });
+});
+
+describe("separateAntiParallelJogs de-cramps a collinear anti-parallel elbow pair (v0.6.2)", () => {
+  type APEdge = {
+    from: string;
+    to: string;
+    points: { x: number; y: number }[];
+    path?: string;
+    labelPos?: { x: number; y: number };
+  };
+  // The state Loading↔Error case, verified byte-for-byte in state-clean-light.svg:
+  // both jog at the identical mid-y = 306 (one merged crossbar). `fail` goes DOWN
+  // (target B, bottom y=336), `retry` goes UP (target A, top y=276).
+  const mkPair = (): APEdge[] => [
+    { from: "A", to: "B", points: [{ x: 114, y: 276 }, { x: 114, y: 306 }, { x: 147, y: 306 }, { x: 147, y: 336 }] },
+    { from: "B", to: "A", points: [{ x: 177, y: 336 }, { x: 177, y: 306 }, { x: 144, y: 306 }, { x: 144, y: 276 }] },
+  ];
+  const orthogonal = (e: APEdge): boolean =>
+    e.points.every(
+      (p, i) => i === 0 || Math.abs(e.points[i - 1]!.x - p.x) < 1e-6 || Math.abs(e.points[i - 1]!.y - p.y) < 1e-6,
+    );
+  const jogY = (e: APEdge): number => e.points[1]!.y; // the interior horizontal crossbar's y
+
+  it("staggers the two collinear jogs ≥ JOG_GAP apart, each biased toward its own target, anchors + orthogonality intact", () => {
+    const edges = mkPair();
+    const anchors = edges.map((e) => [{ ...e.points[0]! }, { ...e.points[e.points.length - 1]! }]);
+    separateAntiParallelJogs(edges, "elbow");
+    const [fail, retry] = edges as [APEdge, APEdge];
+    // no longer collinear; the two crossbars sit ≥ JOG_GAP (26) apart on the perpendicular (y) axis
+    expect(Math.abs(jogY(fail) - jogY(retry))).toBeGreaterThanOrEqual(26 - 1e-6);
+    // direction-correct (FR2): the DOWN edge (target y=336) jogs LOWER than the UP edge (target y=276)
+    expect(jogY(fail)).toBeGreaterThan(jogY(retry));
+    edges.forEach((e, i) => {
+      expect(e.points[0]).toEqual(anchors[i]![0]); // source border anchor unmoved
+      expect(e.points[e.points.length - 1]).toEqual(anchors[i]![1]); // target border anchor unmoved
+      expect(e.points[1]!.y).toBe(e.points[2]!.y); // the crossbar stayed horizontal (both ends re-y'd together)
+      expect(orthogonal(e)).toBe(true); // still a clean orthogonal staircase
+      expect(e.path).toContain(" L "); // rebuilt path
+    });
+    // exact worked example: mean 306 ± 13 → retry 293, fail 319
+    expect(jogY(retry)).toBe(293);
+    expect(jogY(fail)).toBe(319);
+  });
+
+  it("is deterministic + idempotent (a spread pair is JOG_GAP apart → no longer collinear → never re-fires)", () => {
+    const once = mkPair();
+    separateAntiParallelJogs(once, "elbow");
+    const twice = mkPair();
+    separateAntiParallelJogs(twice, "elbow");
+    separateAntiParallelJogs(twice, "elbow");
+    expect(JSON.stringify(twice.map((e) => e.points))).toBe(JSON.stringify(once.map((e) => e.points)));
+  });
+
+  it("leaves clean edges byte-identical: non-reversed pair, already-apart pair, single edge, curved (FR3)", () => {
+    // a non-reversed fan (A→B, A→C — different node pairs, no reverse) — untouched
+    const fan: APEdge[] = [
+      { from: "A", to: "B", points: [{ x: 114, y: 276 }, { x: 114, y: 306 }, { x: 147, y: 306 }, { x: 147, y: 336 }] },
+      { from: "A", to: "C", points: [{ x: 84, y: 276 }, { x: 84, y: 306 }, { x: 46, y: 306 }, { x: 46, y: 336 }] },
+    ];
+    const fanBefore = JSON.stringify(fan);
+    separateAntiParallelJogs(fan, "elbow");
+    expect(JSON.stringify(fan)).toBe(fanBefore);
+
+    // an anti-parallel pair whose jogs already differ (306 vs 340) — reads fine → skip
+    const apart: APEdge[] = [
+      { from: "A", to: "B", points: [{ x: 114, y: 276 }, { x: 114, y: 306 }, { x: 147, y: 306 }, { x: 147, y: 336 }] },
+      { from: "B", to: "A", points: [{ x: 177, y: 336 }, { x: 177, y: 340 }, { x: 144, y: 340 }, { x: 144, y: 276 }] },
+    ];
+    const apartBefore = JSON.stringify(apart);
+    separateAntiParallelJogs(apart, "elbow");
+    expect(JSON.stringify(apart)).toBe(apartBefore);
+
+    // a single edge — no pair → untouched
+    const solo = [mkPair()[0]!];
+    const soloBefore = JSON.stringify(solo);
+    separateAntiParallelJogs(solo, "elbow");
+    expect(JSON.stringify(solo)).toBe(soloBefore);
+
+    // curved — the elbow-only pass no-ops
+    const curved = mkPair();
+    const curvedBefore = JSON.stringify(curved);
+    separateAntiParallelJogs(curved, "curved");
+    expect(JSON.stringify(curved)).toBe(curvedBefore);
   });
 });
 
