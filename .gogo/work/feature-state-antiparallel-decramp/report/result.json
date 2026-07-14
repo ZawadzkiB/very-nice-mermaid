@@ -1,0 +1,26 @@
+{
+  "slug": "state-antiparallel-decramp",
+  "phase": "report",
+  "status": "ok",
+  "inputs": [
+    ".gogo/work/feature-state-antiparallel-decramp/plan.md",
+    ".gogo/work/feature-state-antiparallel-decramp/state.md",
+    ".gogo/work/feature-state-antiparallel-decramp/decisions.md",
+    ".gogo/work/feature-state-antiparallel-decramp/review/issues.json",
+    ".gogo/work/feature-state-antiparallel-decramp/test/issues.json",
+    ".gogo/work/feature-state-antiparallel-decramp/charts/manifest.json"
+  ],
+  "outputs": [
+    ".gogo/work/feature-state-antiparallel-decramp/report/report.md",
+    ".gogo/work/feature-state-antiparallel-decramp/report/flow.mmd",
+    ".gogo/work/feature-state-antiparallel-decramp/report/diagrams.html",
+    ".gogo/work/feature-state-antiparallel-decramp/report/manifest.json",
+    ".gogo/work/feature-state-antiparallel-decramp/report/before/flow.mmd",
+    ".gogo/work/feature-state-antiparallel-decramp/report/before/manifest.json",
+    ".gogo/knowledge/code-review-standards.md",
+    ".gogo/knowledge/tech-stack.md"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "summary": "Clean green run: implemented exactly as planned (elbow-only, D1->A), review APPROVE, test PASS with the hard visual bar met on all 4 elbow variants (no curve fallback). Wrote report bundle (as-built flow + before/after), updated 2 gogo-owned knowledge docs, bumped v0.6.2. State -> awaiting-uat."
+}

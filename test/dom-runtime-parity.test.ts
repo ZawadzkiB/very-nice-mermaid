@@ -30,7 +30,7 @@ import {
   type EdgeAnchorOverride,
 } from "../src/geometry/index.js";
 import { resolveNodeStyle } from "../src/render/style.js";
-import { applyPositions } from "../src/layout/index.js";
+import { applyPositions, finishEdges } from "../src/layout/index.js";
 import { renderSvgFromModel } from "../src/render/svg.js";
 import { readStateModel } from "../src/native/state/read.js";
 import { layoutState } from "../src/native/state/layout.js";
@@ -176,9 +176,19 @@ function expectedPaths(
   // spreader orders ports by heading exactly as the live runtime's computePorts.
   const wbends = model.edges.map((e) => (e.waypoints ?? []).map((p) => ({ x: p.x - off.x, y: p.y - off.y })));
   const ports = computePerimeterPorts(model.edges, boxes, undefined, undefined, wbends);
-  return model.edges.map((e, i) => {
-    return routeEdge(boxes.get(e.from)!, boxes.get(e.to)!, model.direction, theme!.edgeStyle, wbends[i]!, ports[i]).path;
+  // Route each edge, then run the SAME post-routing pipeline the live runtime does
+  // (finishEdges: separateLanes → separateAntiParallelJogs → label de-collision →
+  // bridges), so the expectation is a faithful mirror of the shared geometry rather
+  // than a partial re-route. On fixtures where those passes are no-ops the paths are
+  // byte-identical to a raw route; on an anti-parallel/lane/bridge fixture the twin
+  // MUST reproduce whatever finishEdges did (that's the drift this guard protects).
+  const routed = model.edges.map((e, i) => {
+    const r = routeEdge(boxes.get(e.from)!, boxes.get(e.to)!, model.direction, theme!.edgeStyle, wbends[i]!, ports[i]);
+    return { ...e, points: r.points, path: r.path, labelPos: r.labelPos };
   });
+  const nodeBoxes = model.nodes.map((nd) => boxes.get(nd.id)!);
+  finishEdges(routed, theme!, undefined, nodeBoxes);
+  return routed.map((r) => r.path);
 }
 
 /** Node boxes in offset-removed coords, optionally overriding positions + sizes. */
@@ -763,6 +773,66 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     const relSet = (a: string[]): string[] => a.map(rel).sort();
     const staticEdges = edgeD(staticSvg);
     expect(staticEdges.length).toBeGreaterThanOrEqual(6); // fixture genuinely has edges
+    expect(relSet(edgeD(handle.toSvgString()))).toEqual(relSet(staticEdges));
+  });
+
+  it("STATE anti-parallel de-cramp: Loading↔Error jogs stagger ≥ JOG_GAP, and the twin reproduces it (v0.6.2)", async () => {
+    // The reported bug: `fail` (Loading→Error) and `retry` (Error→Loading) both jog at
+    // the identical mid-y → one merged crossbar. separateAntiParallelJogs (mirrored in
+    // the runtime twin) must spread them onto distinct lanes, and the live runtime's
+    // Save-SVG must reproduce the staggered static geometry exactly.
+    const dsl = [
+      "stateDiagram-v2",
+      "[*] --> Idle",
+      "Idle --> Loading : fetch",
+      "Loading --> Ready : 2xx",
+      "Loading --> Error : fail",
+      "Error --> Loading : retry",
+      "Ready --> [*]",
+    ].join("\n");
+    const theme = themes.light!;
+    const lay = layoutState(await readStateModel(dsl), { theme });
+    // the interior horizontal crossbar's y for an edge (the middle axis-aligned run)
+    const interiorJogY = (pts: { x: number; y: number }[]): number | undefined => {
+      for (let i = 1; i + 2 < pts.length; i++) {
+        const a = pts[i]!;
+        const b = pts[i + 1]!;
+        if (Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1) return a.y;
+      }
+      return undefined;
+    };
+    const fail = lay.model.edges.find((e) => e.from === "Loading" && e.to === "Error")!;
+    const retry = lay.model.edges.find((e) => e.from === "Error" && e.to === "Loading")!;
+    const fy = interiorJogY(fail.points);
+    const ry = interiorJogY(retry.points);
+    expect(fy).toBeDefined();
+    expect(ry).toBeDefined();
+    // de-crammed: no longer collinear, ≥ JOG_GAP (26) apart; `fail` (down) jogs lower
+    expect(Math.abs(fy! - ry!)).toBeGreaterThanOrEqual(26 - 1e-6);
+    expect(fy!).toBeGreaterThan(ry!);
+
+    // readStateModel booted mermaid's real jsdom, which overwrote the FakeEl-friendly
+    // getComputedStyle stub — restore it before mounting the runtime.
+    (globalThis as unknown as { getComputedStyle: () => { position: string } }).getComputedStyle =
+      () => ({ position: "relative" });
+    const { handle } = mountFakeH(buildPayload(lay.model, theme, { minimap: false, persist: false }));
+    const staticSvg = renderStateSvg(lay, theme);
+    const edgeD = (s: string): string[] =>
+      [...s.matchAll(/<path\b[^>]*>/g)]
+        .map((m) => m[0])
+        .filter((t) => t.includes('fill="none"'))
+        .map((t) => (t.match(/\bd="([^"]*)"/) ?? ["", ""])[1]!)
+        .filter(Boolean);
+    const rel = (d: string): string => {
+      const nums = (d.match(/-?[\d.]+/g) ?? []).map(Number);
+      const ox = nums[0] ?? 0;
+      const oy = nums[1] ?? 0;
+      return nums.map((v, i) => (i % 2 ? v - oy : v - ox).toFixed(2)).join(",");
+    };
+    const relSet = (a: string[]): string[] => a.map(rel).sort();
+    const staticEdges = edgeD(staticSvg);
+    expect(staticEdges.length).toBeGreaterThanOrEqual(5);
+    // the twin's Save-SVG reproduces the staggered static geometry point-for-point
     expect(relSet(edgeD(handle.toSvgString()))).toEqual(relSet(staticEdges));
   });
 

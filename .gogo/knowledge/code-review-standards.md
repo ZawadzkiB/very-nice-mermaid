@@ -172,3 +172,30 @@ Generated-by: /gogo:build (scaffold)
   by the flowchart parity fixture until REV-009 added a dedicated `order-state` guard
   (baked `renderStateSvg` vs live `mountState`, offset-invariant relative geometry;
   bite-verified by reverting the wiring). (Was REV-009.)
+
+## Project-specific gotchas (verified — feature `state-antiparallel-decramp`, 2026-07-14)
+- **A new `finishEdges` post-pass needs its byte-identical runtime twin AND a faithful
+  parity reference.** v0.6.2 added `separateAntiParallelJogs` (de-cramps a collinear
+  anti-parallel `A→B`/`B→A` elbow pair the `separateLanes` overlap gate skips) in
+  `src/geometry` and mirrored it in `vnmRuntime` at BOTH call sites (`renderEdges` +
+  `buildSvg`). Confirm the twin matches in OUTPUT, not source shape: same `JOG_GAP=26`,
+  same interior-run detection (`i>=1 && i+2<len`, 0.5/1 thresholds), same collinear
+  tolerance (`<1`), same target-perpendicular sort with the `edge`-index tie-break, same
+  `n`≡`nAt` rounding and `toPath`≡`pathPoly`. `from`/`to` may be threaded differently
+  (geometry reads `edges[i].from`; the twin reads the index-aligned `edgeEls[i]`) as long
+  as indices align.
+- **A parity helper that bypasses `finishEdges` masks twin drift.** `dom-runtime-parity`'s
+  `expectedPaths` used to route each edge with `routeEdge` only — it passed on every
+  fixture solely because `separateLanes`/bridges happened to be no-ops there, so it could
+  NOT have caught a `separateLanes` OR a new-pass drift. The fix routed `expectedPaths`
+  through the REAL `finishEdges` (a faithful mirror); this both revealed the new pass and
+  proved the twin byte-identical. Lesson: a parity reference must run the same pipeline
+  the runtime does, not a partial re-route.
+- **Prove a gated geometry pass fires where you think — and no-ops everywhere else — with
+  the RENDERED output, not the unit test alone.** The `state-svg.test.ts` inline model
+  (`Idle↔Running`) routes as straight 2-point verticals on 30px-offset ports (no interior
+  jog), so the pass correctly no-ops and NO snapshot moved — the plan wrongly predicted a
+  refresh. The pass genuinely fires on `examples/src/state.mmd` (`Loading↔Error`, 306→
+  293/319) and `order-state` (`Paused↔Running`). Always visually verify the actual
+  `fail`/`retry` PNG region (multimodal Read of the render), and byte-diff the gallery so
+  only the intended variants changed — a green unit test is not proof the visual bar is met.

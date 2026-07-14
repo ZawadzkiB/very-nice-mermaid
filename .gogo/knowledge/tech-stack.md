@@ -50,6 +50,10 @@ addon installed.
 ## gogo overrides
 <!-- Preserved across re-runs. -->
 - Entry points: `src/index.ts` (API), `src/element.ts` (web component), `src/cli/index.ts` (CLI bin).
+- **Current version: v0.6.2** (`package.json` + `src/cli/run.ts` VERSION; asserted in `test/cli.test.ts`).
+  v0.6.2 added `separateAntiParallelJogs` in `finishEdges` (de-cramps a collinear anti-parallel
+  elbow pair; mirrored in the `vnmRuntime` twin) — elbow-only, so only the state diagram's elbow
+  variants change; fancy (curved) and all other tiers stay byte-identical.
 - **Asset regeneration scripts** (all drive the built CLI; `npm run build` first): `npm run docs`
   (gallery `docs/`), `npm run examples` (`examples/` png+svg), and **`npm run heroes`** (v0.6.1:
   `scripts/generate-heroes.mjs` — the 4 README `assets/example-*.png` heroes, previously rendered

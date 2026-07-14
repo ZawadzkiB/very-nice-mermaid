@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo diagrams — state-antiparallel-decramp</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo diagrams — <code>state-antiparallel-decramp</code></h1>
+    <p class="hint">Offline viewer · mermaid is vendored with the plugin (no network, no CLI) · regenerate via the gogo-mermaid skill.</p>
+  </header>
+
+  <h2>Intended: separateAntiParallelJogs() in the routing pipeline</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  ports["computePerimeterPorts() — UNCHANGED&lt;br/&gt;ports still spread 30px on each shared border"] --> route["routeElbow() naive-elbow branch — UNCHANGED&lt;br/&gt;midY = (start.y + end.y) / 2"]
+  route --> finish["layout.finishEdges(edges, theme, bridges?, nodeBoxes?)&lt;br/&gt;shared by layout() · applyPositions() · native-state re-route"]
+  finish --> lanes["separateLanes() — UNCHANGED (overlap &amp;lt; 40 still skips the pair)"]
+  lanes --> anti["separateAntiParallelJogs() — NEW, elbow-only, gated&lt;br/&gt;group by UNORDERED node pair; fire ONLY on a true A→B / B→A bundle&lt;br/&gt;whose interior jog segments are collinear (same 'along')"]
+  anti --> stagger["stagger the pair's jogs ≥ JOG_GAP apart, each biased toward its OWN target&lt;br/&gt;(down-edge jogs low, up-edge jogs high) — via the existing moveLane()&lt;br/&gt;→ two distinct crossbars, up/down arrowheads no longer collide"]
+  stagger --> emit["5-layer emit → static SVG / PNG (docs · examples · heroes)"]
+  stagger --> rt["vnmRuntime twin (src/render/dom/runtime.ts)&lt;br/&gt;mirror separateAntiParallelJogs byte-for-byte (dom-runtime-parity)"]
+  rt --> html["interactive HTML export"]
+  gate["Gate keeps it surgical:&lt;br/&gt;Loading→Ready (no reverse) &amp; every clean edge stay byte-identical;&lt;br/&gt;curved/fancy skipped (elbow-only)"] -.-> anti
+  </pre></div>
+
+  <h2>Before (as-is): the collinear anti-parallel crossbar</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  ports["computePerimeterPorts()&lt;br/&gt;Loading|bottom &amp;amp; Error|top ports spread PORT_STEP=30 (OK, 30px apart)"] --> route["routeElbow() naive-elbow branch&lt;br/&gt;midY = (start.y + end.y) / 2"]
+  route --> fail["fail  (Loading→Error, down):&lt;br/&gt;M 114 276 L 114 306 L 147 306 L 147 336"]
+  route --> retry["retry (Error→Loading, up):&lt;br/&gt;M 177 336 L 177 306 L 144 306 L 144 276"]
+  fail --> bug["BUG: both anti-parallel edges jog at the SAME y=306&lt;br/&gt;(identical midY) → collinear + contiguous crossbar x[114..177]"]
+  retry --> bug
+  bug --> lanes["finishEdges → separateLanes()&lt;br/&gt;SKIPS the pair: parallel-axis overlap = 3px &amp;lt; LANE_MIN_OVERLAP=40"]
+  lanes --> emit["merged crossbar: up-arrow (x=144) &amp;amp; down-arrow (x=147)&lt;br/&gt;crammed 3px apart → reads as one tangled bar (all elbow themes)"]
+  </pre></div>
+
+  <script src="../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from: ../../../resources/mermaid.min.js\n' +
+          'Re-run the gogo-mermaid skill, or read the .mmd source files directly.</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

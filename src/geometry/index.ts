@@ -919,6 +919,97 @@ function shiftLabelOnSeg(e: { labelPos?: Point }, vertical: boolean, seg: LaneSe
   }
 }
 
+/** Minimum gap between the two staggered jogs of a collinear anti-parallel elbow
+ *  bundle (FR1). Matches {@link LANE_GAP} so a de-crammed pair reads with the same
+ *  channel spacing as any other separated lane. */
+const JOG_GAP = 26;
+
+/**
+ * **FR1–FR3 — de-cramp a collinear anti-parallel elbow bundle.** {@link separateLanes}
+ * de-merges near-parallel runs, but its {@link LANE_MIN_OVERLAP} gate deliberately skips
+ * an anti-parallel `A→B`/`B→A` pair between stacked nodes: both edges take the naive
+ * elbow's identical `midY`, so their interior jogs are collinear (one merged crossbar)
+ * yet overlap on the parallel axis by only a few px — below the lane gate — leaving the
+ * two arrowheads crammed together. This post-pass targets exactly that case and nothing
+ * else: group the routed edges by their **unordered node pair** (the same idiom as
+ * {@link computeLabelShifts}); a group with ≥2 edges whose interior jog segments are
+ * **collinear** (share the same perpendicular `along`) is de-crammed by spreading the
+ * jogs onto distinct lanes {@link JOG_GAP} apart, centred on the bundle mean, ordered by
+ * each edge's **target-side** perpendicular coordinate so every jog moves toward its OWN
+ * target (the down-going edge jogs lower, the up-going higher; FR2). Reuses
+ * {@link moveLane}/{@link LaneSeg}/{@link toPath}. Elbow only, gated, deterministic, and
+ * idempotent (a spread pair is `JOG_GAP` apart → no longer collinear → never re-fires).
+ * Runs after `separateLanes` inside `finishEdges` and is mirrored byte-for-byte in the
+ * runtime twin. Any edge that already routes cleanly — a non-reversed pair
+ * (`Loading→Ready`), a pair whose jogs already differ, a fan, a single edge, or any
+ * curved edge — stays byte-identical. Mutates `edge.points`/`path`/`labelPos` in place.
+ */
+export function separateAntiParallelJogs(
+  edges: Array<{ from: string; to: string; points: Point[]; path?: string; labelPos?: Point }>,
+  style: EdgeStyle,
+): void {
+  if (style !== "elbow") return;
+  // Group edge indices by their unordered node pair; "|" can never occur in a node id
+  // ([A-Za-z0-9_]+), so distinct pairs never collide. Keep this idiom in lockstep with
+  // computeLabelShifts and the runtime twin.
+  const pairs = new Map<string, number[]>();
+  edges.forEach((e, i) => {
+    const key = e.from < e.to ? e.from + "|" + e.to : e.to + "|" + e.from;
+    (pairs.get(key) ?? pairs.set(key, []).get(key)!).push(i);
+  });
+  const moved = new Set<number>();
+  for (const idxs of pairs.values()) {
+    if (idxs.length < 2) continue; // only a multi-edge bundle can be anti-parallel
+    idxs.sort((a, b) => a - b);
+    // Each edge's interior jog is its middle axis-aligned run (both ends are bends, so
+    // no anchor detaches — the same i>=1 && i+2<len rule as separateLanes; i=1 in a
+    // 4-point naive elbow). Require a uniform jog orientation across the bundle.
+    type Jog = { edge: number; seg: LaneSeg; vertical: boolean; target: number };
+    const jogs: Jog[] = [];
+    let orient: boolean | undefined; // true = vertical run (const x), false = horizontal
+    for (const ei of idxs) {
+      const p = edges[ei]!.points;
+      let jog: Jog | undefined;
+      for (let i = 1; i + 2 < p.length; i++) {
+        const a = p[i]!;
+        const b = p[i + 1]!;
+        const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+        const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+        if (!isVert && !isHorz) continue;
+        const along = isVert ? a.x : a.y;
+        const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+        const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+        const end = p[p.length - 1]!; // target-side perpendicular coord = the endpoint's lane coord
+        const target = isVert ? end.x : end.y;
+        jog = { edge: ei, seg: { edge: ei, i, along, lo, hi }, vertical: isVert, target };
+        break; // first interior run wins (a naive elbow has exactly one)
+      }
+      if (!jog) break;
+      if (orient === undefined) orient = jog.vertical;
+      else if (orient !== jog.vertical) { jogs.length = 0; break; }
+      jogs.push(jog);
+    }
+    if (jogs.length < 2) continue;
+    // Collinear? every jog must share the same `along` (they merge into one bar). If any
+    // already differ, the bundle reads fine → skip → byte-identical.
+    const a0 = jogs[0]!.seg.along;
+    if (!jogs.every((j) => Math.abs(j.seg.along - a0) < 1)) continue;
+    // Order by target-side perpendicular coord, then place on lanes JOG_GAP apart centred
+    // on the bundle mean → each jog moves toward its own target (FR2). Stable tie-break by
+    // edge index keeps it deterministic across the twins.
+    jogs.sort((x, y) => x.target - y.target || x.edge - y.edge);
+    const mean = jogs.reduce((s, j) => s + j.seg.along, 0) / jogs.length;
+    const k = jogs.length;
+    jogs.forEach((j, s) => {
+      const lane = n(mean + (s - (k - 1) / 2) * JOG_GAP);
+      if (Math.abs(lane - j.seg.along) < 1e-6) return; // already there → byte-identical
+      moveLane(edges[j.edge]!, j.vertical, j.seg, lane);
+      moved.add(j.edge);
+    });
+  }
+  for (const ei of moved) edges[ei]!.path = toPath(edges[ei]!.points, "elbow");
+}
+
 const isHorizontalLayout = (d: Direction): boolean => d === "LR" || d === "RL";
 
 /**

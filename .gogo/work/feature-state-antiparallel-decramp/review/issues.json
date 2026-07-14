@@ -1,0 +1,21 @@
+{
+  "slug": "state-antiparallel-decramp",
+  "track": "review",
+  "round": 1,
+  "updated": "2026-07-14",
+  "verdict": "APPROVE",
+  "summary": "Fresh-eyes review of the v0.6.2 collinear anti-parallel elbow de-cramp (separateAntiParallelJogs + JOG_GAP=26, mirrored in the runtime twin). Verified twin byte-parity, surgical gate, determinism/idempotence, direction-correctness, anchor preservation, comprehensive tests (401/401 green, typecheck clean), correct regression posture, and the hard VISUAL acceptance bar (the four elbow variants render fail/retry as two clearly separated arrows). No blockers or majors. One latent, verified-not-observed nit logged for the audit trail.",
+  "issues": [
+    {
+      "id": "REV-001",
+      "title": "separateAntiParallelJogs runs AFTER separateLanes and nothing re-runs the lane pass — a staggered jog could in principle create a NEW near-collinear overlap with an unrelated third edge (latent, not observed)",
+      "description": "The new post-pass is wired into finishEdges (src/layout/index.ts:70) and both runtime sites (src/render/dom/runtime.ts:1810 renderEdges, :2674 buildSvg) to run immediately AFTER separateLanes, and it does not re-invoke separateLanes afterward. It moves each de-crammed jog by ±JOG_GAP/2 (13px in the k=2 case; e.g. state fail 306→319, retry 306→293, confirmed in examples/svg/state-clean-light.svg). Because separateLanes has already completed, a jog nudged into a new position that is now near-collinear (within LANE_GAP) with, and parallel-axis-overlapping (≥ LANE_MIN_OVERLAP=40) an UNRELATED third edge's interior run would ship un-separated — separateLanes would have pulled it into its own lane, but it never sees the moved geometry. VERIFIED this does NOT materialise in the corpus: in the state fixture the only other jog at the same band (Loading→Ready, M 84 276 L 84 306 L 46 306 L 46 336) sits at x[46,84], far from the moved fail/retry verticals at x[144,147] (no parallel-axis overlap), and it is byte-identical in the diff; the regenerated PNG (examples/png/state-clean-light.png) reads as two cleanly separated staircases; and the full gallery sweep changed ONLY the four intended state-elbow variants. This is a latent limitation of the single-pass ordering, not a demonstrated defect — logged in the house style of REV-002/REV-003 of the v0.6.1 review (latent invariant of a new pass).",
+      "proposed_solution": "NEEDS-USER-DECISION (low priority; no change needed to ship — the gate is narrow, the move is ±13px, and the target corpus is clean). If a hard guarantee is wanted later, either (a) re-run separateLanes once after separateAntiParallelJogs inside finishEdges AND both runtime twins (bounded — a spread pair is JOG_GAP apart so it will not re-qualify the anti-parallel gate, and separateLanes is already idempotent to a fixpoint), or (b) have the anti-parallel pass check its chosen lanes against the other edges' interior runs before committing. Either option must be mirrored byte-for-byte in src/render/dom/runtime.ts (n≡nAt, toPath elbow≡pathPoly) and covered by a dom-runtime-parity fixture, or the twins drift.",
+      "severity": "nit",
+      "priority": "P3",
+      "status": "open",
+      "origin": "review",
+      "found_in_round": 1
+    }
+  ]
+}

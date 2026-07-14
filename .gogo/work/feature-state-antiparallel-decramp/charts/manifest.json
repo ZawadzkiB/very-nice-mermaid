@@ -1,0 +1,11 @@
+{
+  "slug": "state-antiparallel-decramp",
+  "updated": "2026-07-14",
+  "note": "As-built (matches the intended design 1:1 — no deviations). Where the anti-parallel jog de-cramp sits in the shared edge-routing pipeline. computePerimeterPorts + routeElbow stay UNCHANGED (the ports are already 30px apart; both anti-parallel edges still jog at the same midY). A NEW gated post-pass, separateAntiParallelJogs, runs inside finishEdges next to separateLanes: it groups edges by their UNORDERED node pair, fires only on a genuine A->B / B->A bundle whose interior jog segments are collinear, and staggers the two jogs >= JOG_GAP apart (each biased toward its own target) via the existing moveLane helper. Elbow-only and gated so non-anti-parallel edges (e.g. Loading->Ready) and curved/fancy stay byte-identical; mirrored byte-for-byte in the vnmRuntime twin. charts/before/flow.mmd captures the as-is collinear-crossbar tangle at its real code sites.",
+  "diagrams": [
+    { "kind": "flow", "file": ".gogo/work/feature-state-antiparallel-decramp/charts/flow.mmd", "title": "Intended: separateAntiParallelJogs() staggers a collinear anti-parallel pair's jogs in finishEdges (gated, elbow-only), mirrored in the runtime twin" }
+  ],
+  "before": [
+    { "kind": "flow", "file": ".gogo/work/feature-state-antiparallel-decramp/charts/before/flow.mmd", "title": "As-is: both anti-parallel edges jog at the same y=306 (collinear crossbar); separateLanes skips them (3px overlap < 40)" }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "slug": "state-antiparallel-decramp",
+  "track": "test",
+  "round": 1,
+  "updated": "2026-07-14",
+  "verdict": "PASS",
+  "summary": "Fresh-eyes hands-on test of the v0.6.2 anti-parallel elbow de-cramp. Build/typecheck/unit (401/401) and full e2e (85/85, +1 new regression test added) green. Visually verified the hard acceptance bar against real rendered PNGs and a real browser: all four elbow variants (clean/sketch x light/dark) now render fail/retry as two clearly separated arrows (down into Error, up into Loading), no merged crossbar, no crossing, reading as cleanly as the clean-fancy reference. Regression sweep confirmed byte-for-byte: only the four state-elbow SVG/PNG assets changed; all four README heroes and every non-state diagram (flowchart/class/sequence, plus state-fancy) are byte-identical; the baked __vnm_payload line changed only in the four state-elbow interactive HTMLs (grepped every docs/interactive/*.html diff to confirm). Two independent asset regenerations produced the identical changed-file set and byte-identical files (sha256 checksum match). The interactive runtime twin (live headless-browser render of docs/interactive/state-clean-light.html) reproduces the identical stagger with zero console errors, confirming FR4 hands-on. REV-001 (carried from review) was empirically re-checked on the regenerated gallery: the only other jog in the same y-band (Loading->Ready / '2xx') stays byte-identical and does not overlap the moved fail/retry verticals - not observed, consistent with review's finding. No open or new issues against this feature's change. Two incidental, out-of-scope findings unrelated to this feature's diff are written up in test-01.md for the record (a pre-existing resvg-js PNG-scale quirk for --style sketch, and a session-local MCP browser-tool connectivity hiccup that was worked around, not skipped) - neither blocks this feature's done-bar.",
+  "issues": []
+}

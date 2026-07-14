@@ -1034,6 +1034,78 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     }
     for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
   }
+  function separateAntiParallelJogs2(edges, pairs) {
+    if (edgeStyle !== "elbow") return;
+    const JOG_GAP2 = 26;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const groups = {};
+    pairs.forEach((e, i) => {
+      const key = e.from < e.to ? e.from + "|" + e.to : e.to + "|" + e.from;
+      (groups[key] = groups[key] || []).push(i);
+    });
+    const moved2 = {};
+    for (const key in groups) {
+      const idxs = groups[key];
+      if (idxs.length < 2) continue;
+      idxs.sort((a, b) => a - b);
+      const jogs = [];
+      let orient;
+      for (const ei of idxs) {
+        const p = edges[ei].points;
+        let jog;
+        for (let i = 1; i + 2 < p.length; i++) {
+          const a = p[i];
+          const b = p[i + 1];
+          const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+          const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+          if (!isVert && !isHorz) continue;
+          const along3 = isVert ? a.x : a.y;
+          const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+          const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+          const end = p[p.length - 1];
+          const target = isVert ? end.x : end.y;
+          jog = { edge: ei, seg: { edge: ei, i, along: along3, lo, hi }, vertical: isVert, target };
+          break;
+        }
+        if (!jog) break;
+        if (orient === void 0) orient = jog.vertical;
+        else if (orient !== jog.vertical) {
+          jogs.length = 0;
+          break;
+        }
+        jogs.push(jog);
+      }
+      if (jogs.length < 2) continue;
+      const a0 = jogs[0].seg.along;
+      let collinear = true;
+      for (const j of jogs) if (Math.abs(j.seg.along - a0) >= 1) collinear = false;
+      if (!collinear) continue;
+      jogs.sort((x, y) => x.target - y.target || x.edge - y.edge);
+      let sum = 0;
+      for (const j of jogs) sum += j.seg.along;
+      const mean = sum / jogs.length;
+      const k = jogs.length;
+      jogs.forEach((j, s) => {
+        const lane = nAt(mean + (s - (k - 1) / 2) * JOG_GAP2);
+        if (Math.abs(lane - j.seg.along) < 1e-6) return;
+        moveLane2(edges[j.edge], j.vertical, j.seg, lane);
+        moved2[j.edge] = true;
+      });
+    }
+    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+  }
   function resolveLabelNodeCollisions2(plates, nodeBoxes) {
     const shifts = plates.map(() => ({ x: 0, y: 0 }));
     if (!nodeBoxes.length) return shifts;
@@ -1307,6 +1379,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     const ports = computePorts();
     const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
     separateLanes2(routed);
+    separateAntiParallelJogs2(routed, edgeEls);
     foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
     foldLabelShifts(routed, resolveLabelEdgeCollisions2(labelPlatesOf(routed), routed.map((r) => r.points)));
     const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id].x, y: positions[nd.id].y, w: sizes[nd.id].w, h: sizes[nd.id].h }));
@@ -2001,6 +2074,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
     });
     separateLanes2(routesB);
+    separateAntiParallelJogs2(routesB, edgeEls);
     foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
     foldLabelShifts(routesB, resolveLabelEdgeCollisions2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     const nodeBoxesB = model.nodes.map((nd) => {
@@ -2111,7 +2185,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     toSvgString
   };
 };
-var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"root_start","label":"","shape":"circle","classes":[],"x":114,"y":40,"width":22,"height":22,"stateMarker":"start"},{"id":"Idle","label":"Idle","shape":"rounded","classes":[],"x":114,"y":153,"width":67,"height":42},{"id":"Loading","label":"Loading","shape":"rounded","classes":[],"x":114,"y":255,"width":93,"height":42},{"id":"Ready","label":"Ready","shape":"rounded","classes":[],"x":46,"y":357,"width":76,"height":42},{"id":"Error","label":"Error","shape":"rounded","classes":[],"x":162,"y":357,"width":76,"height":42},{"id":"root_end","label":"","shape":"circle","classes":[],"x":46,"y":470,"width":22,"height":22,"stateMarker":"end"}],"edges":[{"from":"root_start","to":"Idle","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":114,"y":51},{"x":114,"y":132}],"path":"M 114 51 L 114 132"},{"from":"Idle","to":"Loading","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"fetch","points":[{"x":114,"y":174},{"x":114,"y":234}],"path":"M 114 174 L 114 234","labelPos":{"x":114,"y":204}},{"from":"Loading","to":"Ready","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"2xx","points":[{"x":84,"y":276},{"x":84,"y":306},{"x":46,"y":306},{"x":46,"y":336}],"path":"M 84 276 L 84 306 L 46 306 L 46 336","ports":{"source":{"side":"bottom","offset":-30},"target":{"side":"top","offset":0}},"labelPos":{"x":65,"y":306}},{"from":"Loading","to":"Error","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"fail","points":[{"x":114,"y":276},{"x":114,"y":306},{"x":147,"y":306},{"x":147,"y":336}],"path":"M 114 276 L 114 306 L 147 306 L 147 336","ports":{"source":{"side":"bottom","offset":0},"target":{"side":"top","offset":-15},"labelShift":{"x":0,"y":-13}},"labelPos":{"x":118.2,"y":296}},{"from":"Error","to":"Loading","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"retry","points":[{"x":177,"y":336},{"x":177,"y":306},{"x":144,"y":306},{"x":144,"y":276}],"path":"M 177 336 L 177 306 L 144 306 L 144 276","ports":{"source":{"side":"top","offset":15},"target":{"side":"bottom","offset":30},"labelShift":{"x":0,"y":13}},"labelPos":{"x":177,"y":316}},{"from":"Ready","to":"root_end","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":46,"y":378},{"x":46,"y":459}],"path":"M 46 378 L 46 459"}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":9,"width":232,"height":492}},"theme":{"name":"dark","edgeStyle":"elbow","tokens":{"colors":{"background":"#0f1117","surface":"#1a1f2b","surfaceStroke":"#3a4152","text":"#e7eaf2","textMuted":"#9aa3b8","edge":"#6b7488","edgeLabelBg":"#0f1117","edgeLabelText":"#c3cadb","subgraphFill":"#161b25","subgraphStroke":"#3a4152","subgraphText":"#9aa3b8","accent":"#6f9bff","minimapBg":"rgba(20,24,34,0.9)","minimapViewport":"rgba(111,155,255,0.32)","roles":{"accent":{"fill":"#26314f","stroke":"#6f9bff","text":"#e7eaf2"},"success":{"fill":"#183226","stroke":"#4bbf83","text":"#d6f5e4"},"warn":{"fill":"#33290f","stroke":"#d3ad4e","text":"#f7ecc9"},"danger":{"fill":"#3a1c1c","stroke":"#e06a66","text":"#ffd9d7"}}},"radii":{"node":10,"card":10,"label":4},"spacing":{"nodePadX":16,"nodePadY":12,"nodesep":40,"ranksep":60,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":18,"weight":500},"edge":{"style":"elbow","width":1.5,"thickWidth":3,"arrowSize":8},"effects":{"nodeShadow":"0 1px 3px rgba(0,0,0,0.5)","gradient":false,"hoverLift":2}}},"cssVars":"--vnm-bg: #0f1117; --vnm-surface: #1a1f2b; --vnm-surface-stroke: #3a4152; --vnm-text: #e7eaf2; --vnm-text-muted: #9aa3b8; --vnm-edge: #6b7488; --vnm-edge-label-bg: #0f1117; --vnm-edge-label-text: #c3cadb; --vnm-subgraph-fill: #161b25; --vnm-subgraph-stroke: #3a4152; --vnm-subgraph-text: #9aa3b8; --vnm-accent: #6f9bff; --vnm-minimap-bg: rgba(20,24,34,0.9); --vnm-minimap-viewport: rgba(111,155,255,0.32); --vnm-radius: 10px; --vnm-label-radius: 4px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 500; --vnm-node-shadow: 0 1px 3px rgba(0,0,0,0.5); --vnm-hover-lift: 2px; --vnm-edge-width: 1.5px;","options":{"fitPadding":60,"persistKey":"vnm-layout:fg11y1","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true}};
+var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"root_start","label":"","shape":"circle","classes":[],"x":114,"y":40,"width":22,"height":22,"stateMarker":"start"},{"id":"Idle","label":"Idle","shape":"rounded","classes":[],"x":114,"y":153,"width":67,"height":42},{"id":"Loading","label":"Loading","shape":"rounded","classes":[],"x":114,"y":255,"width":93,"height":42},{"id":"Ready","label":"Ready","shape":"rounded","classes":[],"x":46,"y":357,"width":76,"height":42},{"id":"Error","label":"Error","shape":"rounded","classes":[],"x":162,"y":357,"width":76,"height":42},{"id":"root_end","label":"","shape":"circle","classes":[],"x":46,"y":470,"width":22,"height":22,"stateMarker":"end"}],"edges":[{"from":"root_start","to":"Idle","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":114,"y":51},{"x":114,"y":132}],"path":"M 114 51 L 114 132"},{"from":"Idle","to":"Loading","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"fetch","points":[{"x":114,"y":174},{"x":114,"y":234}],"path":"M 114 174 L 114 234","labelPos":{"x":114,"y":204}},{"from":"Loading","to":"Ready","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"2xx","points":[{"x":84,"y":276},{"x":84,"y":306},{"x":46,"y":306},{"x":46,"y":336}],"path":"M 84 276 L 84 306 L 46 306 L 46 336","ports":{"source":{"side":"bottom","offset":-30},"target":{"side":"top","offset":0}},"labelPos":{"x":65,"y":306}},{"from":"Loading","to":"Error","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"fail","points":[{"x":114,"y":276},{"x":114,"y":319},{"x":147,"y":319},{"x":147,"y":336}],"path":"M 114 276 L 114 319 L 147 319 L 147 336","ports":{"source":{"side":"bottom","offset":0},"target":{"side":"top","offset":-15},"labelShift":{"x":0,"y":-13}},"labelPos":{"x":120.6,"y":306}},{"from":"Error","to":"Loading","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"retry","points":[{"x":177,"y":336},{"x":177,"y":293},{"x":144,"y":293},{"x":144,"y":276}],"path":"M 177 336 L 177 293 L 144 293 L 144 276","ports":{"source":{"side":"top","offset":15},"target":{"side":"bottom","offset":30},"labelShift":{"x":0,"y":13}},"labelPos":{"x":170.4,"y":306}},{"from":"Ready","to":"root_end","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":46,"y":378},{"x":46,"y":459}],"path":"M 46 378 L 46 459"}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":9,"width":232,"height":492}},"theme":{"name":"dark","edgeStyle":"elbow","tokens":{"colors":{"background":"#0f1117","surface":"#1a1f2b","surfaceStroke":"#3a4152","text":"#e7eaf2","textMuted":"#9aa3b8","edge":"#6b7488","edgeLabelBg":"#0f1117","edgeLabelText":"#c3cadb","subgraphFill":"#161b25","subgraphStroke":"#3a4152","subgraphText":"#9aa3b8","accent":"#6f9bff","minimapBg":"rgba(20,24,34,0.9)","minimapViewport":"rgba(111,155,255,0.32)","roles":{"accent":{"fill":"#26314f","stroke":"#6f9bff","text":"#e7eaf2"},"success":{"fill":"#183226","stroke":"#4bbf83","text":"#d6f5e4"},"warn":{"fill":"#33290f","stroke":"#d3ad4e","text":"#f7ecc9"},"danger":{"fill":"#3a1c1c","stroke":"#e06a66","text":"#ffd9d7"}}},"radii":{"node":10,"card":10,"label":4},"spacing":{"nodePadX":16,"nodePadY":12,"nodesep":40,"ranksep":60,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":18,"weight":500},"edge":{"style":"elbow","width":1.5,"thickWidth":3,"arrowSize":8},"effects":{"nodeShadow":"0 1px 3px rgba(0,0,0,0.5)","gradient":false,"hoverLift":2}}},"cssVars":"--vnm-bg: #0f1117; --vnm-surface: #1a1f2b; --vnm-surface-stroke: #3a4152; --vnm-text: #e7eaf2; --vnm-text-muted: #9aa3b8; --vnm-edge: #6b7488; --vnm-edge-label-bg: #0f1117; --vnm-edge-label-text: #c3cadb; --vnm-subgraph-fill: #161b25; --vnm-subgraph-stroke: #3a4152; --vnm-subgraph-text: #9aa3b8; --vnm-accent: #6f9bff; --vnm-minimap-bg: rgba(20,24,34,0.9); --vnm-minimap-viewport: rgba(111,155,255,0.32); --vnm-radius: 10px; --vnm-label-radius: 4px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 500; --vnm-node-shadow: 0 1px 3px rgba(0,0,0,0.5); --vnm-hover-lift: 2px; --vnm-edge-width: 1.5px;","options":{"fitPadding":60,"persistKey":"vnm-layout:fg11y1","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true}};
 vnmRuntime(document.getElementById("vnm-root"), __vnm_payload);
 </script>
 </body>

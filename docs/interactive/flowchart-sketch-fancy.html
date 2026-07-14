@@ -1034,6 +1034,78 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     }
     for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
   }
+  function separateAntiParallelJogs2(edges, pairs) {
+    if (edgeStyle !== "elbow") return;
+    const JOG_GAP2 = 26;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const groups = {};
+    pairs.forEach((e, i) => {
+      const key = e.from < e.to ? e.from + "|" + e.to : e.to + "|" + e.from;
+      (groups[key] = groups[key] || []).push(i);
+    });
+    const moved2 = {};
+    for (const key in groups) {
+      const idxs = groups[key];
+      if (idxs.length < 2) continue;
+      idxs.sort((a, b) => a - b);
+      const jogs = [];
+      let orient;
+      for (const ei of idxs) {
+        const p = edges[ei].points;
+        let jog;
+        for (let i = 1; i + 2 < p.length; i++) {
+          const a = p[i];
+          const b = p[i + 1];
+          const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+          const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+          if (!isVert && !isHorz) continue;
+          const along3 = isVert ? a.x : a.y;
+          const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+          const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+          const end = p[p.length - 1];
+          const target = isVert ? end.x : end.y;
+          jog = { edge: ei, seg: { edge: ei, i, along: along3, lo, hi }, vertical: isVert, target };
+          break;
+        }
+        if (!jog) break;
+        if (orient === void 0) orient = jog.vertical;
+        else if (orient !== jog.vertical) {
+          jogs.length = 0;
+          break;
+        }
+        jogs.push(jog);
+      }
+      if (jogs.length < 2) continue;
+      const a0 = jogs[0].seg.along;
+      let collinear = true;
+      for (const j of jogs) if (Math.abs(j.seg.along - a0) >= 1) collinear = false;
+      if (!collinear) continue;
+      jogs.sort((x, y) => x.target - y.target || x.edge - y.edge);
+      let sum = 0;
+      for (const j of jogs) sum += j.seg.along;
+      const mean = sum / jogs.length;
+      const k = jogs.length;
+      jogs.forEach((j, s) => {
+        const lane = nAt(mean + (s - (k - 1) / 2) * JOG_GAP2);
+        if (Math.abs(lane - j.seg.along) < 1e-6) return;
+        moveLane2(edges[j.edge], j.vertical, j.seg, lane);
+        moved2[j.edge] = true;
+      });
+    }
+    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+  }
   function resolveLabelNodeCollisions2(plates, nodeBoxes) {
     const shifts = plates.map(() => ({ x: 0, y: 0 }));
     if (!nodeBoxes.length) return shifts;
@@ -1307,6 +1379,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     const ports = computePorts();
     const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
     separateLanes2(routed);
+    separateAntiParallelJogs2(routed, edgeEls);
     foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
     foldLabelShifts(routed, resolveLabelEdgeCollisions2(labelPlatesOf(routed), routed.map((r) => r.points)));
     const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id].x, y: positions[nd.id].y, w: sizes[nd.id].w, h: sizes[nd.id].h }));
@@ -2001,6 +2074,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
     });
     separateLanes2(routesB);
+    separateAntiParallelJogs2(routesB, edgeEls);
     foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
     foldLabelShifts(routesB, resolveLabelEdgeCollisions2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     const nodeBoxesB = model.nodes.map((nd) => {

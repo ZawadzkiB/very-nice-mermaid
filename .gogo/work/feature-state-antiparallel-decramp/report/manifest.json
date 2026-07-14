@@ -1,0 +1,8 @@
+{
+  "slug": "state-antiparallel-decramp",
+  "updated": "2026-07-14",
+  "note": "As-built: where the anti-parallel jog de-cramp lands in the shared edge-routing pipeline. computePerimeterPorts + routeElbow are UNCHANGED; a NEW gated post-pass separateAntiParallelJogs runs inside finishEdges right after separateLanes. It groups the routed edges by their unordered node pair, fires ONLY on a genuine A->B / B->A bundle whose interior jog segments are collinear (|Δalong| < 1), and staggers the two jogs >= JOG_GAP (26) apart via the existing moveLane, each biased toward its own target (sorted by the endpoint's perpendicular coordinate). Elbow-only + gated, so every clean edge (incl. Loading->Ready) and all curved/fancy geometry stay byte-identical; mirrored byte-for-byte in the vnmRuntime twin at both call sites (renderEdges + buildSvg), guarded by dom-runtime-parity. Ships as v0.6.2.",
+  "diagrams": [
+    { "kind": "flow", "file": "flow.mmd", "title": "As-built: separateAntiParallelJogs() staggers a collinear anti-parallel pair's jogs in finishEdges (gated, elbow-only), mirrored in the runtime twin" }
+  ]
+}

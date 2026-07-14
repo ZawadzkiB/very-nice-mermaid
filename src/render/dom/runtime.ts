@@ -1369,6 +1369,88 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     }
     for (const kk in moved) edges[Number(kk)]!.path = pathPoly(edges[Number(kk)]!.points);
   }
+  // mirrors geometry.separateAntiParallelJogs() (v0.6.2): de-cramp a collinear
+  // anti-parallel A→B/B→A elbow pair that separateLanes' overlap gate skips. Group
+  // the routed edges by their unordered node pair (pairs[i] === edgeEls[i]); a
+  // ≥2-edge bundle whose interior jog segments are collinear is spread onto lanes
+  // JOG_GAP=26 apart, centred on the mean, ordered by each edge's target-side
+  // perpendicular coord so every jog moves toward its own target. Byte-identical
+  // constants + logic to geometry (JOG_GAP=26; same i>=1 && i+2<len interior-run
+  // detection; nAt == n; pathPoly == toPath elbow). Elbow only; runs right after
+  // separateLanes on the routed results. Keep in lockstep with the static pass.
+  function separateAntiParallelJogs(
+    edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>,
+    pairs: Array<{ from: string; to: string }>,
+  ): void {
+    if (edgeStyle !== "elbow") return;
+    const JOG_GAP = 26;
+    const moveLane = (e: { points: Pt[]; labelPos: Pt }, vertical: boolean, seg: LaneSeg, target: number): void => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i]!.y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1]!.y };
+      } else {
+        shiftLabelOnSeg(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i]!.x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1]!.x, y: target };
+      }
+      seg.along = target;
+    };
+    const groups: Record<string, number[]> = {};
+    pairs.forEach((e, i) => {
+      const key = e.from < e.to ? e.from + "|" + e.to : e.to + "|" + e.from;
+      (groups[key] = groups[key] || []).push(i);
+    });
+    const moved: Record<number, boolean> = {};
+    for (const key in groups) {
+      const idxs = groups[key]!;
+      if (idxs.length < 2) continue;
+      idxs.sort((a, b) => a - b);
+      type Jog = { edge: number; seg: LaneSeg; vertical: boolean; target: number };
+      const jogs: Jog[] = [];
+      let orient: boolean | undefined;
+      for (const ei of idxs) {
+        const p = edges[ei]!.points;
+        let jog: Jog | undefined;
+        for (let i = 1; i + 2 < p.length; i++) {
+          const a = p[i]!;
+          const b = p[i + 1]!;
+          const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+          const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+          if (!isVert && !isHorz) continue;
+          const along = isVert ? a.x : a.y;
+          const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+          const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+          const end = p[p.length - 1]!;
+          const target = isVert ? end.x : end.y;
+          jog = { edge: ei, seg: { edge: ei, i, along, lo, hi }, vertical: isVert, target };
+          break;
+        }
+        if (!jog) break;
+        if (orient === undefined) orient = jog.vertical;
+        else if (orient !== jog.vertical) { jogs.length = 0; break; }
+        jogs.push(jog);
+      }
+      if (jogs.length < 2) continue;
+      const a0 = jogs[0]!.seg.along;
+      let collinear = true;
+      for (const j of jogs) if (Math.abs(j.seg.along - a0) >= 1) collinear = false;
+      if (!collinear) continue;
+      jogs.sort((x, y) => x.target - y.target || x.edge - y.edge);
+      let sum = 0;
+      for (const j of jogs) sum += j.seg.along;
+      const mean = sum / jogs.length;
+      const k = jogs.length;
+      jogs.forEach((j, s) => {
+        const lane = nAt(mean + (s - (k - 1) / 2) * JOG_GAP);
+        if (Math.abs(lane - j.seg.along) < 1e-6) return;
+        moveLane(edges[j.edge]!, j.vertical, j.seg, lane);
+        moved[j.edge] = true;
+      });
+    }
+    for (const kk in moved) edges[Number(kk)]!.path = pathPoly(edges[Number(kk)]!.points);
+  }
   // mirrors geometry.resolveLabelNodeCollisions() (UAT-1): push any edge-label
   // plate that overlaps a NODE box off it by the smallest move (least-penetration
   // axis, away from the node centre; centred tie → +y then +x). Nodes are fixed
@@ -1724,6 +1806,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
     // FR9: lane-separate FIRST (mutates points/path/labelPos), matching finishEdges.
     separateLanes(routed);
+    // v0.6.2: de-cramp a collinear anti-parallel elbow pair the lane gate skips.
+    separateAntiParallelJogs(routed, edgeEls);
     // FR6: de-collide label plates, folding the shift back into labelPos so the
     // label-vs-node pass sees the moved plate (uses the same rounded-centre
     // resolver as buildSvg → the live view matches the exported SVG).
@@ -2586,6 +2670,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // FR9: lane-separate FIRST (mutates points/path/labelPos), matching finishEdges,
     // so Save-SVG byte-matches the static layout()'s re-laned routes (parity).
     separateLanes(routesB);
+    // v0.6.2: de-cramp a collinear anti-parallel elbow pair the lane gate skips.
+    separateAntiParallelJogs(routesB, edgeEls);
     // FR6: de-collide label plates from the ROUNDED routed midpoints (== the value
     // the sink emits), folding each shift into labelPos so the shift byte-matches
     // the static layout()'s and the label-vs-node pass reads the moved plate.
