@@ -1228,6 +1228,152 @@ export function separateConvergentJogs(
   for (const ei of moved) edges[ei]!.path = toPath(edges[ei]!.points, "elbow");
 }
 
+/**
+ * v0.6.6 — margin (px) past the crossed container's nearest side that a re-routed trunk is
+ * pushed (defect #3). Comparable to {@link LANE_GAP}/{@link JOG_GAP} so the pushed-out trunk
+ * reads with the same channel spacing once {@link separateLanes} re-lanes any new overlap.
+ */
+export const SUBGRAPH_AVOID_MARGIN = 28;
+/**
+ * v0.6.6 — minimum overlap (px) between an edge's interior trunk and a container's *parallel*
+ * span for the run to count as a genuine **pierce** rather than a normal edge-entry sliver
+ * into a top/bottom member. Chosen so the ONLY corpus-wide firings are architecture.mmd's
+ * `e5`/`e6` (interior runs of 390/416 px through `ENGINE`) — a run merely dipping in to reach
+ * a border-adjacent member (≤~40 px) stays byte-identical — AND so the pass is **idempotent**:
+ * the short re-entry residual it leaves (≤~100 px) never re-qualifies on a second pass.
+ */
+const SUBGRAPH_AVOID_MIN_CROSS = 120;
+/**
+ * v0.6.6 — how far outside the interior endpoint's own border the lowered re-entry corner sits
+ * (D2=A). The interior residual becomes a short approach hugging that endpoint instead of a
+ * full-height pierce. Uses the edge's own border anchor, so it never touches
+ * {@link computePerimeterPorts} (the most parity-mirrored function).
+ */
+const SUBGRAPH_AVOID_APPROACH = 30;
+
+/**
+ * A subgraph **container as a routing obstacle** for {@link avoidSubgraphs}: its center-based
+ * {@link NodeBox} plus the full set of member NODE ids (nested subgraph ids expanded). Built
+ * from the already-computed {@link computeSubgraphBoxes} + membership via
+ * {@link computeAvoidContainers}; mirrored in the runtime twin from `subgraphWorldBox` /
+ * `subgraphAbsBox` + `subgraphMembers`.
+ */
+export interface AvoidContainer {
+  box: NodeBox;
+  members: Set<string>;
+}
+
+/**
+ * **v0.6.6 — scoped container-avoid re-route (defect #3, D1=A).** A gated, elbow-only
+ * post-route pass, run **first** in {@link finishEdges} (before {@link separateLanes}). For an
+ * edge whose long axis-aligned **interior trunk** runs *through* a container box that does
+ * **not** hold **both** of its endpoints (mixed-membership, or a fully-outside crossing of an
+ * unrelated box), push that trunk just **outside the container's nearest side + a margin**
+ * ({@link moveLane}, keeping the elbow orthogonal + connected and carrying the label). When one
+ * endpoint IS inside the crossed container, additionally **lower the re-entry corner** near that
+ * endpoint (D2=A) so the residual interior crossing is a short approach at the endpoint, not a
+ * full-height pierce — using the edge's own border anchor, so it never re-ports the endpoint.
+ *
+ * The gate is deliberately narrow: the pierced run's perpendicular coord must sit strictly
+ * inside the container's cross-span AND overlap its parallel span by ≥ {@link SUBGRAPH_AVOID_MIN_CROSS},
+ * so a normal edge dipping in to reach a top/bottom member (an entry sliver) never fires — proven
+ * to fire **only** on architecture.mmd's `e5`/`e6` across the whole fixture corpus (both subgraph
+ * heroes are both-endpoints-inside → no-op → byte-identical). Handles both axes (TB vertical
+ * trunks / LR horizontal trunks; the machinery is symmetric). Elbow only, deterministic,
+ * **idempotent** (a pushed-out trunk is no longer inside the box, and the short re-entry residual
+ * is below the MIN_CROSS gate → a second pass no-ops). Mirrored byte-for-byte in the runtime twin
+ * (`renderEdges` + `buildSvg`). Mutates `edge.points`/`path`/`labelPos` in place; leaves every
+ * non-crossing edge byte-identical. Deferred (documented limitations): diagonal/curved trunk
+ * crossings, nested mixed-membership, and multi-obstacle detours.
+ */
+export function avoidSubgraphs(
+  edges: Array<{ from: string; to: string; points: Point[]; path?: string; labelPos?: Point }>,
+  containers: ReadonlyArray<AvoidContainer>,
+  style: EdgeStyle,
+): void {
+  if (style !== "elbow" || containers.length === 0) return;
+  const moved = new Set<number>();
+  edges.forEach((e, ei) => {
+    const p = e.points;
+    const len = p.length;
+    if (len < 4) return; // need at least one interior run (both its ends are bends)
+    // Pick the LONGEST interior axis-aligned run that pierces a container NOT holding BOTH ends.
+    // Same interior-run rule as separateLanes (i >= 1 && i+2 < len → no anchor detaches).
+    let best:
+      | { i: number; vertical: boolean; along: number; lo: number; hi: number; side: number; container: AvoidContainer; runLen: number }
+      | undefined;
+    for (let i = 1; i + 2 < len; i++) {
+      const a = p[i]!;
+      const b = p[i + 1]!;
+      const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+      const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+      if (!isVert && !isHorz) continue;
+      const along = isVert ? a.x : a.y;
+      const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+      const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+      const runLen = hi - lo;
+      for (const c of containers) {
+        if (c.members.has(e.from) && c.members.has(e.to)) continue; // both inside → not a foreign box
+        // A run adjacent to an anchor whose endpoint IS a member is that endpoint's own
+        // interior approach (incl. the short re-entry this pass itself leaves), never a
+        // foreign pierce — skip it. This is what makes the pass robustly IDEMPOTENT: the
+        // lowered re-entry residual (i === len-3, target inside) never re-qualifies, whatever
+        // its length.
+        if ((i === 1 && c.members.has(e.from)) || (i === len - 3 && c.members.has(e.to))) continue;
+        const cx0 = c.box.x - c.box.width / 2;
+        const cx1 = c.box.x + c.box.width / 2;
+        const cy0 = c.box.y - c.box.height / 2;
+        const cy1 = c.box.y + c.box.height / 2;
+        const perpLo = isVert ? cx0 : cy0; // the run's `along` must sit strictly inside this cross-span
+        const perpHi = isVert ? cx1 : cy1;
+        const parLo = isVert ? cy0 : cx0; // and overlap this (parallel) span by ≥ MIN_CROSS
+        const parHi = isVert ? cy1 : cx1;
+        if (along <= perpLo || along >= perpHi) continue;
+        if (Math.min(hi, parHi) - Math.max(lo, parLo) < SUBGRAPH_AVOID_MIN_CROSS) continue;
+        const side =
+          along - perpLo <= perpHi - along ? n(perpLo - SUBGRAPH_AVOID_MARGIN) : n(perpHi + SUBGRAPH_AVOID_MARGIN);
+        if (!best || runLen > best.runLen) best = { i, vertical: isVert, along, lo, hi, side, container: c, runLen };
+      }
+    }
+    if (!best) return;
+    // Push the trunk just outside the container's nearest side (moveLane slides both its
+    // endpoints together so the neighbours just stretch — the elbow stays orthogonal + anchored
+    // — and carries the label along).
+    moveLane(e, best.vertical, { edge: ei, i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+    moved.add(ei);
+    // D2=A — lower the interior re-entry corner near whichever endpoint IS inside the crossed
+    // container, so the residual interior crossing is a short approach hugging the endpoint's
+    // border. The source is reached via p[i-1..0] (corner = p[i-1]); the target via p[i+2..len-1]
+    // (corner = p[i+2]). Uses the edge's own border anchor (p[0] / p[len-1]).
+    if (best.container.members.has(e.from)) lowerReentry(p, best.i, best.i - 1, p[0]!, best.vertical);
+    if (best.container.members.has(e.to)) lowerReentry(p, best.i + 1, best.i + 2, p[len - 1]!, best.vertical);
+  });
+  for (const ei of moved) edges[ei]!.path = toPath(edges[ei]!.points, "elbow");
+}
+
+/**
+ * Pull a trunk end + its adjacent corner to just outside the interior endpoint's border — a
+ * short {@link SUBGRAPH_AVOID_APPROACH} approach on the parallel axis (D2=A). Only ever
+ * **shortens** the interior residual (never lengthens); a no-op when the corner coincides with
+ * the anchor (a short elbow with no separate re-entry corner). Mirrored in the runtime twin.
+ */
+function lowerReentry(p: Point[], trunkEndIdx: number, cornerIdx: number, anchor: Point, vertical: boolean): void {
+  if (cornerIdx < 0 || cornerIdx >= p.length || trunkEndIdx < 0 || trunkEndIdx >= p.length) return;
+  const anchorPar = vertical ? anchor.y : anchor.x;
+  const cornerOld = vertical ? p[cornerIdx]!.y : p[cornerIdx]!.x;
+  const dir = Math.sign(cornerOld - anchorPar); // border → trunk, on the parallel axis
+  if (dir === 0) return;
+  const target = n(anchorPar + dir * SUBGRAPH_AVOID_APPROACH);
+  if (Math.abs(target - anchorPar) >= Math.abs(cornerOld - anchorPar)) return; // never lengthen the residual
+  if (vertical) {
+    p[cornerIdx] = { x: p[cornerIdx]!.x, y: target };
+    p[trunkEndIdx] = { x: p[trunkEndIdx]!.x, y: target };
+  } else {
+    p[cornerIdx] = { x: target, y: p[cornerIdx]!.y };
+    p[trunkEndIdx] = { x: target, y: p[trunkEndIdx]!.y };
+  }
+}
+
 const isHorizontalLayout = (d: Direction): boolean => d === "LR" || d === "RL";
 
 /**
@@ -1681,6 +1827,30 @@ export function computeSubgraphBoxes(
     result.set(sg.id, box ?? { x: sg.x, y: sg.y, width: sg.width, height: sg.height });
   }
   return result;
+}
+
+/**
+ * v0.6.6 — build the {@link AvoidContainer} obstacle set for {@link avoidSubgraphs}: each
+ * subgraph's auto-contain box ({@link computeSubgraphBoxes}) paired with its fully-resolved
+ * member NODE ids ({@link resolveMemberNodes}, nested subgraphs expanded). Containers with no
+ * resolvable members are skipped (nothing to avoid). Deterministic; keep the box + membership
+ * derivation in lockstep with the runtime twin's `subgraphWorldBox`/`subgraphAbsBox` +
+ * `subgraphMembers`.
+ */
+export function computeAvoidContainers(
+  subgraphs: ReadonlyArray<SubgraphShape>,
+  nodeBoxes: Map<string, NodeBox>,
+): AvoidContainer[] {
+  const childrenById = new Map<string, string[]>(subgraphs.map((sg) => [sg.id, sg.children]));
+  const isNode = (id: string): boolean => nodeBoxes.has(id);
+  const boxes = computeSubgraphBoxes(subgraphs, nodeBoxes);
+  const out: AvoidContainer[] = [];
+  for (const sg of subgraphs) {
+    const memberIds = resolveMemberNodes(sg.id, childrenById, isNode, new Set([sg.id]));
+    if (memberIds.length === 0) continue;
+    out.push({ box: boxes.get(sg.id)!, members: new Set(memberIds) });
+  }
+  return out;
 }
 
 /** Bounding rect over every box (and optional extra points), plus padding. */

@@ -1,0 +1,29 @@
+{
+  "slug": "subgraph-aware-routing",
+  "phase": "report",
+  "status": "ok",
+  "inputs": [
+    "plan.md",
+    "state.md",
+    "decisions.md",
+    "review/issues.json",
+    "test/issues.json",
+    "charts/manifest.json",
+    "charts/before/manifest.json"
+  ],
+  "outputs": [
+    "report/report.md",
+    "report/flow.mmd",
+    "report/activity.mmd",
+    "report/diagrams.html",
+    "report/manifest.json",
+    "report/before/flow.mmd",
+    "report/before/manifest.json",
+    "report/result.json",
+    ".gogo/knowledge/code-review-standards.md",
+    ".gogo/knowledge/tech-stack.md"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "summary": "v0.6.6 subgraph-aware-routing report-complete: avoidSubgraphs gated re-route shipped (fixes defect #3), fires only on architecture.mmd BE<->RULES corpus-wide, both subgraph heroes + snapshots byte-identical, twin parity byte-for-byte (TB+LR+drag guarded). Review APPROVE (2 findings fixed->verified). Test PASS (visual bar met light+dark; 426 tests green). One non-blocking out-of-scope note TEST-001 (pre-existing parser membership bug). Feature at awaiting-uat."
+}

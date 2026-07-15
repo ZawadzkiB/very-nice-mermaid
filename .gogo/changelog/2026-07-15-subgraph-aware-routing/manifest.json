@@ -1,0 +1,10 @@
+{
+  "slug": "subgraph-aware-routing",
+  "updated": "2026-07-15",
+  "members": ["subgraph-aware-routing"],
+  "note": "v0.6.6 subgraph-aware routing (scoped): a single gated elbow-only avoidSubgraphs pass run first in finishEdges. For an edge whose long interior trunk pierces a container that does NOT hold both endpoints, it pushes the trunk just outside the nearest side (MARGIN=28) and drops a short re-entry near the interior endpoint (APPROACH=30) using the edge's own anchor - computePerimeterPorts untouched (D2=A). Gate: along strictly inside the cross-span AND parallel overlap >= MIN_CROSS=120. Container boxes/membership threaded from the already-computed computeSubgraphBoxes into finishEdges. Mirrored byte-for-byte in the vnmRuntime twin (renderEdges + buildSvg), guarded by dom-runtime-parity. Fires on ONLY architecture.mmd's BE<->RULES (2 edges) corpus-wide; microservices + nested-subgraphs heroes byte-identical, zero snapshot/example churn. Deferred (D1=A): full obstacle-aware routing (diagonal/nested/multi-obstacle). before/ holds the as-is baseline (BE<->RULES impaling the ENGINE container).",
+  "diagrams": [
+    { "kind": "flow", "file": "subgraph-aware-routing-flow.mmd", "title": "subgraph-aware-routing: As-built - avoidSubgraphs pushes a container-piercing trunk outside the box + re-enters near the interior endpoint, mirrored in the runtime twin" },
+    { "kind": "activity", "file": "subgraph-aware-routing-activity.mmd", "title": "subgraph-aware-routing: the avoidSubgraphs gate + re-route decision flow" }
+  ]
+}

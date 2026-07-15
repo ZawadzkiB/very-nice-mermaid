@@ -230,3 +230,36 @@ Generated-by: /gogo:build (scaffold)
   rendered payload (edge `d="..."`) byte-identical. Verify by grepping the HTML diff for `d="[ML]`
   (zero rendered-path changes) — do NOT mistake the source growth for a geometry regression, and do
   NOT expect zero HTML churn.
+
+## Project-specific gotchas (verified — feature `subgraph-aware-routing`, 2026-07-15)
+- **A new `finishEdges` pass that reads a NEW input (container obstacles) must thread that input to
+  the parity reference too, or the guard silently no-ops.** v0.6.6 `avoidSubgraphs` added a 5th
+  `finishEdges` param (`containers: AvoidContainer[]`, from `computeAvoidContainers` =
+  `computeSubgraphBoxes` box + `resolveMemberNodes` members). The `dom-runtime-parity` `expectedPaths`
+  helper called `finishEdges(routed, theme, undefined, nodeBoxes)` with **no containers** → the static
+  reference ran the pass as a no-op while the runtime (which builds containers via `subgraphWorldBox`)
+  fired it → a real mismatch that FIRST looked like a twin drift but was the stale reference. Fix:
+  `expectedPaths` must build `computeAvoidContainers(model.subgraphs, boxes)` in the SAME
+  offset-removed/world space as its node boxes and pass it in. Same lesson as the older "parity helper
+  that bypasses finishEdges masks drift" — extend the reference for every new `finishEdges` input.
+- **Mirror the twin at BOTH routing paths with the coord-space source each uses.** `avoidSubgraphs`
+  is inlined in `vnmRuntime` and called first in BOTH `renderEdges` (containers via `subgraphWorldBox`,
+  live/world coords) and `buildSvg` (via `subgraphAbsBox`, absolute coords). Confirm OUTPUT parity:
+  same `SUBGRAPH_AVOID_MARGIN=28`/`MIN_CROSS=120`/`APPROACH=30`, same interior-run rule (`i>=1 && i+2<len`),
+  same both-in + approach-into-member skips, same nearest-side math, `nAt`≡`n`, `pathPoly`≡`toPath`. The
+  guard needs a fixture that FIRES per axis — TB (`architecture.mmd` BE↔RULES) AND an `flowchart LR`
+  case (the horizontal `moveLane`/`lowerReentry` branch is otherwise never executed by any test/render).
+- **A gated re-route must be idempotent for ANY geometry, not just the repro.** Pushing a trunk out and
+  lowering the re-entry leaves a short interior residual; if the interior endpoint sits far from the
+  crossed side, that residual can exceed the pierce threshold (`MIN_CROSS`) and RE-FIRE on a second pass.
+  The robust guard is semantic, not a bigger threshold: skip a run adjacent to a **member** anchor
+  (`i==1 && from∈c`, or `i==len-3 && to∈c`) — it is that endpoint's own approach, never a foreign pierce.
+  The real corpus residual was already safe (98 < 120), but the guard makes idempotency total.
+- **Prove a container-avoid gate fires ONLY where intended with a corpus scan, and beware trivial
+  no-ops.** A scan (parse→layout→route→run the pass on a copy, diff paths) confirmed `avoidSubgraphs`
+  fires on exactly `architecture.mmd`'s 2 edges corpus-wide; `nested-subgraphs` (real members) is a
+  genuine both-in no-op. But `microservices.mmd`'s subgraph has EMPTY members (pre-existing parser
+  reference-then-declare bug: `ensureNode` only attaches a node to a subgraph when it CREATES it, so a
+  node first mentioned in an earlier top-level edge is never re-parented) → `containers=0` → its
+  byte-identity holds *trivially*, not by exercising the gate. When claiming "hero X is a both-in
+  no-op," verify the container actually has members, or the proof is vacuous.

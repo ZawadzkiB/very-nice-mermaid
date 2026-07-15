@@ -1001,6 +1001,93 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       e.labelPos = { x: lp.x, y: nAt(lp.y + (target - seg.along)) };
     }
   }
+  function avoidSubgraphs2(edges, pairs, containers) {
+    if (edgeStyle !== "elbow" || !containers.length) return;
+    const MARGIN2 = 28;
+    const MIN_CROSS = 120;
+    const APPROACH = 30;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const lowerReentry2 = (p, trunkEndIdx, cornerIdx, anchor2, vertical) => {
+      if (cornerIdx < 0 || cornerIdx >= p.length || trunkEndIdx < 0 || trunkEndIdx >= p.length) return;
+      const anchorPar = vertical ? anchor2.y : anchor2.x;
+      const cornerOld = vertical ? p[cornerIdx].y : p[cornerIdx].x;
+      const dir = Math.sign(cornerOld - anchorPar);
+      if (dir === 0) return;
+      const target = nAt(anchorPar + dir * APPROACH);
+      if (Math.abs(target - anchorPar) >= Math.abs(cornerOld - anchorPar)) return;
+      if (vertical) {
+        p[cornerIdx] = { x: p[cornerIdx].x, y: target };
+        p[trunkEndIdx] = { x: p[trunkEndIdx].x, y: target };
+      } else {
+        p[cornerIdx] = { x: target, y: p[cornerIdx].y };
+        p[trunkEndIdx] = { x: target, y: p[trunkEndIdx].y };
+      }
+    };
+    const moved2 = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      const len = p.length;
+      if (len < 4) return;
+      const ep = pairs[ei];
+      let best;
+      for (let i = 1; i + 2 < len; i++) {
+        const a = p[i];
+        const b = p[i + 1];
+        const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+        const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+        if (!isVert && !isHorz) continue;
+        const along3 = isVert ? a.x : a.y;
+        const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+        const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+        const runLen = hi - lo;
+        for (const c of containers) {
+          if (c.members[ep.from] && c.members[ep.to]) continue;
+          if (i === 1 && c.members[ep.from] || i === len - 3 && c.members[ep.to]) continue;
+          const cx0 = c.box.x - c.box.w / 2;
+          const cx1 = c.box.x + c.box.w / 2;
+          const cy0 = c.box.y - c.box.h / 2;
+          const cy1 = c.box.y + c.box.h / 2;
+          const perpLo = isVert ? cx0 : cy0;
+          const perpHi = isVert ? cx1 : cy1;
+          const parLo = isVert ? cy0 : cx0;
+          const parHi = isVert ? cy1 : cx1;
+          if (along3 <= perpLo || along3 >= perpHi) continue;
+          if (Math.min(hi, parHi) - Math.max(lo, parLo) < MIN_CROSS) continue;
+          const side = along3 - perpLo <= perpHi - along3 ? nAt(perpLo - MARGIN2) : nAt(perpHi + MARGIN2);
+          if (!best || runLen > best.runLen) best = { i, vertical: isVert, along: along3, lo, hi, side, container: c, runLen };
+        }
+      }
+      if (!best) return;
+      moveLane2(edges[ei], best.vertical, { i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+      moved2[ei] = true;
+      if (best.container.members[ep.from]) lowerReentry2(p, best.i, best.i - 1, p[0], best.vertical);
+      if (best.container.members[ep.to]) lowerReentry2(p, best.i + 1, best.i + 2, p[len - 1], best.vertical);
+    });
+    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+  }
+  function avoidContainersFrom(boxOf) {
+    const out = [];
+    for (const sg of model.subgraphs) {
+      const ids = subgraphMembers[sg.id] || [];
+      if (!ids.length) continue;
+      const members = {};
+      for (const id of ids) members[id] = true;
+      out.push({ box: boxOf(sg), members });
+    }
+    return out;
+  }
   function separateLanes2(edges) {
     if (edgeStyle !== "elbow") return;
     const LANE_GAP2 = 26;
@@ -1498,6 +1585,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
   function renderEdges() {
     const ports = computePorts();
     const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
+    avoidSubgraphs2(routed, edgeEls, avoidContainersFrom(subgraphWorldBox));
     foldLabelShifts(routed, resolveLabelLineOffsets2(labelPlatesOf(routed), routed.map((r) => r.points)));
     separateLanes2(routed);
     separateAntiParallelJogs2(routed, edgeEls);
@@ -2196,6 +2284,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : void 0;
       return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
     });
+    avoidSubgraphs2(routesB, edgeEls, avoidContainersFrom(subgraphAbsBox));
     foldLabelShifts(routesB, resolveLabelLineOffsets2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     separateLanes2(routesB);
     separateAntiParallelJogs2(routesB, edgeEls);

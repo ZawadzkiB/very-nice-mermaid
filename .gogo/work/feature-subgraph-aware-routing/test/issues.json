@@ -1,0 +1,19 @@
+{
+  "slug": "subgraph-aware-routing",
+  "track": "test",
+  "round": 1,
+  "updated": "2026-07-15",
+  "issues": [
+    {
+      "id": "TEST-001",
+      "title": "fixtures/microservices.mmd's 'Core services' subgraph box never renders (pre-existing parser membership-order bug, unrelated to v0.6.6) — weakens that hero's byte-identity signal",
+      "description": "While confirming the no-regression byte-identity claim for the two subgraph heroes, I found that fixtures/microservices.mmd's 'Core services' container never renders a box at all (no dashed <rect>, no 'Core services' label in the SVG) — on this branch AND on master (fixtures/microservices.mmd and src/parser/index.ts are both byte-identical to master; verified with `git show master:fixtures/microservices.mmd | diff - fixtures/microservices.mmd` and `git diff --stat master -- src/parser/`, both empty). Root cause: the DSL declares `gw --> auth & catalog & cart` BEFORE the `subgraph services [Core services] ... auth[Auth service] ...` block; the parser's `ensureNode()` (src/parser/index.ts:108-118) only pushes a node onto the enclosing subgraph's `children` when it CREATES the node (`if (!node) { ... parent.children.push(id) }`), so a node already created by an earlier top-level edge reference never gets attached to a subgraph that re-declares it later. Confirmed via `parse()`: `model.subgraphs[0].children` is `[]` for 'services'. Consequence for THIS feature: computeAvoidContainers (geometry/index.ts) and its runtime twin both skip empty-member containers, so gate-scan.mjs correctly reports 'containers=0' for microservices.mmd — meaning the plan's claim that 'both subgraph heroes are both-endpoints-inside -> no-op -> byte-identical' is only fully demonstrated by fixtures/nested-subgraphs.mmd (containers=2, fired=0, real members) — microservices.mmd's byte-identity holds trivially (no container ever existed, before or after this feature) rather than by exercising the both-in gate. This is NOT a regression caused by v0.6.6 (pre-existing since the initial scaffold commit, parser untouched by this diff) and fixing it (parser membership resolution) is explicitly out of scope for this feature (plan.md 'Out of scope': 'Changing container box computation, padding, or membership rules'). Filing as a needs-user-decision because whether/when to open a separate defect for the parser is a product decision, not something I can or should fix here.",
+      "proposed_solution": "No action needed for v0.6.6 acceptance — nested-subgraphs.mmd already provides a genuine both-in no-op proof. For a future fix (separate defect, NOT this feature): in src/parser/index.ts, when a subgraph block re-declares a node id that already exists (the `else` branch implied by `ensureNode`'s `if (!node)` check), still attach it to the currently-open subgraph's children if it isn't already a member of any subgraph — i.e. re-parent on first subgraph-scoped mention, not just first creation. User should decide whether to open a new defect ticket for this (it changes visual behavior for any diagram with this reference-then-declare ordering, so it's user-facing but separate from defect #3).",
+      "severity": "minor",
+      "priority": "P3",
+      "status": "new",
+      "origin": "test",
+      "found_in_round": 1
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+flowchart TB
+  dagre["dagre.layout()<br/>ranks RULES at ENGINE's bottom;<br/>BE above the container"] --> nb["nodeBoxes (nodes only)"]
+  dagre --> csb["computeSubgraphBoxes()<br/>ENGINE box x[211..577] y[722..1294]"]
+  nb --> ports["computePerimeterPorts() (nodes only)"]
+  ports --> route["routeEdge() / routeElbow()<br/>threads dagre waypoints"]
+  route --> fe["finishEdges(edges, theme, bridges, nodeBoxes)<br/>NO container obstacle model"]
+  csb -- "container boxes feed ONLY contentBounds<br/>(never routing)" --> bounds["contentBounds() -> svg viewport"]
+
+  fe --> defect["DEFECT #3 - container cut:<br/>e5 BE->RULES 'stream context' trunk x=510<br/>runs 387px DOWN THROUGH ENGINE;<br/>e6 RULES->BE 'findings' trunk x=536<br/>runs 413px through ENGINE<br/>(one endpoint inside, one outside)"]
+  fe -. "e4 MCP->RULES, e8 CONSOLE->RULES:<br/>both endpoints inside ENGINE = legitimate interior" .- ok["reads fine (unchanged)"]

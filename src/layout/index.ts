@@ -21,6 +21,7 @@ import {
   routeEdge,
   computePerimeterPorts,
   computeSubgraphBoxes,
+  computeAvoidContainers,
   resolveLabelCollisions,
   resolveLabelNodeCollisions,
   resolveLabelEdgeCollisions,
@@ -29,7 +30,9 @@ import {
   separateLanes,
   separateAntiParallelJogs,
   separateConvergentJogs,
+  avoidSubgraphs,
   type NodeBox,
+  type AvoidContainer,
   type EdgeAnchorOverride,
   type PlateRect,
 } from "../geometry/index.js";
@@ -67,7 +70,9 @@ export function finishEdges(
   theme: Theme,
   bridges?: boolean,
   nodeBoxes?: ReadonlyArray<NodeBox>,
+  subgraphs?: ReadonlyArray<AvoidContainer>,
 ): void {
+  avoidSubgraphs(edges, subgraphs ?? [], theme.edgeStyle); // v0.6.6 (D1=A) — FIRST: pull a trunk piercing a foreign container outside it + re-enter near its endpoint (defect #3); separateLanes below then re-lanes any new outside-lane overlap
   offsetLabelsOffLine(edges, theme); // v0.6.4 (option d) — lift each label off its line FIRST so the line stays continuous; de-collision below then runs on the offset centres
   separateLanes(edges, theme.edgeStyle); // FR9 — give each merged run its own lane (compact, local)
   separateAntiParallelJogs(edges, theme.edgeStyle); // v0.6.2 — de-cramp a collinear anti-parallel elbow pair the lane gate skips
@@ -326,11 +331,19 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
     edges.push(out);
   });
 
-  // FR9 lane-separate + FR6 (de-collide overlapping label plates) + label-vs-node
-  // (push a label off any node box, UAT-1) + FR7 (crossing bridges, D4-gated),
-  // after all edges are routed. Node boxes in model-node order (matches the
-  // runtime twin's iteration). Mirrored in the runtime twin.
-  finishEdges(edges, theme, opts.bridges, positionedNodes.map(toBox));
+  // v0.6.6 avoidSubgraphs (FIRST, defect #3) + FR9 lane-separate + FR6 (de-collide
+  // overlapping label plates) + label-vs-node (push a label off any node box, UAT-1) +
+  // FR7 (crossing bridges, D4-gated), after all edges are routed. Node boxes in
+  // model-node order (matches the runtime twin's iteration); container obstacles from
+  // the same computeSubgraphBoxes + membership the auto-contain used. Mirrored in the
+  // runtime twin.
+  finishEdges(
+    edges,
+    theme,
+    opts.bridges,
+    positionedNodes.map(toBox),
+    computeAvoidContainers(positionedSubgraphs, nodeBoxes),
+  );
 
   const allEdgePoints = edges.flatMap((e) => e.points);
   const bounds = contentBounds(
@@ -457,11 +470,12 @@ export function applyPositions(
     return out;
   });
 
-  // FR9 + FR6 + label-vs-node + FR7: same post-routing passes as layout(), so a
-  // dragged/resized layout keeps its lanes separated, labels non-overlapping (of
-  // each other AND of node boxes) and its crossings bridged (parity). Node boxes
-  // in model-node order to match the runtime twin.
-  finishEdges(edges, theme, opts.bridges, nodes.map(toBox));
+  // v0.6.6 avoidSubgraphs (FIRST) + FR9 + FR6 + label-vs-node + FR7: same post-routing
+  // passes as layout(), so a dragged/resized layout keeps its trunks out of foreign
+  // containers, lanes separated, labels non-overlapping (of each other AND of node boxes)
+  // and its crossings bridged (parity). Node boxes in model-node order to match the runtime
+  // twin; container obstacles recomputed from the (moved/resized) member boxes (FR5).
+  finishEdges(edges, theme, opts.bridges, nodes.map(toBox), computeAvoidContainers(model.subgraphs, nodeBoxes));
 
   // Auto-contain (subgraph FR6, prior feature): re-hug every subgraph to its
   // (possibly moved/resized) members via the shared recompute, matching the live

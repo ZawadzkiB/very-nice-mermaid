@@ -19,9 +19,12 @@ import {
   separateLanes,
   separateAntiParallelJogs,
   separateConvergentJogs,
+  avoidSubgraphs,
+  SUBGRAPH_AVOID_MARGIN,
   subgraphBox,
   SUBGRAPH_TITLE_BAND,
   type NodeBox,
+  type AvoidContainer,
   type PlateRect,
 } from "../src/geometry/index.js";
 
@@ -798,6 +801,159 @@ describe("computePerimeterPorts de-skewers a lone-in / lone-out collinear pass-t
   it("leaves a lone-top-only node (no opposing bottom edge) untouched", () => {
     const ports = computePerimeterPorts([{ from: "A", to: "M" }], boxes());
     expect(ports[0]!.target.offset).toBe(0);
+  });
+});
+
+describe("avoidSubgraphs (v0.6.6 — scoped container-avoid re-route, defect #3)", () => {
+  // A container centred at (200,300), 200×400 → box x[100..300] y[100..500].
+  const ENGINE: AvoidContainer = {
+    box: { x: 200, y: 300, width: 200, height: 400 },
+    members: new Set(["IN"]),
+  };
+  type EdgeLike = { from: string; to: string; points: Array<{ x: number; y: number }>; path?: string };
+  // OUT (above, outside) → IN (inside, near the bottom): a long vertical trunk at x=220
+  // runs 320px DOWN THROUGH the container before jogging to IN — the defect shape.
+  const pierceEdge = (): EdgeLike => ({
+    from: "OUT",
+    to: "IN",
+    points: [
+      { x: 250, y: 50 },
+      { x: 250, y: 80 },
+      { x: 220, y: 80 },
+      { x: 220, y: 420 },
+      { x: 170, y: 420 },
+      { x: 170, y: 480 },
+    ],
+  });
+  const interiorVerticalXs = (pts: Array<{ x: number; y: number }>): number[] => {
+    const xs: number[] = [];
+    for (let i = 1; i + 2 < pts.length; i++) {
+      const a = pts[i]!;
+      const b = pts[i + 1]!;
+      if (Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1) xs.push(a.x);
+    }
+    return xs;
+  };
+  const interiorHorizontalYs = (pts: Array<{ x: number; y: number }>): number[] => {
+    const ys: number[] = [];
+    for (let i = 1; i + 2 < pts.length; i++) {
+      const a = pts[i]!;
+      const b = pts[i + 1]!;
+      if (Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1) ys.push(a.y);
+    }
+    return ys;
+  };
+
+  it("pushes a mixed-membership trunk OUTSIDE the nearest side + margin and re-enters near the interior endpoint", () => {
+    const e = pierceEdge();
+    avoidSubgraphs([e], [ENGINE], "elbow");
+    // the long trunk (x=220, inside) moved to just outside the box's RIGHT side (300) + margin
+    expect(interiorVerticalXs(e.points)).toContain(300 + SUBGRAPH_AVOID_MARGIN); // 328
+    for (const x of interiorVerticalXs(e.points)) expect(x).toBeGreaterThan(300); // clear of the box
+    // D2=A: the re-entry corner was lowered toward IN's border (y=480), so the residual
+    // interior approach is short (corner y moved from 420 down to 450 = 480 − APPROACH).
+    expect(e.points[4]!.y).toBe(450);
+    expect(e.points[3]!.y).toBe(450);
+    expect(e.path).toContain("328"); // path rebuilt from the pushed-out points
+  });
+
+  it("NO-OPs when the container holds BOTH endpoints (the both-in case — subgraph heroes)", () => {
+    const e = pierceEdge();
+    const before = JSON.parse(JSON.stringify(e.points));
+    avoidSubgraphs([e], [{ box: ENGINE.box, members: new Set(["IN", "OUT"]) }], "elbow");
+    expect(e.points).toEqual(before); // byte-identical
+  });
+
+  it("fires on the neither-in synthetic case (an edge crossing an UNRELATED box) with no re-entry lowering", () => {
+    // OUT→OUT2, both OUTSIDE the container; the trunk merely passes over the box.
+    const e = {
+      from: "OUT",
+      to: "OUT2",
+      points: [
+        { x: 250, y: 50 },
+        { x: 250, y: 80 },
+        { x: 220, y: 80 },
+        { x: 220, y: 520 },
+        { x: 250, y: 520 },
+        { x: 250, y: 560 },
+      ],
+    };
+    avoidSubgraphs([e], [{ box: ENGINE.box, members: new Set(["MCP"]) }], "elbow");
+    for (const x of interiorVerticalXs(e.points)) expect(x).toBeGreaterThan(300); // pushed outside
+    // neither endpoint inside → the ends stay put (no re-entry lowering); corners keep their y
+    expect(e.points[1]!.y).toBe(80);
+    expect(e.points[4]!.y).toBe(520);
+  });
+
+  it("is elbow-only (curved input is byte-identical)", () => {
+    const e = pierceEdge();
+    const before = JSON.parse(JSON.stringify(e.points));
+    avoidSubgraphs([e], [ENGINE], "curved");
+    expect(e.points).toEqual(before);
+  });
+
+  it("no-ops with no containers", () => {
+    const e = pierceEdge();
+    const before = JSON.parse(JSON.stringify(e.points));
+    avoidSubgraphs([e], [], "elbow");
+    expect(e.points).toEqual(before);
+  });
+
+  it("is idempotent — a second pass on its own output is a no-op", () => {
+    const e = pierceEdge();
+    avoidSubgraphs([e], [ENGINE], "elbow");
+    const once = JSON.parse(JSON.stringify(e.points));
+    const oncePath = e.path;
+    avoidSubgraphs([e], [ENGINE], "elbow");
+    expect(e.points).toEqual(once);
+    expect(e.path).toBe(oncePath);
+  });
+
+  it("handles the HORIZONTAL (LR) axis symmetrically: a horizontal trunk is pushed to the nearest top/bottom side and the re-entry corner lowers on x (REV-001)", () => {
+    // A wide/short container (LR-style) box x[100..500] y[100..300]; an OUT→IN edge whose long
+    // HORIZONTAL trunk at y=220 runs 320px THROUGH it before jogging up to IN near the right.
+    // This exercises moveLane's vertical=false branch and lowerReentry's x-branch.
+    const WIDE: AvoidContainer = { box: { x: 300, y: 200, width: 400, height: 200 }, members: new Set(["IN"]) };
+    const e: EdgeLike = {
+      from: "OUT",
+      to: "IN",
+      points: [
+        { x: 50, y: 250 },
+        { x: 80, y: 250 },
+        { x: 80, y: 220 },
+        { x: 420, y: 220 },
+        { x: 420, y: 170 },
+        { x: 480, y: 170 },
+      ],
+    };
+    avoidSubgraphs([e], [WIDE], "elbow");
+    // trunk (y=220, inside) moved to just below the box's BOTTOM side (300) + margin
+    expect(interiorHorizontalYs(e.points)).toContain(300 + SUBGRAPH_AVOID_MARGIN); // 328
+    for (const y of interiorHorizontalYs(e.points)) expect(y).toBeGreaterThan(300); // clear of the box
+    // D2=A on the x-axis: the re-entry corner lowered toward IN's border (x=480), so the residual
+    // approach is short (corner x moved from 420 to 450 = 480 − APPROACH).
+    expect(e.points[4]!.x).toBe(450);
+    expect(e.points[3]!.x).toBe(450);
+  });
+
+  it("leaves an edge that only dips in to reach a border-member (an entry sliver) byte-identical", () => {
+    // OUT→IN entering IN at the container's TOP: the interior run overlaps the box by only
+    // ~30px (below MIN_CROSS=120), so it is a normal entry, not a pierce → untouched.
+    const e = {
+      from: "OUT",
+      to: "IN",
+      points: [
+        { x: 250, y: 50 },
+        { x: 250, y: 80 },
+        { x: 220, y: 80 },
+        { x: 220, y: 130 }, // dips only 30px past the box top (y=100)
+        { x: 200, y: 130 },
+        { x: 200, y: 160 },
+      ],
+    };
+    const before = JSON.parse(JSON.stringify(e.points));
+    avoidSubgraphs([e], [ENGINE], "elbow");
+    expect(e.points).toEqual(before);
   });
 });
 

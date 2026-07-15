@@ -1,0 +1,24 @@
+flowchart TB
+  subgraph layout["src/layout/index.ts — layout() / applyPositions()"]
+    dagre["dagre.layout() -> nodeBoxes"] --> csb["computeSubgraphBoxes()<br/>container box + resolveMemberNodes"]
+    dagre --> ports["computePerimeterPorts()"]
+    ports --> route["routeEdge() per edge<br/>(routeElbow threads dagre waypoints)"]
+    route --> fe["finishEdges(edges, theme, bridges, nodeBoxes, containers)"]
+    csb -- "containers = box + members[]<br/>(NEW: threaded in)" --> fe
+  end
+
+  subgraph chain["finishEdges pass chain (elbow-only, mirrored in the vnmRuntime twin)"]
+    avoid["avoidSubgraphs()  [NEW v0.6.6]<br/>for an edge whose long interior trunk<br/>crosses a container NOT holding BOTH ends:<br/>push trunk outside nearest side + margin,<br/>re-enter near the interior endpoint"]
+    avoid --> lanes["separateLanes() (FR9)<br/>re-lanes the new outside trunks"]
+    lanes --> anti["separateAntiParallelJogs() (v0.6.2)"]
+    anti --> conv["separateConvergentJogs() (v0.6.5)"]
+    conv --> labels["label de-collision chain (v0.6.4)"]
+    labels --> bridges["applyBridges() (FR7)"]
+  end
+  fe --> avoid
+
+  twin["src/render/dom/runtime.ts — vnmRuntime twin<br/>renderEdges() (live) + buildSvg() (export)<br/>mirror avoidSubgraphs byte-for-byte<br/>boxes: subgraphWorldBox / subgraphAbsBox<br/>members: subgraphMembers"]
+  chain -. "byte-for-byte parity<br/>(dom-runtime-parity guard)" .- twin
+
+  gate["GATE: no-op unless an edge has a long<br/>interior run in a container missing an endpoint<br/>-> fires ONLY on architecture.mmd e5/e6;<br/>both subgraph heroes byte-identical"]
+  avoid -. "gated" .- gate

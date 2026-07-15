@@ -1,0 +1,8 @@
+{
+  "slug": "subgraph-aware-routing",
+  "updated": "2026-07-15",
+  "note": "AS-IS baseline (before). Container boxes are computed post-layout by computeSubgraphBoxes and feed ONLY contentBounds (the svg viewport) - never computePerimeterPorts, routeEdge, or finishEdges, which take node boxes only. So the elbow router has no obstacle model: dagre ranks RULES at the bottom of the tall ENGINE cluster and routes BE->RULES (e5, 'stream context', trunk x=510) and RULES->BE (e6, 'findings', trunk x=536) as near-straight verticals that run 387/413px DOWN THROUGH the ENGINE container box (x[211..577] y[722..1294]). One endpoint (RULES) is inside ENGINE, the other (BE) outside - a mixed-membership crossing. Edges with BOTH endpoints inside (e4 MCP->RULES, e8 CONSOLE->RULES) route the interior legitimately and read fine.",
+  "diagrams": [
+    { "kind": "flow", "file": "report/before/flow.mmd", "title": "As-is: container boxes never reach routing; BE<->RULES verticals pierce the ENGINE container from top to bottom (defect #3)" }
+  ]
+}

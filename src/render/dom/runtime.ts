@@ -1334,6 +1334,114 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       e.labelPos = { x: lp.x, y: nAt(lp.y + (target - seg.along)) };
     }
   }
+  // mirrors geometry.avoidSubgraphs() (v0.6.6, defect #3, D1=A): pull an edge's long
+  // interior trunk OUT of a container box that doesn't hold BOTH its endpoints (push to
+  // the container's nearest side + MARGIN=28), then lower the re-entry corner near the
+  // interior endpoint (D2=A) so the residual interior crossing is a short approach. Runs
+  // FIRST on the routed results (before the label-line-offset + lanes), matching
+  // finishEdges. Byte-identical constants + logic to geometry (MARGIN=28; MIN_CROSS=120;
+  // APPROACH=30; same i>=1 && i+2<len interior rule; nAt == n; pathPoly == toPath elbow).
+  // pairs[i] === edgeEls[i] carry from/to; containers carry the live box + member lookup.
+  // Elbow only; keep in lockstep with the static pass.
+  type AvoidC = { box: { x: number; y: number; w: number; h: number }; members: Record<string, boolean> };
+  function avoidSubgraphs(
+    edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>,
+    pairs: Array<{ from: string; to: string }>,
+    containers: AvoidC[],
+  ): void {
+    if (edgeStyle !== "elbow" || !containers.length) return;
+    const MARGIN = 28;
+    const MIN_CROSS = 120;
+    const APPROACH = 30;
+    const moveLane = (e: { points: Pt[]; labelPos: Pt }, vertical: boolean, seg: LaneSeg, target: number): void => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i]!.y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1]!.y };
+      } else {
+        shiftLabelOnSeg(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i]!.x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1]!.x, y: target };
+      }
+      seg.along = target;
+    };
+    const lowerReentry = (p: Pt[], trunkEndIdx: number, cornerIdx: number, anchor: Pt, vertical: boolean): void => {
+      if (cornerIdx < 0 || cornerIdx >= p.length || trunkEndIdx < 0 || trunkEndIdx >= p.length) return;
+      const anchorPar = vertical ? anchor.y : anchor.x;
+      const cornerOld = vertical ? p[cornerIdx]!.y : p[cornerIdx]!.x;
+      const dir = Math.sign(cornerOld - anchorPar);
+      if (dir === 0) return;
+      const target = nAt(anchorPar + dir * APPROACH);
+      if (Math.abs(target - anchorPar) >= Math.abs(cornerOld - anchorPar)) return;
+      if (vertical) {
+        p[cornerIdx] = { x: p[cornerIdx]!.x, y: target };
+        p[trunkEndIdx] = { x: p[trunkEndIdx]!.x, y: target };
+      } else {
+        p[cornerIdx] = { x: target, y: p[cornerIdx]!.y };
+        p[trunkEndIdx] = { x: target, y: p[trunkEndIdx]!.y };
+      }
+    };
+    const moved: Record<number, boolean> = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      const len = p.length;
+      if (len < 4) return;
+      const ep = pairs[ei]!;
+      let best:
+        | { i: number; vertical: boolean; along: number; lo: number; hi: number; side: number; container: AvoidC; runLen: number }
+        | undefined;
+      for (let i = 1; i + 2 < len; i++) {
+        const a = p[i]!;
+        const b = p[i + 1]!;
+        const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+        const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+        if (!isVert && !isHorz) continue;
+        const along = isVert ? a.x : a.y;
+        const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+        const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+        const runLen = hi - lo;
+        for (const c of containers) {
+          if (c.members[ep.from] && c.members[ep.to]) continue;
+          // approach-into-member run (incl. this pass's own re-entry residual) → not a
+          // pierce; keeps the pass idempotent. Mirrors geometry.avoidSubgraphs.
+          if ((i === 1 && c.members[ep.from]) || (i === len - 3 && c.members[ep.to])) continue;
+          const cx0 = c.box.x - c.box.w / 2;
+          const cx1 = c.box.x + c.box.w / 2;
+          const cy0 = c.box.y - c.box.h / 2;
+          const cy1 = c.box.y + c.box.h / 2;
+          const perpLo = isVert ? cx0 : cy0;
+          const perpHi = isVert ? cx1 : cy1;
+          const parLo = isVert ? cy0 : cx0;
+          const parHi = isVert ? cy1 : cx1;
+          if (along <= perpLo || along >= perpHi) continue;
+          if (Math.min(hi, parHi) - Math.max(lo, parLo) < MIN_CROSS) continue;
+          const side = along - perpLo <= perpHi - along ? nAt(perpLo - MARGIN) : nAt(perpHi + MARGIN);
+          if (!best || runLen > best.runLen) best = { i, vertical: isVert, along, lo, hi, side, container: c, runLen };
+        }
+      }
+      if (!best) return;
+      moveLane(edges[ei]!, best.vertical, { edge: ei, i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+      moved[ei] = true;
+      if (best.container.members[ep.from]) lowerReentry(p, best.i, best.i - 1, p[0]!, best.vertical);
+      if (best.container.members[ep.to]) lowerReentry(p, best.i + 1, best.i + 2, p[len - 1]!, best.vertical);
+    });
+    for (const kk in moved) edges[Number(kk)]!.path = pathPoly(edges[Number(kk)]!.points);
+  }
+  // Build the avoidSubgraphs container obstacle set from the live member boxes via
+  // `boxOf` (subgraphWorldBox for the live view / subgraphAbsBox for Save-SVG), mirroring
+  // geometry.computeAvoidContainers (skip a container with no resolvable members).
+  function avoidContainersFrom(boxOf: (sg: SvgSub) => { x: number; y: number; w: number; h: number }): AvoidC[] {
+    const out: AvoidC[] = [];
+    for (const sg of model.subgraphs) {
+      const ids = subgraphMembers[sg.id] || [];
+      if (!ids.length) continue;
+      const members: Record<string, boolean> = {};
+      for (const id of ids) members[id] = true;
+      out.push({ box: boxOf(sg), members });
+    }
+    return out;
+  }
   // mirrors geometry.separateLanes() (FR9): pull apart bundles of near-parallel,
   // near-collinear INTERIOR orthogonal runs sharing a channel into distinct lanes
   // (≥ LANE_GAP apart, centred on the bundle mean), mutating each routed edge's
@@ -1963,6 +2071,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   function renderEdges(): void {
     const ports = computePorts();
     const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
+    // v0.6.6 (defect #3): FIRST, pull a trunk piercing a foreign container outside it and
+    // re-enter near its endpoint (matching finishEdges) — live-view container boxes.
+    avoidSubgraphs(routed, edgeEls, avoidContainersFrom(subgraphWorldBox));
     // v0.6.4 (option d): lift each label off its line FIRST so the line stays continuous
     // and the de-collision passes below de-collide the offset (drawn) plates.
     foldLabelShifts(routed, resolveLabelLineOffsets(labelPlatesOf(routed), routed.map((r) => r.points)));
@@ -2834,6 +2945,10 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : undefined;
       return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
     });
+    // v0.6.6 (defect #3): FIRST, pull a trunk piercing a foreign container outside it and
+    // re-enter near its endpoint (matching finishEdges) — absolute-coord container boxes so
+    // Save-SVG byte-matches the static layout()'s re-routed trunks (parity).
+    avoidSubgraphs(routesB, edgeEls, avoidContainersFrom(subgraphAbsBox));
     // v0.6.4 (option d): lift each label off its line FIRST so the line stays continuous
     // and the de-collision passes below de-collide the offset (drawn) plates (parity).
     foldLabelShifts(routesB, resolveLabelLineOffsets(labelPlatesOf(routesB), routesB.map((r) => r.points)));

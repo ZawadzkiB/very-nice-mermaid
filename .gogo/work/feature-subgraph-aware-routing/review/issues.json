@@ -1,0 +1,41 @@
+{
+  "slug": "subgraph-aware-routing",
+  "track": "review",
+  "round": 1,
+  "updated": "2026-07-15",
+  "test_verification": "Round 1 of test re-verified both fixes: the REV-001 LR unit test (test/geometry.test.ts ~L912) and archAvoidLrDsl parity fixture (test/dom-runtime-parity.test.ts) genuinely execute moveLane(vertical=false)/lowerReentry x-branch with real (non-tautological) assertions; the REV-002 drag-parity test (test/dom-runtime-parity.test.ts ~L1026) was probed with a temporary debug assertion (added then reverted) confirming firedOutside=true under the drag — i.e. it exercises the actual FIRING path, not a no-op. Both promoted fixed -> verified.",
+  "issues": [
+    {
+      "id": "REV-001",
+      "title": "Horizontal (LR) re-route branch ships entirely untested — plan claims both axes",
+      "description": "avoidSubgraphs is written to handle BOTH axes (plan.md: \"Handles both axes (TB vertical trunks / LR horizontal trunks; the machinery is symmetric)\"; doc-comment at src/geometry/index.ts ~L98). But every test and every corpus firing exercises only the VERTICAL (TB) branch. The three inline edges in test/geometry.test.ts (pierceEdge, the neither-in synthetic, the entry-sliver) are all vertical trunks; the parity fixture archAvoidDsl is `flowchart TB`; and the verified corpus firing (architecture.mmd e5/e6) is vertical. Consequently the isHorz-fires code path — moveLane's `else` (vertical=false) branch that sets p[seg.i].y / p[seg.i+1].y (geometry L1002-1004, twin runtime.ts ~L1363-1365), and lowerReentry's `else` branch that sets the x-coordinate (geometry L187-190, twin runtime.ts ~L353-356) — never executes in any test or render. The horizontal branch is symmetric to the verified vertical one and I reasoned it correct (along=y, perp-span=[cy0,cy1], side via cy0-MARGIN/cy1+MARGIN, anchor.x), and its twin is byte-parity to geometry, so the residual risk is low — but on a repo whose #1 trap is serialized-runtime drift, an unexercised twin branch that the plan explicitly advertises as working is exactly the kind of code that should carry a guard. Not a functional defect on the shipped corpus (nothing fires LR), so no blocker/major.",
+      "proposed_solution": "AGENT-FIXABLE. Add one LR unit test to test/geometry.test.ts mirroring the TB pierce case: a container box, a horizontal interior trunk whose `along` (y) sits strictly inside the box cross-span and overlaps the parallel (x) span by >= SUBGRAPH_AVOID_MIN_CROSS, and a `to`-inside member; assert the trunk moved to nearest-side (cy0-MARGIN or cy1+MARGIN) and the re-entry corner lowered toward the endpoint's x. This executes moveLane(vertical=false) + lowerReentry(vertical=false) in geometry; a parallel `flowchart LR` parity fixture in dom-runtime-parity that fires the pass would additionally exercise the twin's horizontal branch. Pure test addition; no product-code change.",
+      "severity": "minor",
+      "priority": "P2",
+      "status": "verified",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "verified_in_round": 1,
+      "verified_by": "test",
+      "fix_summary": "Added an LR pierce unit test in test/geometry.test.ts (exercises geometry moveLane vertical=false + lowerReentry x-branch: trunk pushed to bottom+MARGIN, corner lowered on x), AND an `flowchart LR` parity fixture (archAvoidLrDsl) in test/dom-runtime-parity.test.ts that genuinely fires the horizontal branch (BE→RULES trunk outside ENGINE) and asserts edgePaths==finishEdges + toSvgString()==renderSvg — so the twin's horizontal moveLane + lowerReentry x-branch are now byte-parity guarded. Test-only; all green.",
+      "verification_note": "Re-read both tests (geometry.test.ts L912-937, dom-runtime-parity.test.ts L997-1020): assertions are real (interior-run geometry checked against nearest-side+MARGIN, not tautological), and both are part of the green 426-test / 43-file dom-runtime-parity suite. Confirmed verified."
+    },
+    {
+      "id": "REV-002",
+      "title": "Drag/reposition path re-runs avoidSubgraphs but no test fires it under repositioning",
+      "description": "applyPositions (src/layout/index.ts:478) and the live runtime renderEdges (runtime.ts:2076) re-run avoidSubgraphs on every drag/resize, rebuilding container obstacles from the moved boxes (FR5). The plan's Tests section promises coverage here: \"Interactive (drag) — verify no regression: dragging RULES/BE re-runs the live pass; confirm it stays deterministic/idempotent ... (extends the subgraph-drag e2e coverage).\" The diff adds no drag/e2e test. Existing subgraph-drag e2e coverage runs on fixtures where the pass no-ops (only architecture.mmd fires across the corpus), so the drag-triggered avoidSubgraphs path — the one that FIRES and re-routes under repositioning — is not exercised by any test. The static parity fixture does fire the pass and the drag path is the same mirrored code (applyPositions calls the identical finishEdges; the live renderEdges calls the identical twin), and I confirmed avoidSubgraphs is deterministic + idempotent, so risk is low — but per this repo's own standard (\"a plan's cited mitigation must exist in code\") the named drag coverage should be present rather than assumed.",
+      "proposed_solution": "AGENT-FIXABLE. Either (a) add a parity/e2e case that mounts archAvoidDsl, drags BE or RULES, and asserts the live re-route stays deterministic + idempotent (second render == first) and toSvgString() still byte-matches a re-laid-out static render; or (b) if that is deemed out of scope for v0.6.6, soften plan.md's Tests line to state drag coverage is transitive (same mirrored pass, verified deterministic) rather than an added e2e. No product-code change required.",
+      "severity": "nit",
+      "priority": "P3",
+      "status": "verified",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "verified_in_round": 1,
+      "verified_by": "test",
+      "fix_summary": "Added a drag-parity case in test/dom-runtime-parity.test.ts: mounts archAvoidDsl, importLayout drags BE (re-running the live avoidSubgraphs on moved boxes), asserts determinism (a repeated identical edit is byte-identical) and that the live toSvgString() byte-matches applyPositions()/renderSvg of the same edit — covering the drag-triggered FIRING path. Test-only; all green.",
+      "verification_note": "Did not just trust fix_summary: temporarily instrumented the test (test/dom-runtime-parity.test.ts ~L1026) with a debug probe computing whether the post-drag BE->RULES interior trunk sits outside the edited-model's ENGINE box; ran it in isolation (`npx vitest run ... -t \"avoidSubgraphs stays deterministic\"`) and observed `firedOutside=true` — proving the drag genuinely exercises the FIRING path, not a no-op. Probe was then reverted (diff confirmed zero net change to the file beyond the pre-existing round-2 addition). Separately hand-verified the same claim live in a browser: exported architecture.mmd to interactive HTML, used real pointer-driven drags (Playwright dragTo via the gogo-playwright MCP) to move BOTH BE and RULES, and inspected the live SVG path data — both trunks stayed outside the (re-hugged) ENGINE container after each drag, zero stranded edges (no NaN path data), zero new console errors."
+    }
+  ]
+}

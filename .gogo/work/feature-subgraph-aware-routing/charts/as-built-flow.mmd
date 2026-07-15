@@ -1,0 +1,36 @@
+flowchart TB
+  start["avoidSubgraphs(edges, containers, style) — AS BUILT v0.6.6<br/>run FIRST in finishEdges; mirrored in vnmRuntime renderEdges/buildSvg"]
+  start --> g0{"style == elbow<br/>AND containers.length &gt; 0?"}
+  g0 -- no --> noop["return (no-op)"]
+  g0 -- yes --> perEdge["for each edge e (points p, len &ge; 4)"]
+
+  perEdge --> perRun["for each INTERIOR run i (1 &le; i, i+2 &lt; len)<br/>axis-aligned (vertical const-x / horizontal const-y)"]
+  perRun --> perC["for each container c (box + members)"]
+
+  perC --> gBoth{"members has BOTH<br/>e.from AND e.to?"}
+  gBoth -- yes --> skip["skip c (interior edge — heroes no-op)"]
+  gBoth -- no --> gApproach{"i==1 &amp; from in c<br/>OR i==len-3 &amp; to in c?<br/>(endpoint's own approach)"}
+  gApproach -- yes --> skip2["skip c (idempotency guard:<br/>the lowered re-entry never re-fires)"]
+  gApproach -- no --> gPerp{"run.along strictly inside<br/>c's cross-span?"}
+  gPerp -- no --> skip3["skip c"]
+  gPerp -- yes --> gCross{"overlap(run, c parallel-span)<br/>&ge; MIN_CROSS (120px)?"}
+  gCross -- no --> skip4["skip c (entry sliver, not a pierce)"]
+  gCross -- yes --> pick["side = nearest c border &plusmn; MARGIN (28)<br/>keep as best if longest run so far"]
+
+  pick --> doneRuns["after all runs/containers"]
+  skip --> doneRuns
+  skip2 --> doneRuns
+  skip3 --> doneRuns
+  skip4 --> doneRuns
+
+  doneRuns --> gBest{"best found?"}
+  gBest -- no --> nextEdge["next edge (byte-identical)"]
+  gBest -- yes --> push["moveLane(trunk -> best.side)<br/>elbow stays orthogonal, carries label"]
+  push --> gSrc{"best.container has e.from?"}
+  gSrc -- yes --> lowSrc["lowerReentry(p[i], p[i-1], anchor=p[0])<br/>-> short APPROACH (30) above source"]
+  gSrc -- no --> gTgt
+  lowSrc --> gTgt{"best.container has e.to?"}
+  gTgt -- yes --> lowTgt["lowerReentry(p[i+1], p[i+2], anchor=p[len-1])<br/>-> short APPROACH (30) above target"]
+  gTgt -- no --> rebuild
+  lowTgt --> rebuild["edge.path = toPath(points, elbow)"]
+  rebuild --> nextEdge
