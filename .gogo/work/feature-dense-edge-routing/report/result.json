@@ -1,0 +1,10 @@
+{
+  "phase": "report",
+  "status": "ok",
+  "slug": "dense-edge-routing",
+  "inputs": ["plan.md", "state.md", "decisions.md", "review/issues.json", "test/issues.json", "charts/manifest.json", "charts/before/manifest.json"],
+  "outputs": ["report/report.md", "report/flow.mmd", "report/manifest.json", "report/diagrams.html", "report/before/flow.mmd", "report/before/manifest.json", ".gogo/knowledge/tech-stack.md", ".gogo/knowledge/code-review-standards.md"],
+  "validated_in": true,
+  "validated_out": true,
+  "summary": "Clean green run: plan -> implement (2 rounds) -> review (1, APPROVE) -> test (1, ALL GREEN) -> report. v0.6.5 shipped separateConvergentJogs (#1) + computePerimeterPorts far-node deskewer (#2), mirrored byte-for-byte in the vnmRuntime twin; defect #3 deferred. 413 tests green; zero snapshot/example/hero churn; visual bar met on architecture.mmd PNGs (light+dark)."
+}

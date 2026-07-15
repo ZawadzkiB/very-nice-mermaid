@@ -1,0 +1,9 @@
+{
+  "slug": "dense-edge-routing",
+  "updated": "2026-07-15",
+  "members": ["dense-edge-routing"],
+  "note": "v0.6.5 dense-diagram edge-routing: two gated elbow-only passes. (#1) new separateConvergentJogs in finishEdges (after separateAntiParallelJogs) groups routed edges by (node, entered side) and, when >=3 collinear border-adjacent jogs pile onto one side, spreads them onto distinct lanes JOG_GAP apart (anchored away from the border) — the Rules-Sets-Runs knot becomes a staircase fan (four distinct y-levels). (#2) a deskewer at the end of computePerimeterPorts nudges a same-x in-top/out-bottom pair to distinct offsets (MCP surface no longer impaled). Both mirrored byte-for-byte in the vnmRuntime twin (renderEdges + buildSvg + computePorts), guarded by dom-runtime-parity. v0.6.2 anti-parallel stagger + v0.6.4 label offsets stay byte-identical (disjoint grouping); zero snapshot/hero churn. Defect #3 (edges cutting through subgraph containers) deferred to a subgraph-aware-routing feature. before/ holds the as-is baseline (all four jogs collinear at y=1190).",
+  "diagrams": [
+    { "kind": "flow", "file": "dense-edge-routing-flow.mmd", "title": "dense-edge-routing: As-built - separateConvergentJogs staircases a same-side convergence bundle + computePerimeterPorts deskews a straight-through node, mirrored in the runtime twin" }
+  ]
+}

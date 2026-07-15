@@ -28,6 +28,7 @@ import {
   applyEdgeBridges,
   separateLanes,
   separateAntiParallelJogs,
+  separateConvergentJogs,
   type NodeBox,
   type EdgeAnchorOverride,
   type PlateRect,
@@ -70,6 +71,7 @@ export function finishEdges(
   offsetLabelsOffLine(edges, theme); // v0.6.4 (option d) — lift each label off its line FIRST so the line stays continuous; de-collision below then runs on the offset centres
   separateLanes(edges, theme.edgeStyle); // FR9 — give each merged run its own lane (compact, local)
   separateAntiParallelJogs(edges, theme.edgeStyle); // v0.6.2 — de-cramp a collinear anti-parallel elbow pair the lane gate skips
+  separateConvergentJogs(edges, theme.edgeStyle); // v0.6.5 — de-tangle a ≥3-edge convergence bundle at one node side (defect #1)
   deCollideLabels(edges, theme);
   deCollideLabelsFromEdges(edges, theme); // UAT-round: off other edges' crossing lines
   if (nodeBoxes) deCollideLabelsFromNodes(edges, theme, nodeBoxes); // UAT-1: off any node box

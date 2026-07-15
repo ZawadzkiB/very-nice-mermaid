@@ -34,7 +34,7 @@ import type { Diagnostic, PositionedModel } from "../model/index.js";
 
 type Format = "html" | "svg" | "png" | "md";
 
-const VERSION = "0.6.4";
+const VERSION = "0.6.5";
 
 interface RenderOpts {
   output?: string;

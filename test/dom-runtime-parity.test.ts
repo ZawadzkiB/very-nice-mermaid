@@ -836,6 +836,74 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     expect(relSet(edgeD(handle.toSvgString()))).toEqual(relSet(staticEdges));
   });
 
+  it("FLOWCHART convergence de-tangle + MCP skewer: the twin reproduces both passes (v0.6.5)", () => {
+    // A dense flowchart where four edges converge on one node's top (a knot the
+    // anti-parallel pass can't touch — three different node pairs) AND a node has a
+    // lone-in/lone-out pair heading opposite ways (a straight-line skewer). The live
+    // runtime recomputes ports + runs separateConvergentJogs / the deskewer, so it must
+    // byte-match the shared geometry's finishEdges for every edge (this is the drift
+    // guard for both new passes at once).
+    // The architecture.mmd repro: the larger graph ranks BE ABOVE RULES so all four
+    // edges (REST, MCP, stream, findings) converge on RULES's TOP, and AGENT→MCP /
+    // MCP→RULES form the lone-in/lone-out skewer through MCP.
+    const dsl = [
+      "flowchart TB",
+      "  subgraph ETSL[Editorial Suite]",
+      "    FE[Angular UI]",
+      "    BE[ETSL backend]",
+      "  end",
+      "  subgraph KUKU[AI agent]",
+      "    AGENT[Chat personas]",
+      "  end",
+      "  subgraph ENGINE[Validation Engine]",
+      "    RULES[Rules Sets Runs]",
+      "    MCP[MCP surface]",
+      "    CONSOLE[Veris console]",
+      "  end",
+      "  LLM[LLM provider]",
+      "  FE -->|chat| BE",
+      "  BE -->|proxy| AGENT",
+      "  AGENT -->|reason| LLM",
+      "  AGENT -->|author rules| MCP",
+      "  MCP --- RULES",
+      "  BE -->|stream context| RULES",
+      "  RULES -->|findings| BE",
+      "  BE -->|errors| FE",
+      "  CONSOLE -->|REST| RULES",
+    ].join("\n");
+    const { model, theme } = prepare(dsl, { theme: "light" });
+
+    // The convergence pass genuinely fired: the four RULES-top edges no longer share
+    // one crossbar — the interior horizontal jog nearest RULES's top sits at ≥3
+    // distinct y-levels.
+    const rules = model.nodes.find((n) => n.id === "RULES")!;
+    const topBorder = rules.y - rules.height / 2;
+    const borderJogY = (e: (typeof model.edges)[number], role: "source" | "target"): number | undefined => {
+      const p = e.points;
+      if (p.length < 4) return undefined;
+      const i = role === "target" ? p.length - 3 : 1;
+      const a = p[i]!;
+      const b = p[i + 1]!;
+      return Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1 ? a.y : undefined;
+    };
+    const rulesJogs = model.edges
+      .map((e) => (e.to === "RULES" ? borderJogY(e, "target") : e.from === "RULES" ? borderJogY(e, "source") : undefined))
+      .filter((y): y is number => y !== undefined);
+    const distinct = new Set(rulesJogs.map((y) => Math.round(y)));
+    expect(distinct.size).toBeGreaterThanOrEqual(3); // de-tangled onto distinct lanes
+    for (const y of rulesJogs) expect(y).toBeLessThan(topBorder); // every jog stays outside the node
+
+    // The skewer nudge genuinely fired: MCP's lone in (top) and lone out (bottom) no
+    // longer attach at the same x.
+    const mcpIn = model.edges.find((e) => e.to === "MCP")!;
+    const mcpOut = model.edges.find((e) => e.from === "MCP" && e.to === "RULES")!;
+    expect(mcpIn.points[mcpIn.points.length - 1]!.x).not.toBe(mcpOut.points[0]!.x);
+
+    // Parity: the live runtime's routes match the shared geometry's finishEdges output.
+    const root = mountFake(buildPayload(model, theme, { minimap: false, persist: false }));
+    expect(edgePaths(root)).toEqual(expectedPaths(model, worldBoxes(model), theme));
+  });
+
 
   // ---- sketch-style parity (D2/FR6): toSvgString() must byte-match renderSvg in
   // SKETCH mode too, which transitively proves the runtime's inlined rough

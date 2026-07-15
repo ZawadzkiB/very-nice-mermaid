@@ -1,0 +1,8 @@
+{
+  "slug": "dense-edge-routing",
+  "updated": "2026-07-15",
+  "note": "As-is baseline (before any code change), verified against the real layout of architecture.mmd (parse -> layout, themes.light). Three edge-routing defects on a dense flowchart TB: (#1) four edges attach to RULES's top border at correctly-spread ports x=419/449/479/509, but all make their border-adjacent horizontal jog at the SAME y=1190, and separateLanes skips them (parallel-axis overlap ~19px < LANE_MIN_OVERLAP=40) while separateAntiParallelJogs misses them (pair-scoped; even the real BE<->RULES pair is skipped because 'first interior run wins' picks non-collinear jogs y=368 vs y=1190); (#2) MCP's lone in-top edge (author rules) and lone out-bottom edge (MCP---RULES) both attach at offset 0 => x=400, so a straight vertical skewers MCP (y 758..818); (#3) the stream-context/findings verticals (x=510/536) run y=368..1190 straight through the ENGINE container box (x 211..577, y 722..1294) because subgraph boxes are computed post-layout and never fed into routing.",
+  "diagrams": [
+    { "kind": "flow", "file": ".gogo/work/feature-dense-edge-routing/charts/before/flow.mmd", "title": "As-is: convergence tangle at RULES top (4 jogs collinear at y=1190), MCP skewer at x=400, and ENGINE-container cut by the long BE<->RULES verticals" }
+  ]
+}

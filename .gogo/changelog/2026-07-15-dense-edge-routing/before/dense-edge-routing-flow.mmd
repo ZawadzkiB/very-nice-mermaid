@@ -1,0 +1,8 @@
+flowchart TD
+  ports["computePerimeterPorts() — RULES top border (y=1220)<br/>spreads 4 attached edges to x=419 / 449 / 479 / 509 (30px apart, CORRECT)"] --> route["routeEdge() + elbowThrough() — multi-rank edges<br/>final approach is perpendicular into RULES top"]
+  route --> jog["all 4 border-adjacent jogs land on the SAME y=1190 (30px above RULES top)<br/>e8 CONSOLE|REST · e4 MCP---RULES · e5 BE|stream context (target) · e6 RULES|findings (source)"]
+  jog --> tangle["DEFECT #1 — convergence tangle: 4 collinear crossbars at y=1190<br/>(e8 x298..419 · e4 x400..449 · e5 x479..510 · e6 x509..536) plus the 4 vertical<br/>drops crossing them merge into one knot just above RULES"]
+  lanes["separateLanes() — SKIPS: crossbars overlap on the parallel (x) axis<br/>by ~19px (e8/e4) < LANE_MIN_OVERLAP=40; others do not overlap at all"] -.-> tangle
+  anti["separateAntiParallelJogs() — MISSES: groups by NODE PAIR, but these are 3 different pairs.<br/>Even the one real pair (BE↔RULES: e5,e6) is missed — 'first interior run wins' picks<br/>e5's jog at y=368 vs e6's at y=1190 → not collinear → skipped"] -.-> tangle
+  ports2["MCP (cx=400): lone in-edge on top (e3 author rules → offset 0 → x=400)<br/>+ lone out-edge on bottom (e4 MCP---RULES → offset 0 → x=400)"] --> skewer["DEFECT #2 — skewer: in-top + out-bottom collinear at x=400<br/>→ one straight vertical runs through MCP top (y=758) to bottom (y=818)"]
+  sg["subgraph boxes computed AFTER dagre by computeSubgraphBoxes();<br/>used only for the container visual + contentBounds — NEVER fed into routing"] --> cut["DEFECT #3 — container cut: e5 (x=510) & e6 (x=536) verticals run y=368..1190<br/>straight through the ENGINE box interior (x 211..577, y 722..1294)"]

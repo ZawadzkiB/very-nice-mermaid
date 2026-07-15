@@ -1,0 +1,35 @@
+{
+  "slug": "dense-edge-routing",
+  "track": "review",
+  "round": 1,
+  "updated": "2026-07-15",
+  "fix_round": 2,
+  "issues": [
+    {
+      "id": "REV-001",
+      "title": "Dead `pair` field in geometry's separateConvergentJogs Rec (absent from the runtime twin)",
+      "description": "src/geometry/index.ts — inside separateConvergentJogs the Rec interface declares `pair: string` (line 1159), a per-edge unordered node-pair key is computed (`const pair = e.from < e.to ? ... : ...`, line 1192) and stored on every Rec (line 1200), and jogOf's return type carries `Omit<Rec, \"edge\" | \"pair\">` (line 1165) — but `pair` is never read anywhere in the function (no sort/gate/lane logic uses it). The runtime twin's Rec (src/render/dom/runtime.ts:1520) correctly omits the field. This is dead code (coding-rules: 'no dead or mocked-out code') and an unnecessary source-shape asymmetry between the two parity twins. It does NOT break output parity — an unread field cannot change the emitted path — so all 413 tests and the dom-runtime-parity guard stay green; but on a project whose #1 recurring trap is serialized-runtime drift, a field present in geometry and missing in the twin is exactly the noise a reviewer must not have to re-derive as harmless.",
+      "proposed_solution": "AGENT-FIXABLE. Remove `pair` from the Rec interface (1159), drop the `const pair = ...` computation (1192), drop `pair` from the Rec literal (1200), and change jogOf's return type from `Omit<Rec, \"edge\" | \"pair\">` to `Omit<Rec, \"edge\">` (1165). Pure deletion; re-run typecheck + dom-runtime-parity to confirm byte-identity (output is unaffected).",
+      "severity": "minor",
+      "priority": "P2",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fix_summary": "Removed the dead `pair` field: dropped it from the Rec interface, the `const pair = ...` computation, and the Rec literal, and changed jogOf's return type to `Omit<Rec, \"edge\">`. Typecheck clean; 413 tests + dom-runtime-parity green; zero output change (geometry now source-symmetric with the twin)."
+    },
+    {
+      "id": "REV-002",
+      "title": "\"No edge is moved twice / provably disjoint\" is slightly overstated (verified benign)",
+      "description": "src/geometry/index.ts:1141-1143 (and plan.md as-built refinement #1) claim separateConvergentJogs is disjoint from separateAntiParallelJogs so 'no edge is moved twice', keyed on CONVERGE_MIN=3 vs the anti-parallel pass owning 2-edge node pairs. The keys are node-PAIR vs node-SIDE, which are not mutually exclusive: an edge can sit in a firing 2-edge anti-parallel pair AND a firing >=3 convergent node-side bucket, and for a SOURCE endpoint both passes act on the same interior run (i=1), so that segment would be moved by anti-parallel then re-moved by convergent. I verified this is benign: moveLane writes an absolute coordinate so convergent (running second) overwrites, the path is rebuilt from the final points, the result is deterministic, and it is byte-identical across both twins (both run anti-parallel then convergent in the same order) so parity is preserved. It also never triggers on the corpus — convergent has 0 firings on every fixture (confirmed: zero snapshot/example/gallery churn), and on architecture.mmd where it does fire, anti-parallel does not touch the RULES bundle. So this is a comment/plan precision issue, not a functional defect.",
+      "proposed_solution": "AGENT-FIXABLE (optional). Either soften the comment to 'disjoint on every current fixture; a double-move would be benign (convergent's absolute move wins, deterministic, parity-safe)', or add a one-line defensive guard so convergent skips a segment already moved by anti-parallel (thread the anti-parallel `moved` set). Given 0 corpus firings, the comment fix is sufficient; no behavioural change needed.",
+      "severity": "nit",
+      "priority": "P3",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fix_summary": "Softened the claim in both the geometry doc-comment and plan.md as-built #1: 'disjoint on every current fixture; the pair-vs-side keys are not mutually exclusive in principle (a source i=1 run), but a double-move is benign — moveLane writes an absolute lane so convergent wins, deterministic + byte-identical across twins, 0 corpus firings'. Comment-only; no behavioural change (chosen over a guard to avoid adding untested parity surface for a case that never fires)."
+    }
+  ]
+}

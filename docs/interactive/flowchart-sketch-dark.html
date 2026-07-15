@@ -802,6 +802,33 @@ var vnmRuntime = function vnmRuntime(root, payload) {
         res[r.i][r.role].offset = (slot - (k - 1) / 2) * step;
       });
     }
+    const deskewer = (nodeId, sideA, sideB) => {
+      const ra = groups[nodeId + "|" + sideA];
+      const rb = groups[nodeId + "|" + sideB];
+      if (!ra || !rb || ra.length !== 1 || rb.length !== 1) return;
+      const box = boxOf(nodeId);
+      const axisIsX = sideA === "top" || sideA === "bottom";
+      const c = axisIsX ? box.x : box.y;
+      const farOff = (rec2) => {
+        const e = edgeEls[rec2.i];
+        const fb = boxOf(rec2.role === "target" ? e.from : e.to);
+        return fb ? (axisIsX ? fb.x : fb.y) - c : void 0;
+      };
+      const dA = farOff(ra[0]);
+      const dB = farOff(rb[0]);
+      if (dA === void 0 || dB === void 0) return;
+      const tol = 30 / 2;
+      if (Math.sign(dA) === Math.sign(dB) || Math.abs(dA) < tol || Math.abs(dB) < tol) return;
+      if ((axisIsX ? box.w : box.h) / 2 - 6 < tol) return;
+      const rec = ra[0];
+      res[rec.i][rec.role].offset = Math.sign(dA) * tol;
+    };
+    const skNodes = {};
+    for (const key in groups) skNodes[key.slice(0, key.lastIndexOf("|"))] = true;
+    for (const nodeId in skNodes) {
+      deskewer(nodeId, "top", "bottom");
+      deskewer(nodeId, "left", "right");
+    }
     const pairs = {};
     edgeEls.forEach((e, i) => {
       if (!e.label) return;
@@ -1106,6 +1133,74 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     }
     for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
   }
+  function separateConvergentJogs2(edges, pairs) {
+    if (edgeStyle !== "elbow") return;
+    const JOG_GAP2 = 26;
+    const CONVERGE_MIN2 = 3;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const jogOf = (p, role) => {
+      const len = p.length;
+      if (len < 4) return null;
+      const i = role === "target" ? len - 3 : 1;
+      if (i < 1 || i + 2 > len) return null;
+      const a = p[i];
+      const b = p[i + 1];
+      const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+      const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+      if (!isVert && !isHorz) return null;
+      const along3 = isVert ? a.x : a.y;
+      const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+      const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+      const appFrom = role === "target" ? p[i + 1] : p[1];
+      const appTo = role === "target" ? p[len - 1] : p[0];
+      const toward = isVert ? Math.sign(appTo.x - appFrom.x) : Math.sign(appTo.y - appFrom.y);
+      const end = role === "target" ? p[0] : p[len - 1];
+      const far = isVert ? end.x : end.y;
+      return { seg: { edge: 0, i, along: along3, lo, hi }, vertical: isVert, toward, far };
+    };
+    const buckets = {};
+    edges.forEach((e, idx) => {
+      const ep = pairs[idx];
+      const roles = [["source", ep.from], ["target", ep.to]];
+      for (const [role, node] of roles) {
+        const j = jogOf(e.points, role);
+        if (!j) continue;
+        const key = node + "|" + (j.vertical ? "V" : "H") + "|" + j.toward + "|" + nAt(j.seg.along);
+        const rec = { edge: idx, seg: { edge: idx, i: j.seg.i, along: j.seg.along, lo: j.seg.lo, hi: j.seg.hi }, vertical: j.vertical, toward: j.toward, far: j.far };
+        (buckets[key] || (buckets[key] = [])).push(rec);
+      }
+    });
+    const moved2 = {};
+    for (const key in buckets) {
+      const recs = buckets[key];
+      if (recs.length < CONVERGE_MIN2) continue;
+      recs.sort((x, y) => x.far - y.far || x.edge - y.edge);
+      let sum = 0;
+      for (const r of recs) sum += r.seg.along;
+      const mean = sum / recs.length;
+      const k = recs.length;
+      const toward = recs[0].toward;
+      recs.forEach((r, s) => {
+        const lane = nAt(mean + (s - (k - 1) / 2 - toward * (k - 1) / 2) * JOG_GAP2);
+        if (Math.abs(lane - r.seg.along) < 1e-6) return;
+        moveLane2(edges[r.edge], r.vertical, r.seg, lane);
+        moved2[r.edge] = true;
+      });
+    }
+    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+  }
   function resolveLabelNodeCollisions2(plates, nodeBoxes) {
     const shifts = plates.map(() => ({ x: 0, y: 0 }));
     if (!nodeBoxes.length) return shifts;
@@ -1406,6 +1501,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     foldLabelShifts(routed, resolveLabelLineOffsets2(labelPlatesOf(routed), routed.map((r) => r.points)));
     separateLanes2(routed);
     separateAntiParallelJogs2(routed, edgeEls);
+    separateConvergentJogs2(routed, edgeEls);
     foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
     foldLabelShifts(routed, resolveLabelEdgeCollisions2(labelPlatesOf(routed), routed.map((r) => r.points)));
     const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id].x, y: positions[nd.id].y, w: sizes[nd.id].w, h: sizes[nd.id].h }));
@@ -2103,6 +2199,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     foldLabelShifts(routesB, resolveLabelLineOffsets2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     separateLanes2(routesB);
     separateAntiParallelJogs2(routesB, edgeEls);
+    separateConvergentJogs2(routesB, edgeEls);
     foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
     foldLabelShifts(routesB, resolveLabelEdgeCollisions2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     const nodeBoxesB = model.nodes.map((nd) => {

@@ -1104,6 +1104,41 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
         res[r.i]![r.role].offset = (slot - (k - 1) / 2) * step;
       });
     }
+    // v0.6.5 (defect #2) — de-skewer a lone-in / lone-out collinear pass-through:
+    // a node with exactly one lone-top + lone-bottom (or lone-left + lone-right) edge
+    // heading in OPPOSITE directions gets one port nudged PORT_STEP/2 (=15) toward its
+    // own heading. Keep byte-identical to geometry.computePerimeterPorts' deskewer
+    // (PORT_STEP/2 tolerance + nudge, PORT_MARGIN=6 room gate); a straight A→B→C pass
+    // (headings on the centre) and any spread side stay untouched.
+    const deskewer = (nodeId: string, sideA: string, sideB: string): void => {
+      const ra = groups[nodeId + "|" + sideA];
+      const rb = groups[nodeId + "|" + sideB];
+      if (!ra || !rb || ra.length !== 1 || rb.length !== 1) return;
+      const box = boxOf(nodeId);
+      const axisIsX = sideA === "top" || sideA === "bottom";
+      const c = axisIsX ? box.x : box.y;
+      // Heading = each edge's FAR node centre (dagre may run both waypoint columns
+      // straight through the node, so the immediate bend is a false "aligned").
+      const farOff = (rec: { i: number; role: "source" | "target" }): number | undefined => {
+        const e = edgeEls[rec.i]!;
+        const fb = boxOf(rec.role === "target" ? e.from : e.to);
+        return fb ? (axisIsX ? fb.x : fb.y) - c : undefined;
+      };
+      const dA = farOff(ra[0]!);
+      const dB = farOff(rb[0]!);
+      if (dA === undefined || dB === undefined) return;
+      const tol = 30 / 2;
+      if (Math.sign(dA) === Math.sign(dB) || Math.abs(dA) < tol || Math.abs(dB) < tol) return;
+      if ((axisIsX ? box.w : box.h) / 2 - 6 < tol) return;
+      const rec = ra[0]!;
+      res[rec.i]![rec.role].offset = Math.sign(dA) * tol;
+    };
+    const skNodes: Record<string, boolean> = {};
+    for (const key in groups) skNodes[key.slice(0, key.lastIndexOf("|"))] = true;
+    for (const nodeId in skNodes) {
+      deskewer(nodeId, "top", "bottom");
+      deskewer(nodeId, "left", "right");
+    }
     // stagger labels of edges that share a node pair so their plates don't clip
     const pairs: Record<string, number[]> = {};
     edgeEls.forEach((e, i) => {
@@ -1447,6 +1482,89 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
         if (Math.abs(lane - j.seg.along) < 1e-6) return;
         moveLane(edges[j.edge]!, j.vertical, j.seg, lane);
         moved[j.edge] = true;
+      });
+    }
+    for (const kk in moved) edges[Number(kk)]!.path = pathPoly(edges[Number(kk)]!.points);
+  }
+  // mirrors geometry.separateConvergentJogs() (v0.6.5, defect #1): de-tangle a
+  // ≥CONVERGE_MIN(=3)-edge convergence bundle at ONE node side — the generalization
+  // of separateAntiParallelJogs from a node pair to a node side. Group each endpoint's
+  // border-adjacent jog (a target's LAST interior run, a source's FIRST) by (node,
+  // orientation, toward-border, collinear along); a bucket of ≥3 is spread onto lanes
+  // JOG_GAP=26 apart, ordered by far-end perp coord, centred on the mean then anchored
+  // so the fan opens away from the border. Byte-identical constants + logic to geometry
+  // (JOG_GAP=26; CONVERGE_MIN=3; same len-3 / 1 border-run pick; i>=1 && i+2<=len; nAt
+  // == n; pathPoly == toPath elbow). Runs right after separateAntiParallelJogs on the
+  // routed results; pairs[i] === edgeEls[i] carry from/to. Elbow only; keep in lockstep
+  // with the static pass.
+  function separateConvergentJogs(
+    edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>,
+    pairs: Array<{ from: string; to: string }>,
+  ): void {
+    if (edgeStyle !== "elbow") return;
+    const JOG_GAP = 26;
+    const CONVERGE_MIN = 3;
+    const moveLane = (e: { points: Pt[]; labelPos: Pt }, vertical: boolean, seg: LaneSeg, target: number): void => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i]!.y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1]!.y };
+      } else {
+        shiftLabelOnSeg(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i]!.x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1]!.x, y: target };
+      }
+      seg.along = target;
+    };
+    type Rec = { edge: number; seg: LaneSeg; vertical: boolean; toward: number; far: number };
+    const jogOf = (p: Pt[], role: "source" | "target"): { seg: LaneSeg; vertical: boolean; toward: number; far: number } | null => {
+      const len = p.length;
+      if (len < 4) return null;
+      const i = role === "target" ? len - 3 : 1;
+      if (i < 1 || i + 2 > len) return null;
+      const a = p[i]!;
+      const b = p[i + 1]!;
+      const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+      const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+      if (!isVert && !isHorz) return null;
+      const along = isVert ? a.x : a.y;
+      const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+      const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+      const appFrom = role === "target" ? p[i + 1]! : p[1]!;
+      const appTo = role === "target" ? p[len - 1]! : p[0]!;
+      const toward = isVert ? Math.sign(appTo.x - appFrom.x) : Math.sign(appTo.y - appFrom.y);
+      const end = role === "target" ? p[0]! : p[len - 1]!;
+      const far = isVert ? end.x : end.y;
+      return { seg: { edge: 0, i, along, lo, hi }, vertical: isVert, toward, far };
+    };
+    const buckets: Record<string, Rec[]> = {};
+    edges.forEach((e, idx) => {
+      const ep = pairs[idx]!;
+      const roles: Array<["source" | "target", string]> = [["source", ep.from], ["target", ep.to]];
+      for (const [role, node] of roles) {
+        const j = jogOf(e.points, role);
+        if (!j) continue;
+        const key = node + "|" + (j.vertical ? "V" : "H") + "|" + j.toward + "|" + nAt(j.seg.along);
+        const rec: Rec = { edge: idx, seg: { edge: idx, i: j.seg.i, along: j.seg.along, lo: j.seg.lo, hi: j.seg.hi }, vertical: j.vertical, toward: j.toward, far: j.far };
+        (buckets[key] || (buckets[key] = [])).push(rec);
+      }
+    });
+    const moved: Record<number, boolean> = {};
+    for (const key in buckets) {
+      const recs = buckets[key]!;
+      if (recs.length < CONVERGE_MIN) continue;
+      recs.sort((x, y) => x.far - y.far || x.edge - y.edge);
+      let sum = 0;
+      for (const r of recs) sum += r.seg.along;
+      const mean = sum / recs.length;
+      const k = recs.length;
+      const toward = recs[0]!.toward;
+      recs.forEach((r, s) => {
+        const lane = nAt(mean + (s - (k - 1) / 2 - (toward * (k - 1)) / 2) * JOG_GAP);
+        if (Math.abs(lane - r.seg.along) < 1e-6) return;
+        moveLane(edges[r.edge]!, r.vertical, r.seg, lane);
+        moved[r.edge] = true;
       });
     }
     for (const kk in moved) edges[Number(kk)]!.path = pathPoly(edges[Number(kk)]!.points);
@@ -1852,6 +1970,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     separateLanes(routed);
     // v0.6.2: de-cramp a collinear anti-parallel elbow pair the lane gate skips.
     separateAntiParallelJogs(routed, edgeEls);
+    // v0.6.5: de-tangle a ≥3-edge convergence bundle at one node side (defect #1).
+    separateConvergentJogs(routed, edgeEls);
     // FR6: de-collide label plates, folding the shift back into labelPos so the
     // label-vs-node pass sees the moved plate (uses the same rounded-centre
     // resolver as buildSvg → the live view matches the exported SVG).
@@ -2722,6 +2842,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     separateLanes(routesB);
     // v0.6.2: de-cramp a collinear anti-parallel elbow pair the lane gate skips.
     separateAntiParallelJogs(routesB, edgeEls);
+    // v0.6.5: de-tangle a ≥3-edge convergence bundle at one node side (defect #1).
+    separateConvergentJogs(routesB, edgeEls);
     // FR6: de-collide label plates from the ROUNDED routed midpoints (== the value
     // the sink emits), folding each shift into labelPos so the shift byte-matches
     // the static layout()'s and the label-vs-node pass reads the moved plate.

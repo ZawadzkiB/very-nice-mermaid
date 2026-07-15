@@ -1,0 +1,8 @@
+{
+  "slug": "dense-edge-routing",
+  "updated": "2026-07-15",
+  "note": "As-is baseline (before any code change), verified against the real layout of architecture.mmd. Three edge-routing defects on a dense flowchart TB: (#1) four edges attach to RULES's top at correctly-spread ports but all jog at the SAME y=1190 -> one collinear knot that separateLanes (overlap gate) and separateAntiParallelJogs (pair-scoped, first-interior-run) both miss; (#2) MCP's lone in-top + lone out-bottom edges both at offset 0 (x=400) -> a straight vertical skewers MCP; (#3) the stream-context/findings verticals run through the ENGINE container box because subgraph boxes are post-layout and never fed into routing.",
+  "diagrams": [
+    { "kind": "flow", "file": "flow.mmd", "title": "As-is: convergence tangle at RULES top (4 jogs collinear at y=1190), MCP skewer at x=400, and ENGINE-container cut by the long BE<->RULES verticals" }
+  ]
+}

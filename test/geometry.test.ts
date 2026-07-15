@@ -18,6 +18,7 @@ import {
   applyEdgeBridges,
   separateLanes,
   separateAntiParallelJogs,
+  separateConvergentJogs,
   subgraphBox,
   SUBGRAPH_TITLE_BAND,
   type NodeBox,
@@ -667,6 +668,136 @@ describe("separateAntiParallelJogs de-cramps a collinear anti-parallel elbow pai
     const curvedBefore = JSON.stringify(curved);
     separateAntiParallelJogs(curved, "curved");
     expect(JSON.stringify(curved)).toBe(curvedBefore);
+  });
+});
+
+describe("separateConvergentJogs de-tangles a ≥3-edge convergence bundle at a node side (v0.6.5)", () => {
+  type CEdge = {
+    from: string;
+    to: string;
+    points: { x: number; y: number }[];
+    path?: string;
+    labelPos?: { x: number; y: number };
+  };
+  // Three edges from DIFFERENT sources all enter node R's top border (y=200) — each
+  // with a border-adjacent horizontal jog at the identical y=170 (one merged crossbar
+  // the anti-parallel pass, which groups by node pair, cannot touch). Ports at distinct
+  // x; sources at distinct heights so ordering is unambiguous.
+  const mkBundle = (): CEdge[] => [
+    { from: "S1", to: "R", points: [{ x: 40, y: 40 }, { x: 40, y: 170 }, { x: 150, y: 170 }, { x: 150, y: 200 }] },
+    { from: "S2", to: "R", points: [{ x: 300, y: 80 }, { x: 300, y: 170 }, { x: 180, y: 170 }, { x: 180, y: 200 }] },
+    { from: "S3", to: "R", points: [{ x: 60, y: 120 }, { x: 60, y: 170 }, { x: 210, y: 170 }, { x: 210, y: 200 }] },
+  ];
+  const orthogonal = (e: CEdge): boolean =>
+    e.points.every((p, i) => i === 0 || Math.abs(e.points[i - 1]!.x - p.x) < 1e-6 || Math.abs(e.points[i - 1]!.y - p.y) < 1e-6);
+  const jogY = (e: CEdge): number => e.points[1]!.y; // the border-adjacent horizontal crossbar
+
+  it("spreads the 3 collinear border jogs onto distinct lanes ≥ JOG_GAP apart, opening AWAY from the border", () => {
+    const edges = mkBundle();
+    const anchors = edges.map((e) => [{ ...e.points[0]! }, { ...e.points[e.points.length - 1]! }]);
+    separateConvergentJogs(edges, "elbow");
+    const ys = edges.map(jogY).sort((a, b) => a - b);
+    for (let i = 1; i < ys.length; i++) expect(ys[i]! - ys[i - 1]!).toBeGreaterThanOrEqual(26 - 1e-6);
+    // every jog stays on the approach side of the border (y ≤ mean 170 < border 200) — no lane crosses the border
+    for (const y of ys) expect(y).toBeLessThanOrEqual(170 + 1e-6);
+    // the border-nearest lane keeps the bundle's original clearance (mean = 170)
+    expect(Math.max(...ys)).toBe(170);
+    edges.forEach((e, i) => {
+      expect(e.points[0]).toEqual(anchors[i]![0]); // source anchor unmoved
+      expect(e.points[e.points.length - 1]).toEqual(anchors[i]![1]); // target port unmoved
+      expect(e.points[1]!.y).toBe(e.points[2]!.y); // crossbar stayed horizontal
+      expect(orthogonal(e)).toBe(true);
+    });
+    // exact fan: sorted by far-end (source y 40/80/120) → lanes 118/144/170, biased so
+    // the highest source (S1, y=40) turns FARTHEST from the border and the lowest (S3,
+    // y=120) keeps the bundle's original border-nearest lane (170).
+    const byId = Object.fromEntries(edges.map((e) => [e.from, jogY(e)]));
+    expect(byId.S1).toBe(118);
+    expect(byId.S2).toBe(144);
+    expect(byId.S3).toBe(170);
+    // the two moved edges rebuilt their path; S3 (already on the anchor lane) is byte-identical
+    expect(edges.find((e) => e.from === "S1")!.path).toContain(" L ");
+    expect(edges.find((e) => e.from === "S2")!.path).toContain(" L ");
+    expect(edges.find((e) => e.from === "S3")!.path).toBeUndefined();
+  });
+
+  it("is deterministic + idempotent (a spread bundle is JOG_GAP apart → no longer collinear → never re-fires)", () => {
+    const once = mkBundle();
+    separateConvergentJogs(once, "elbow");
+    const twice = mkBundle();
+    separateConvergentJogs(twice, "elbow");
+    separateConvergentJogs(twice, "elbow");
+    expect(JSON.stringify(twice.map((e) => e.points))).toBe(JSON.stringify(once.map((e) => e.points)));
+  });
+
+  it("no-ops on a 2-edge bundle (left to the anti-parallel pass), an already-spread bundle, and any curved edge", () => {
+    const two = mkBundle().slice(0, 2); // < CONVERGE_MIN (3) → untouched
+    const twoBefore = JSON.stringify(two);
+    separateConvergentJogs(two, "elbow");
+    expect(JSON.stringify(two)).toBe(twoBefore);
+
+    const spread = mkBundle();
+    separateConvergentJogs(spread, "elbow"); // fan out once
+    const spreadOnce = JSON.stringify(spread);
+    separateConvergentJogs(spread, "elbow"); // already distinct → no change
+    expect(JSON.stringify(spread)).toBe(spreadOnce);
+
+    const curved = mkBundle();
+    const curvedBefore = JSON.stringify(curved);
+    separateConvergentJogs(curved, "curved");
+    expect(JSON.stringify(curved)).toBe(curvedBefore);
+  });
+
+  it("does not touch the v0.6.2 anti-parallel case (2-edge node pair) — disjoint keys", () => {
+    // an A→B / B→A anti-parallel pair (a single node pair, 2 edges) stays out of the
+    // convergence pass (CONVERGE_MIN=3), so the two passes never double-move it.
+    const pair: CEdge[] = [
+      { from: "A", to: "B", points: [{ x: 114, y: 276 }, { x: 114, y: 306 }, { x: 147, y: 306 }, { x: 147, y: 336 }] },
+      { from: "B", to: "A", points: [{ x: 177, y: 336 }, { x: 177, y: 306 }, { x: 144, y: 306 }, { x: 144, y: 276 }] },
+    ];
+    const before = JSON.stringify(pair);
+    separateConvergentJogs(pair, "elbow");
+    expect(JSON.stringify(pair)).toBe(before);
+  });
+});
+
+describe("computePerimeterPorts de-skewers a lone-in / lone-out collinear pass-through (v0.6.5)", () => {
+  // Node M with exactly one edge entering its top (from a node LEFT of centre) and one
+  // leaving its bottom (to a node RIGHT of centre): the two head in opposite directions
+  // but both land on offset 0 → a straight line appears to impale M.
+  const M: NodeBox = { x: 400, y: 400, width: 120, height: 40 };
+  const boxes = (): Map<string, NodeBox> =>
+    new Map<string, NodeBox>([
+      ["M", M],
+      ["A", { x: 350, y: 250, width: 80, height: 40 }], // above + left of M
+      ["B", { x: 450, y: 550, width: 80, height: 40 }], // below + right of M
+    ]);
+
+  it("nudges one port by PORT_STEP/2 toward its far node when the in/out head OPPOSITE ways", () => {
+    const edges = [
+      { from: "A", to: "M" },
+      { from: "M", to: "B" },
+    ];
+    const ports = computePerimeterPorts(edges, boxes());
+    expect(ports[0]!.target.side).toBe("top"); // A→M enters M top
+    expect(ports[1]!.source.side).toBe("bottom"); // M→B leaves M bottom
+    // top port (A→M) nudged left (toward A, x=350 < M.x=400) by 15; bottom stays centred
+    expect(ports[0]!.target.offset).toBe(-15);
+    expect(ports[1]!.source.offset).toBe(0);
+  });
+
+  it("leaves a genuine straight A→B→C pass-through (far nodes on the centre) byte-identical", () => {
+    const b = boxes();
+    b.set("A", { x: 400, y: 250, width: 80, height: 40 }); // directly above M
+    b.set("B", { x: 400, y: 550, width: 80, height: 40 }); // directly below M
+    const ports = computePerimeterPorts([{ from: "A", to: "M" }, { from: "M", to: "B" }], b);
+    expect(ports[0]!.target.offset).toBe(0); // aligned → not a skewer → untouched
+    expect(ports[1]!.source.offset).toBe(0);
+  });
+
+  it("leaves a lone-top-only node (no opposing bottom edge) untouched", () => {
+    const ports = computePerimeterPorts([{ from: "A", to: "M" }], boxes());
+    expect(ports[0]!.target.offset).toBe(0);
   });
 });
 

@@ -1,0 +1,19 @@
+flowchart TD
+  route["routeEdge() per edge — elbow polylines + perimeter ports<br/>(shared geometry: src/geometry/index.ts)"] --> fe["layout.finishEdges() — shared post-routing pipeline<br/>mirrored byte-for-byte in the vnmRuntime twin (src/render/dom/runtime.ts)"]
+  fe --> off["offsetLabelsOffLine()"]
+  off --> lanes["separateLanes() — FR9 near-parallel lane spread (elbow only)"]
+  lanes --> anti["separateAntiParallelJogs() — v0.6.2<br/>groups by NODE PAIR · 2-edge collinear jog stagger (UNCHANGED)"]
+  anti --> conv["separateConvergentJogs() — NEW v0.6.5 · defect #1 (AS-BUILT)<br/>keys each endpoint's border-adjacent jog by (node · orientation · toward-border · collinear along)<br/>fires on a bucket of ≥3 (CONVERGE_MIN) collinear jogs — target uses its LAST interior run,<br/>source its FIRST — spread JOG_GAP apart, ordered by far-end, centred on the mean then<br/>anchored so the fan opens AWAY from the border (reuses moveLane / LaneSeg / toPath)"]
+  conv --> labels["deCollideLabels → …FromEdges → …FromNodes → deCollideLabels"]
+  labels --> bridges["applyBridges() — FR7 crossing gaps (elbow, gated)"]
+
+  ports["computePerimeterPorts() — NEW rule v0.6.5 · defect #2 (AS-BUILT)<br/>lone in-top + lone out-bottom (or lone left+right) whose FAR NODES head OPPOSITE ways<br/>→ nudge one port PORT_STEP/2 toward its far node so the in/out no longer align<br/>(gated on far-node direction, NOT a straight A→B→C pass; mirrored in the runtime twin's computePorts)"] --> route
+
+  conv -. "RULES top: e8 REST · e4 MCP---RULES · e5 stream context · e6 findings<br/>collinear at y=1190 (≥3) → fan to 1112/1138/1164/1190, opening up away from the border" .-> convEx["legible staircase fan into RULES (also de-tangles BE's 3-edge bottom bundle)"]
+  ports -. "MCP: e3 author-rules (in-top, far=AGENT left) + e4 MCP---RULES (out-bottom, far=RULES right)<br/>→ e3 top port nudged to x=385.25 so the in/out are offset from the x=400.25 exit" .-> mcpEx["MCP in/out offset"]
+
+  defer["DEFERRED to a follow-up · defect #3 — subgraph-aware routing<br/>long BE↔RULES verticals cut through the ENGINE container.<br/>Root cause: container boxes are post-layout only (computeSubgraphBoxes),<br/>never obstacles for routing. Avoiding them = a LARGE, high-regression change."]:::defer
+
+  classDef defer fill:#ffe6e6,stroke:#c94a4a,color:#111
+  classDef ex fill:#e6f4ea,stroke:#4a9a5e,color:#111
+  class convEx,mcpEx ex

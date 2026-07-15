@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo report diagrams — dense-edge-routing (v0.6.5)</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo report — <code>dense-edge-routing</code> (v0.6.5, as-built)</h1>
+    <p class="hint">Offline viewer · mermaid is vendored with the plugin (no network, no CLI) · regenerate via the gogo-mermaid skill.</p>
+  </header>
+
+  <h2>After — as-built v0.6.5 edge-routing quality passes</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  route["routeEdge() per edge — elbow polylines + perimeter ports<br/>(shared geometry: src/geometry/index.ts)"] --&gt; fe["layout.finishEdges() — shared post-routing pipeline<br/>mirrored byte-for-byte in the vnmRuntime twin (src/render/dom/runtime.ts)"]
+  fe --&gt; off["offsetLabelsOffLine()"]
+  off --&gt; lanes["separateLanes() — FR9 near-parallel lane spread (elbow only)"]
+  lanes --&gt; anti["separateAntiParallelJogs() — v0.6.2<br/>groups by NODE PAIR · 2-edge collinear jog stagger (UNCHANGED)"]
+  anti --&gt; conv["separateConvergentJogs() — NEW v0.6.5 · defect #1 (AS-BUILT)<br/>keys each endpoint's border-adjacent jog by (node · orientation · toward-border · collinear along)<br/>fires on a bucket of ≥3 (CONVERGE_MIN) collinear jogs — target uses its LAST interior run,<br/>source its FIRST — spread JOG_GAP apart, ordered by far-end, centred on the mean then<br/>anchored so the fan opens AWAY from the border (reuses moveLane / LaneSeg / toPath)"]
+  conv --&gt; labels["deCollideLabels → …FromEdges → …FromNodes → deCollideLabels"]
+  labels --&gt; bridges["applyBridges() — FR7 crossing gaps (elbow, gated)"]
+
+  ports["computePerimeterPorts() — NEW rule v0.6.5 · defect #2 (AS-BUILT)<br/>lone in-top + lone out-bottom (or lone left+right) whose FAR NODES head OPPOSITE ways<br/>→ nudge one port PORT_STEP/2 toward its far node so the in/out no longer align<br/>(gated on far-node direction, NOT a straight A→B→C pass; mirrored in the runtime twin's computePorts)"] --&gt; route
+
+  conv -. "RULES top: e8 REST · e4 MCP---RULES · e5 stream context · e6 findings<br/>collinear at y=1190 (≥3) → fan to 1112/1138/1164/1190, opening up away from the border" .-&gt; convEx["legible staircase fan into RULES (also de-tangles BE's 3-edge bottom bundle)"]
+  ports -. "MCP: e3 author-rules (in-top, far=AGENT left) + e4 MCP---RULES (out-bottom, far=RULES right)<br/>→ e3 top port nudged to x=385.25 so the in/out are offset from the x=400.25 exit" .-&gt; mcpEx["MCP in/out offset"]
+
+  defer["DEFERRED to a follow-up · defect #3 — subgraph-aware routing<br/>long BE↔RULES verticals cut through the ENGINE container.<br/>Root cause: container boxes are post-layout only (computeSubgraphBoxes),<br/>never obstacles for routing. Avoiding them = a LARGE, high-regression change."]:::defer
+
+  classDef defer fill:#ffe6e6,stroke:#c94a4a,color:#111
+  classDef ex fill:#e6f4ea,stroke:#4a9a5e,color:#111
+  class convEx,mcpEx ex
+
+  </pre></div>
+
+  <h2>Before — the three verified defects on architecture.mmd</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  ports["computePerimeterPorts() — RULES top border (y=1220)<br/>spreads 4 attached edges to x=419 / 449 / 479 / 509 (30px apart, CORRECT)"] --&gt; route["routeEdge() + elbowThrough() — multi-rank edges<br/>final approach is perpendicular into RULES top"]
+  route --&gt; jog["all 4 border-adjacent jogs land on the SAME y=1190 (30px above RULES top)<br/>e8 CONSOLE|REST · e4 MCP---RULES · e5 BE|stream context (target) · e6 RULES|findings (source)"]
+  jog --&gt; tangle["DEFECT #1 — convergence tangle: 4 collinear crossbars at y=1190<br/>(e8 x298..419 · e4 x400..449 · e5 x479..510 · e6 x509..536) plus the 4 vertical<br/>drops crossing them merge into one knot just above RULES"]
+  lanes["separateLanes() — SKIPS: crossbars overlap on the parallel (x) axis<br/>by ~19px (e8/e4) &lt; LANE_MIN_OVERLAP=40; others do not overlap at all"] -.-&gt; tangle
+  anti["separateAntiParallelJogs() — MISSES: groups by NODE PAIR, but these are 3 different pairs.<br/>Even the one real pair (BE↔RULES: e5,e6) is missed — 'first interior run wins' picks<br/>e5's jog at y=368 vs e6's at y=1190 → not collinear → skipped"] -.-&gt; tangle
+  ports2["MCP (cx=400): lone in-edge on top (e3 author rules → offset 0 → x=400)<br/>+ lone out-edge on bottom (e4 MCP---RULES → offset 0 → x=400)"] --&gt; skewer["DEFECT #2 — skewer: in-top + out-bottom collinear at x=400<br/>→ one straight vertical runs through MCP top (y=758) to bottom (y=818)"]
+  sg["subgraph boxes computed AFTER dagre by computeSubgraphBoxes();<br/>used only for the container visual + contentBounds — NEVER fed into routing"] --&gt; cut["DEFECT #3 — container cut: e5 (x=510) &amp; e6 (x=536) verticals run y=368..1190<br/>straight through the ENGINE box interior (x 211..577, y 722..1294)"]
+
+  </pre></div>
+
+  <script src="../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from: ../../../resources/mermaid.min.js\n' +
+          'Re-run the gogo-mermaid skill, or read the .mmd source files directly.</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>
