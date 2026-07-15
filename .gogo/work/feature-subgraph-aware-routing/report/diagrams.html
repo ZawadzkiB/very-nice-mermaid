@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo report diagrams — subgraph-aware-routing (as built, v0.6.6)</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo report diagrams — <code>subgraph-aware-routing</code> (as built, v0.6.6)</h1>
+    <p class="hint">Offline viewer · mermaid is vendored with the plugin (no network, no CLI) · regenerate via the gogo-mermaid skill.</p>
+  </header>
+
+  <h2>As built — avoidSubgraphs() in the finishEdges pipeline + the vnmRuntime twin</h2>
+<div class="diagram"><pre class="mermaid">
+flowchart TB
+  subgraph layout["src/layout/index.ts — layout() / applyPositions()"]
+    dagre["dagre.layout() -> nodeBoxes"] --> csb["computeSubgraphBoxes() + resolveMemberNodes()"]
+    dagre --> ports["computePerimeterPorts()<br/>(UNTOUCHED — D2=A)"]
+    ports --> route["routeEdge() per edge"]
+    csb --> cac["computeAvoidContainers() [NEW]<br/>AvoidContainer[] = box + members:Set"]
+    route --> fe["finishEdges(edges, theme, bridges, nodeBoxes, containers)<br/>(+ 5th param: containers) [CHANGED]"]
+    cac --> fe
+  end
+
+  subgraph chain["finishEdges pass chain (elbow-only, mirrored in the vnmRuntime twin)"]
+    avoid["avoidSubgraphs() [NEW v0.6.6, runs FIRST]<br/>trunk piercing a container missing an endpoint<br/>-> push outside nearest side +MARGIN(28);<br/>lowerReentry() +APPROACH(30) near interior end"]
+    avoid --> offs["offsetLabelsOffLine() (v0.6.4)"]
+    offs --> lanes["separateLanes() (FR9) — re-lanes new outside trunks"]
+    lanes --> anti["separateAntiParallelJogs() (v0.6.2)"]
+    anti --> conv["separateConvergentJogs() (v0.6.5)"]
+    conv --> labels["label de-collision chain"]
+    labels --> bridges["applyBridges() (FR7)"]
+  end
+  fe --> avoid
+
+  twin["src/render/dom/runtime.ts — vnmRuntime twin<br/>avoidSubgraphs() + avoidContainersFrom() [NEW]<br/>called FIRST in renderEdges() (subgraphWorldBox)<br/>AND buildSvg() (subgraphAbsBox); members: subgraphMembers"]
+  chain -. "byte-for-byte parity (dom-runtime-parity guard:<br/>TB arch + LR + drag cases)" .- twin
+
+  gate["GATE (as built): run.along strictly inside container cross-span<br/>AND parallel overlap >= MIN_CROSS(120); skip both-in;<br/>skip approach-into-member run (idempotency).<br/>Fires ONLY on architecture.mmd BE&lt;-&gt;RULES corpus-wide;<br/>heroes + snapshots byte-identical"]
+  avoid -. "gated" .- gate
+
+  state["native/state + class: finishEdges called with NO containers<br/>-> subgraphs=[] -> avoidSubgraphs no-op (parity holds)"]
+  fe -. "no containers" .- state
+</pre></div>
+
+  <h2>As built — avoidSubgraphs() per-edge / per-run / per-container decision flow</h2>
+<div class="diagram"><pre class="mermaid">
+stateDiagram-v2
+  [*] --> ScanEdge: for each edge (points p, len >= 4)
+  ScanEdge --> ScanRun: for each interior run i (1 <= i, i+2 < len)
+  ScanRun --> ScanContainer: axis-aligned run? for each container c
+
+  ScanContainer --> SkipBothIn: members has from AND to
+  SkipBothIn --> ScanContainer: skip (interior edge — heroes no-op)
+
+  ScanContainer --> SkipApproach: i==1 & from in c OR i==len-3 & to in c
+  SkipApproach --> ScanContainer: skip (endpoint approach — idempotency guard)
+
+  ScanContainer --> GatePerp: run.along strictly inside c cross-span?
+  GatePerp --> ScanContainer: no -> skip
+  GatePerp --> GateCross: yes
+  GateCross --> ScanContainer: overlap < MIN_CROSS(120) -> skip (entry sliver)
+  GateCross --> KeepBest: overlap >= 120 -> side = nearest border +/- MARGIN(28); keep if longest run
+
+  KeepBest --> ScanContainer: next container
+  ScanContainer --> ScanRun: next run
+  ScanRun --> Decide: best found?
+
+  Decide --> NextEdge: no best -> edge byte-identical
+  Decide --> PushOut: yes -> moveLane(trunk -> best.side) [elbow stays orthogonal, carries label]
+  PushOut --> LowerSrc: best.container has from?
+  LowerSrc --> LowerTgt: lowerReentry(p[i], p[i-1], p[0]) -> APPROACH(30)
+  LowerTgt --> Rebuild: best.container has to? lowerReentry(p[i+1], p[i+2], p[len-1])
+  Rebuild --> NextEdge: edge.path = toPath(points, elbow)
+  NextEdge --> [*]
+</pre></div>
+
+  <h2>Before (as-is) — BE&#8596;RULES verticals pierce the ENGINE container (defect #3)</h2>
+<div class="diagram"><pre class="mermaid">
+flowchart TB
+  dagre["dagre.layout()<br/>ranks RULES at ENGINE's bottom;<br/>BE above the container"] --> nb["nodeBoxes (nodes only)"]
+  dagre --> csb["computeSubgraphBoxes()<br/>ENGINE box x[211..577] y[722..1294]"]
+  nb --> ports["computePerimeterPorts() (nodes only)"]
+  ports --> route["routeEdge() / routeElbow()<br/>threads dagre waypoints"]
+  route --> fe["finishEdges(edges, theme, bridges, nodeBoxes)<br/>NO container obstacle model"]
+  csb -- "container boxes feed ONLY contentBounds<br/>(never routing)" --> bounds["contentBounds() -> svg viewport"]
+  fe --> defect["DEFECT #3 - container cut:<br/>e5 BE->RULES trunk x=510 runs 387px DOWN THROUGH ENGINE;<br/>e6 RULES->BE trunk x=536 runs 413px through ENGINE"]
+</pre></div>
+
+  <script src="../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from: ../../../resources/mermaid.min.js\n' +
+          'Re-run the gogo-mermaid skill, or read the .mmd source files directly.</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

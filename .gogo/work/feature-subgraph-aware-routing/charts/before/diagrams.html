@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo diagrams — subgraph-aware-routing (before)</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo diagrams — <code>subgraph-aware-routing (before)</code></h1>
+    <p class="hint">Offline viewer · mermaid is vendored with the plugin (no network, no CLI) · regenerate via the gogo-mermaid skill.</p>
+  </header>
+
+  <h2>Before (as-is) — container boxes never reach routing; BE&#8596;RULES pierce ENGINE</h2>
+<div class="diagram"><pre class="mermaid">
+flowchart TB
+  dagre["dagre.layout()<br/>ranks RULES at ENGINE's bottom;<br/>BE above the container"] --> nb["nodeBoxes (nodes only)"]
+  dagre --> csb["computeSubgraphBoxes()<br/>ENGINE box x[211..577] y[722..1294]"]
+  nb --> ports["computePerimeterPorts() (nodes only)"]
+  ports --> route["routeEdge() / routeElbow()<br/>threads dagre waypoints"]
+  route --> fe["finishEdges(edges, theme, bridges, nodeBoxes)<br/>NO container obstacle model"]
+  csb -- "container boxes feed ONLY contentBounds<br/>(never routing)" --> bounds["contentBounds() -> svg viewport"]
+
+  fe --> defect["DEFECT #3 - container cut:<br/>e5 BE->RULES 'stream context' trunk x=510<br/>runs 387px DOWN THROUGH ENGINE;<br/>e6 RULES->BE 'findings' trunk x=536<br/>runs 413px through ENGINE<br/>(one endpoint inside, one outside)"]
+  fe -. "e4 MCP->RULES, e8 CONSOLE->RULES:<br/>both endpoints inside ENGINE = legitimate interior" .- ok["reads fine (unchanged)"]
+</pre></div>
+
+  <script src="../../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from: ../../../../resources/mermaid.min.js\n' +
+          'Re-run the gogo-mermaid skill, or read the .mmd source files directly.</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

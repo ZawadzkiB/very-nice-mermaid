@@ -1,0 +1,9 @@
+{
+  "slug": "subgraph-aware-routing",
+  "updated": "2026-07-15",
+  "note": "INTENDED DESIGN v0.6.6 (plan). A new gated, elbow-only post-route pass avoidSubgraphs() runs FIRST in finishEdges (before separateLanes): for an edge whose long axis-aligned interior trunk runs through a container box that does NOT contain BOTH endpoints, it pushes the trunk just outside the nearest container side + margin and (when one endpoint is inside) drops the interior re-entry corner near that endpoint. Container boxes + membership are threaded into finishEdges from the already-computed computeSubgraphBoxes/resolveMemberNodes; the pass is mirrored byte-for-byte in the vnmRuntime twin's renderEdges (live, subgraphWorldBox) and buildSvg (export, subgraphAbsBox) paths, with membership from subgraphMembers. The gate is proven against the code to fire ONLY on architecture.mmd's e5/e6 across the whole fixture corpus, so both subgraph heroes (microservices, nested-subgraphs) and all snapshots stay byte-identical. Recommended over full obstacle-aware routing (deferred, high-regression). See decisions.md D1/D2.",
+  "diagrams": [
+    { "kind": "flow", "file": ".gogo/work/feature-subgraph-aware-routing/charts/intended-design.mmd", "title": "Intended design: avoidSubgraphs() slots first into finishEdges, reads container boxes from computeSubgraphBoxes, mirrored byte-for-byte in the vnmRuntime twin; gated to fire only on the reported case" },
+    { "kind": "activity", "file": ".gogo/work/feature-subgraph-aware-routing/charts/as-built-flow.mmd", "title": "As-built v0.6.6: avoidSubgraphs() per-edge/per-run/per-container decision flow — both-in skip, approach-into-member idempotency guard, cross-span + MIN_CROSS(120) gate, push to nearest side ±MARGIN(28), lowerReentry APPROACH(30); matches the shipped src/geometry + vnmRuntime twin" }
+  ]
+}

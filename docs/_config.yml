@@ -19,7 +19,7 @@ baseurl: "/very-nice-mermaid"
 # Cache-buster fallback for the gallery embeds/thumbnails. The templates prefer the
 # per-deploy commit SHA (site.github.build_revision); this value is only used when
 # that is unavailable (e.g. a local build). Keep it bumped with the package version.
-version: "0.6.5"
+version: "0.6.6"
 
 # Remote theme — GitHub Pages builds it; nothing is vendored.
 remote_theme: just-the-docs/just-the-docs

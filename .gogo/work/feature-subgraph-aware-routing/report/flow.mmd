@@ -1,0 +1,29 @@
+flowchart TB
+  subgraph layout["src/layout/index.ts — layout() / applyPositions()"]
+    dagre["dagre.layout() -> nodeBoxes"] --> csb["computeSubgraphBoxes() + resolveMemberNodes()"]
+    dagre --> ports["computePerimeterPorts()<br/>(UNTOUCHED — D2=A)"]
+    ports --> route["routeEdge() per edge"]
+    csb --> cac["computeAvoidContainers() [NEW]<br/>AvoidContainer[] = box + members:Set"]
+    route --> fe["finishEdges(edges, theme, bridges, nodeBoxes, containers)<br/>(+ 5th param: containers) [CHANGED]"]
+    cac --> fe
+  end
+
+  subgraph chain["finishEdges pass chain (elbow-only, mirrored in the vnmRuntime twin)"]
+    avoid["avoidSubgraphs() [NEW v0.6.6, runs FIRST]<br/>trunk piercing a container missing an endpoint<br/>-> push outside nearest side +MARGIN(28);<br/>lowerReentry() +APPROACH(30) near interior end"]
+    avoid --> offs["offsetLabelsOffLine() (v0.6.4)"]
+    offs --> lanes["separateLanes() (FR9) — re-lanes new outside trunks"]
+    lanes --> anti["separateAntiParallelJogs() (v0.6.2)"]
+    anti --> conv["separateConvergentJogs() (v0.6.5)"]
+    conv --> labels["label de-collision chain"]
+    labels --> bridges["applyBridges() (FR7)"]
+  end
+  fe --> avoid
+
+  twin["src/render/dom/runtime.ts — vnmRuntime twin<br/>avoidSubgraphs() + avoidContainersFrom() [NEW]<br/>called FIRST in renderEdges() (subgraphWorldBox)<br/>AND buildSvg() (subgraphAbsBox); members: subgraphMembers"]
+  chain -. "byte-for-byte parity (dom-runtime-parity guard:<br/>TB arch + LR + drag cases)" .- twin
+
+  gate["GATE (as built): run.along strictly inside container cross-span<br/>AND parallel overlap >= MIN_CROSS(120); skip both-in;<br/>skip approach-into-member run (idempotency).<br/>Fires ONLY on architecture.mmd BE&lt;-&gt;RULES corpus-wide;<br/>heroes + snapshots byte-identical"]
+  avoid -. "gated" .- gate
+
+  state["native/state + class: finishEdges called with NO containers<br/>-> subgraphs=[] -> avoidSubgraphs no-op (parity holds)"]
+  fe -. "no containers" .- state

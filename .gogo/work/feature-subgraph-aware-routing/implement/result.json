@@ -1,0 +1,27 @@
+{
+  "slug": "subgraph-aware-routing",
+  "phase": "implement",
+  "status": "ok",
+  "round": 1,
+  "inputs": [
+    ".gogo/work/feature-subgraph-aware-routing/plan.md",
+    ".gogo/knowledge/coding-rules.md",
+    ".gogo/knowledge/tech-stack.md"
+  ],
+  "outputs": [
+    "src/geometry/index.ts",
+    "src/layout/index.ts",
+    "src/render/dom/runtime.ts",
+    "test/geometry.test.ts",
+    "test/dom-runtime-parity.test.ts",
+    "test/cli.test.ts",
+    "package.json",
+    "src/cli/run.ts",
+    "docs/_config.yml",
+    ".gogo/work/feature-subgraph-aware-routing/charts/as-built-flow.mmd",
+    ".gogo/work/feature-subgraph-aware-routing/charts/manifest.json"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "summary": "Built the gated elbow-only avoidSubgraphs pass (run first in finishEdges) + computeAvoidContainers, wired containers through layout()/applyPositions(), mirrored byte-for-byte in the vnmRuntime twin (renderEdges + buildSvg); version 0.6.5->0.6.6. Gate proven to fire ONLY on architecture.mmd e5/e6 corpus-wide; both subgraph heroes + all snapshots byte-identical. typecheck + 423 unit tests green."
+}

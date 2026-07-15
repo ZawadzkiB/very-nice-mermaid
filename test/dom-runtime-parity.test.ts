@@ -24,6 +24,7 @@ import { prepare } from "../src/render/prepare.js";
 import {
   routeEdge,
   computePerimeterPorts,
+  computeAvoidContainers,
   contentBounds,
   labelPoint,
   type NodeBox,
@@ -187,7 +188,12 @@ function expectedPaths(
     return { ...e, points: r.points, path: r.path, labelPos: r.labelPos };
   });
   const nodeBoxes = model.nodes.map((nd) => boxes.get(nd.id)!);
-  finishEdges(routed, theme!, undefined, nodeBoxes);
+  // v0.6.6 — build the avoidSubgraphs container obstacles in the SAME offset-removed
+  // ("world") space as `boxes`, so the reference faithfully mirrors what the live runtime
+  // does (renderEdges builds them via subgraphWorldBox). Passing them (not []) is what
+  // makes this guard actually cover the new pass — a bypassed finishEdges would mask twin drift.
+  const containers = computeAvoidContainers(model.subgraphs, boxes);
+  finishEdges(routed, theme!, undefined, nodeBoxes, containers);
   return routed.map((r) => r.path);
 }
 
@@ -902,6 +908,134 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     // Parity: the live runtime's routes match the shared geometry's finishEdges output.
     const root = mountFake(buildPayload(model, theme, { minimap: false, persist: false }));
     expect(edgePaths(root)).toEqual(expectedPaths(model, worldBoxes(model), theme));
+  });
+
+  // ---- v0.6.6 avoidSubgraphs parity (defect #3, D1=A): the architecture repro fires the
+  // new container-avoid pass — BE↔RULES's long interior trunk is pulled OUTSIDE the ENGINE
+  // box and re-enters near RULES. Prove (1) the pass genuinely fired (a BE→RULES interior
+  // vertical run now sits outside ENGINE's cross-span) and (2) the buildSvg twin (abs coords)
+  // byte-matches renderSvg in light AND dark — the ultimate parity check for the new pass.
+  const archAvoidDsl = [
+    "flowchart TB",
+    "  subgraph ETSL[Editorial Suite]",
+    "    FE[Angular UI]",
+    "    BE[ETSL backend]",
+    "  end",
+    "  subgraph KUKU[AI agent]",
+    "    AGENT[Chat personas]",
+    "  end",
+    "  subgraph ENGINE[Validation Engine]",
+    "    RULES[Rules Sets Runs]",
+    "    MCP[MCP surface]",
+    "    CONSOLE[Veris console]",
+    "  end",
+    "  LLM[LLM provider]",
+    "  FE -->|chat| BE",
+    "  BE -->|proxy| AGENT",
+    "  AGENT -->|reason| LLM",
+    "  AGENT -->|author rules| MCP",
+    "  MCP --- RULES",
+    "  BE -->|stream context| RULES",
+    "  RULES -->|findings| BE",
+    "  BE -->|errors| FE",
+    "  CONSOLE -->|REST| RULES",
+  ].join("\n");
+
+  it("avoidSubgraphs genuinely fires: BE→RULES trunk routes OUTSIDE the ENGINE box (v0.6.6)", () => {
+    const { model } = prepare(archAvoidDsl, { theme: "light" });
+    const engine = model.subgraphs.find((s) => s.id === "ENGINE")!;
+    const left = engine.x - engine.width / 2;
+    const right = engine.x + engine.width / 2;
+    const trunkOutside = (fromId: string, toId: string): boolean => {
+      const e = model.edges.find((ed) => ed.from === fromId && ed.to === toId)!;
+      const p = e.points;
+      for (let i = 1; i + 2 < p.length; i++) {
+        const a = p[i]!;
+        const b = p[i + 1]!;
+        const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+        if (isVert && Math.abs(b.y - a.y) > 200 && (a.x < left || a.x > right)) return true;
+      }
+      return false;
+    };
+    // both the outbound (stream context) and return (findings) trunks route outside ENGINE
+    expect(trunkOutside("BE", "RULES")).toBe(true);
+    expect(trunkOutside("RULES", "BE")).toBe(true);
+  });
+
+  for (const themeName of ["light", "dark"] as const) {
+    it(`toSvgString() == renderSvg for the architecture avoidSubgraphs repro (${themeName})`, () => {
+      const { model, theme } = prepare(archAvoidDsl, { theme: themeName });
+      const { handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+      const expected = renderSvgFromModel(editedModel(model, theme, handle), theme);
+      const got = handle.toSvgString();
+      expect(got).toBe(expected);
+      expect(XMLValidator.validate(got)).toBe(true);
+    });
+  }
+
+  // ---- v0.6.6 avoidSubgraphs HORIZONTAL (LR) parity (REV-001): the TB corpus never fires the
+  // horizontal branch, so drive an `flowchart LR` that DOES — BE→RULES's long horizontal trunk
+  // is pushed OUTSIDE ENGINE's top/bottom span — and prove the twin's moveLane(vertical=false) +
+  // lowerReentry x-branch byte-match the shared geometry (edgePaths == finishEdges) AND
+  // toSvgString() == renderSvg. This is the guard for the previously-unexercised twin branch.
+  const archAvoidLrDsl = [
+    "flowchart LR",
+    "  BE[Backend]",
+    "  subgraph ENGINE[Engine]",
+    "    MCP[MCP]",
+    "    CONSOLE[Console]",
+    "    RULES[Rules]",
+    "    MCP --> RULES",
+    "    CONSOLE --> RULES",
+    "  end",
+    "  BE --> MCP",
+    "  BE --> CONSOLE",
+    "  BE -->|stream| RULES",
+    "  RULES -->|findings| BE",
+  ].join("\n");
+
+  it("avoidSubgraphs LR (horizontal trunk): the twin reproduces the pass + toSvgString parity (REV-001)", () => {
+    const { model, theme } = prepare(archAvoidLrDsl, { theme: "light" });
+    // genuinely fires the HORIZONTAL branch: BE→RULES has a long interior horizontal run now
+    // sitting outside ENGINE's cross-span (above the top / below the bottom).
+    const engine = model.subgraphs.find((s) => s.id === "ENGINE")!;
+    const top = engine.y - engine.height / 2;
+    const bottom = engine.y + engine.height / 2;
+    const e = model.edges.find((ed) => ed.from === "BE" && ed.to === "RULES")!;
+    let horizOutside = false;
+    for (let i = 1; i + 2 < e.points.length; i++) {
+      const a = e.points[i]!;
+      const b = e.points[i + 1]!;
+      if (Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 200 && (a.y < top || a.y > bottom)) horizOutside = true;
+    }
+    expect(horizOutside).toBe(true);
+    // twin parity: live routes match the shared geometry's finishEdges (horizontal branch covered)
+    const root = mountFake(buildPayload(model, theme, { minimap: false, persist: false }));
+    expect(edgePaths(root)).toEqual(expectedPaths(model, worldBoxes(model), theme));
+    // Save-SVG (abs-coord buildSvg twin) parity
+    const { handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+    const got = handle.toSvgString();
+    expect(got).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+    expect(XMLValidator.validate(got)).toBe(true);
+  });
+
+  // ---- v0.6.6 avoidSubgraphs under a live DRAG (FR5, REV-002): dragging re-runs the live pass
+  // on the moved container boxes. Prove it stays deterministic (a repeated identical edit is
+  // byte-identical) and that the live re-route byte-matches the static applyPositions() of the
+  // same edit (toSvgString() == renderSvg) — the drag-triggered FIRING path, not a no-op fixture.
+  it("avoidSubgraphs stays deterministic + parity-clean under a live drag (FR5, REV-002)", () => {
+    const { model, theme } = prepare(archAvoidDsl, { theme: "light" });
+    const { handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+    const be = model.nodes.find((n) => n.id === "BE")!;
+    const move = { version: 1 as const, positions: { BE: { x: be.x + 24, y: be.y - 16 } } };
+    handle.importLayout(move);
+    const first = handle.toSvgString();
+    // determinism: re-applying the identical edit yields byte-identical output
+    handle.importLayout(move);
+    expect(handle.toSvgString()).toBe(first);
+    // parity: the live re-route byte-matches applyPositions()/renderSvg of the same edit
+    expect(first).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+    expect(XMLValidator.validate(first)).toBe(true);
   });
 
 

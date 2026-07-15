@@ -50,8 +50,23 @@ addon installed.
 ## gogo overrides
 <!-- Preserved across re-runs. -->
 - Entry points: `src/index.ts` (API), `src/element.ts` (web component), `src/cli/index.ts` (CLI bin).
-- **Current version: v0.6.5** (`package.json` + `src/cli/run.ts` VERSION; asserted in `test/cli.test.ts`;
+- **Current version: v0.6.6** (`package.json` + `src/cli/run.ts` VERSION; asserted in `test/cli.test.ts`;
   `docs/_config.yml` `version` is the gallery cache-buster fallback — bump all four together).
+  v0.6.6 (`subgraph-aware-routing`, defect #3) adds one gated, elbow-only post-route pass
+  `avoidSubgraphs` run FIRST in `finishEdges`: for an edge whose long axis-aligned interior trunk
+  pierces a `subgraph` container box that does NOT hold BOTH endpoints, it pushes the trunk just
+  outside the container's nearest side + `SUBGRAPH_AVOID_MARGIN`(28) (via the existing `moveLane`) and
+  `lowerReentry`s the re-entry corner to a short `APPROACH`(30) near the interior endpoint (using the
+  edge's own border anchor — `computePerimeterPorts` UNTOUCHED, D2=A). Gate: `along` strictly inside the
+  container cross-span AND parallel overlap ≥ `MIN_CROSS`(120); both-endpoints-inside skipped; an
+  approach-into-a-member run skipped (idempotency). `computeAvoidContainers` (= `computeSubgraphBoxes`
+  box + `resolveMemberNodes` members) is threaded through a new optional 5th `finishEdges` param from
+  `layout()`/`applyPositions()`; native/state+class pass none (no-op). Mirrored byte-for-byte in the
+  `vnmRuntime` twin (`avoidSubgraphs` + `avoidContainersFrom`, first in both `renderEdges` via
+  `subgraphWorldBox` and `buildSvg` via `subgraphAbsBox`). Proven to fire ONLY on `architecture.mmd`'s
+  `BE↔RULES` corpus-wide → both subgraph heroes + all snapshots byte-identical (docs interactive HTML
+  grows only by the inlined twin source). Full obstacle-aware routing + diagonal/nested/multi-obstacle
+  crossings stay DEFERRED.
   v0.6.5 (`dense-edge-routing`) adds two gated, elbow-only edge-routing passes for dense diagrams,
   each mirrored byte-for-byte in the `vnmRuntime` twin (`dom-runtime-parity`): (1) a NEW
   `separateConvergentJogs` in `finishEdges` (after `separateAntiParallelJogs`) de-tangles **≥3**
@@ -60,8 +75,9 @@ addon installed.
   from a node PAIR to a node SIDE; (2) a NEW deskewer in `computePerimeterPorts` nudges a lone-in +
   lone-out pair whose FAR NODES head opposite ways apart by PORT_STEP/2. Both gated to no-op on the
   whole current fixture corpus → **zero** snapshot/example/hero churn (docs interactive HTML grows only
-  by the inlined twin source). Subgraph-aware routing (long edges through an unrelated container) is
-  DEFERRED to its own feature (container boxes are post-layout via `computeSubgraphBoxes`, never routing obstacles).
+  by the inlined twin source). Subgraph-aware routing (long edges through an unrelated container)
+  SHIPPED in v0.6.6 above (`avoidSubgraphs` threads `computeSubgraphBoxes` boxes into `finishEdges` as
+  routing obstacles — the scoped re-route only; full obstacle routing still deferred).
   v0.6.4 (`edge-label-halo`) lifts routed-edge labels (flowchart/class/state) **off their own line** so
   the edge reads continuous: a `resolveLabelLineOffsets` pass folded FIRST into `finishEdges` shifts
   each label perpendicular to its home segment by the plate's half-extent facing the line (half-width →

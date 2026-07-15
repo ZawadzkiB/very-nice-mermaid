@@ -1,0 +1,28 @@
+stateDiagram-v2
+  [*] --> ScanEdge: for each edge (points p, len >= 4)
+  ScanEdge --> ScanRun: for each interior run i (1 <= i, i+2 < len)
+  ScanRun --> ScanContainer: axis-aligned run? for each container c
+
+  ScanContainer --> SkipBothIn: members has from AND to
+  SkipBothIn --> ScanContainer: skip (interior edge — heroes no-op)
+
+  ScanContainer --> SkipApproach: i==1 & from in c OR i==len-3 & to in c
+  SkipApproach --> ScanContainer: skip (endpoint approach — idempotency guard)
+
+  ScanContainer --> GatePerp: run.along strictly inside c cross-span?
+  GatePerp --> ScanContainer: no -> skip
+  GatePerp --> GateCross: yes
+  GateCross --> ScanContainer: overlap < MIN_CROSS(120) -> skip (entry sliver)
+  GateCross --> KeepBest: overlap >= 120 -> side = nearest border +/- MARGIN(28); keep if longest run
+
+  KeepBest --> ScanContainer: next container
+  ScanContainer --> ScanRun: next run
+  ScanRun --> Decide: best found?
+
+  Decide --> NextEdge: no best -> edge byte-identical
+  Decide --> PushOut: yes -> moveLane(trunk -> best.side) [elbow stays orthogonal, carries label]
+  PushOut --> LowerSrc: best.container has from?
+  LowerSrc --> LowerTgt: lowerReentry(p[i], p[i-1], p[0]) -> APPROACH(30)
+  LowerTgt --> Rebuild: best.container has to? lowerReentry(p[i+1], p[i+2], p[len-1])
+  Rebuild --> NextEdge: edge.path = toPath(points, elbow)
+  NextEdge --> [*]
