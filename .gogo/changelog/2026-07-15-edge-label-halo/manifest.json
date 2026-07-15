@@ -1,0 +1,9 @@
+{
+  "slug": "edge-label-halo",
+  "updated": "2026-07-15",
+  "members": ["edge-label-halo"],
+  "note": "v0.6.4 edge-label halo fix: routed-edge labels (flowchart/class/state) are lifted OFF their line by a single resolveLabelLineOffsets pass folded FIRST into finishEdges (perpendicular shift by the plate's half-extent facing the line), so the existing FR6 / label-vs-node / label-vs-edge de-collision passes run on the offset centres; a final deCollideLabels re-separates any repacked label; labelPlateCorners feed contentBounds so off-line labels never clip. Node positions + edge paths are untouched (only labelPos moves). Sequence messageLabel unified onto the shared tightened labelPlateSize. Mirrored byte-for-byte in the vnmRuntime twin (renderEdges + toSvgString), guarded by dom-runtime-parity. before/ holds the as-is baseline (label on the line, opaque plate painted over it).",
+  "diagrams": [
+    { "kind": "flow", "file": "edge-label-halo-flow.mmd", "title": "edge-label-halo: As-built - resolveLabelLineOffsets lifts routed-edge labels off their line (finishEdges step 1), de-collision runs on offset centres, mirrored in the runtime twin" }
+  ]
+}

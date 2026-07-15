@@ -1,0 +1,13 @@
+%% BEFORE (as-is): the shared edge-label plate pipeline.
+%% Label anchors dead-centre ON the edge line; an OPAQUE, ~text-width plate
+%% is painted in a later layer over the already-continuous line -> visible gap.
+flowchart TD
+  route["routeEdge / labelPoint\n(geometry): labelPos = segment MIDPOINT (on the line)"]
+  finish["finishEdges (layout): separateLanes -> antiParallelJogs\n-> deCollideLabels (FR6) -> ...FromEdges -> ...FromNodes\nall fold shifts into edge.labelPos (still on the line)"]
+  size["labelPlateSize (layout): w = chars*size*0.6 + 6, h = lineHeight + 2\n(sequence uses its own wider chars*size*0.62 + 10)"]
+  emit["edgeLabel / messageLabel (svg sinks + runtime twin):\nrect fill=edgeLabelBg (OPAQUE) + centred text"]
+  layer["5-layer draw order: boxes -> EDGES -> LABELS -> titles -> nodes\nplate paints AFTER the edge path"]
+  gap(["RESULT: opaque plate masks a ~text-width run of the line\n-> edge looks broken; sequence plate blanks crossing lifelines"]):::bad
+
+  route --> finish --> size --> emit --> layer --> gap
+  classDef bad fill:#ffe3e3,stroke:#e03131,color:#111

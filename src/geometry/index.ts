@@ -382,6 +382,67 @@ export interface PlateRect {
   h: number;
 }
 
+/** Gap between a lifted label plate's near edge and the line it was lifted off (option d). */
+export const LABEL_LINE_GAP = 3;
+
+/**
+ * The two endpoints of the segment {@link labelPoint} centres a label on — a
+ * direction probe (near-horizontal vs near-vertical) for {@link resolveLabelLineOffsets}.
+ * Kept in lockstep with {@link labelPoint}'s segment choice, which dispatches on the
+ * *effective per-edge* style (see {@link routeEdge}): only a **genuine cubic** (`cubic`,
+ * i.e. a curved edge with NO waypoints — labelPoint used its `"curved"` branch) uses the
+ * mid-curve tangent (`(c2+p3) − (p0+c1)`, expressed as two summed points). A curved edge
+ * WITH waypoints routes as an elbow and is centred via `labelPoint("elbow")`, so — like a
+ * 2-point line or any other polyline — its home segment is the interior midpoint segment
+ * (REV-001). Returns `null` when the route has no drawable segment.
+ */
+function homeSegment(points: ReadonlyArray<Point>, cubic: boolean): [Point, Point] | null {
+  if (points.length < 2) return null;
+  if (cubic && points.length === 4) {
+    const [p0, c1, c2, p3] = points as [Point, Point, Point, Point];
+    return [
+      { x: p0.x + c1.x, y: p0.y + c1.y },
+      { x: c2.x + p3.x, y: c2.y + p3.y },
+    ];
+  }
+  if (points.length === 2) return [points[0]!, points[1]!];
+  const mid = Math.floor(points.length / 2);
+  return [points[mid - 1]!, points[mid]!];
+}
+
+/**
+ * **Option (d) — lift each label OFF its home line so the edge line reads continuous.**
+ * For each labelled edge, find the segment its label sits on ({@link homeSegment}, the
+ * same segment {@link labelPoint} centres on) and return a perpendicular shift `{x,y}`
+ * to add to `labelPos` that clears the plate off the line: a (near-)horizontal home
+ * segment lifts the plate UP by `plateHalfHeight + {@link LABEL_LINE_GAP}` (its height
+ * faces the line); a (near-)vertical one shifts it RIGHT by `plateHalfWidth +
+ * LABEL_LINE_GAP` (its width faces the line). `undefined` plate (unlabelled edge) →
+ * zero shift. Run FIRST in
+ * {@link finishEdges}, before the de-collision chain, so FR6 / label-vs-edge /
+ * label-vs-node then de-collide the *offset* (actually-drawn) plates. Pure geometry,
+ * deterministic (no RNG/clock), so the static SVG and the inlined runtime twin
+ * (`resolveLabelLineOffsets` in src/render/dom/runtime.ts) produce byte-identical
+ * shifts. Returns a shift `{x,y}` per input index; the caller folds it into `labelPos`.
+ * Keep the two in lockstep.
+ */
+export function resolveLabelLineOffsets(
+  plates: ReadonlyArray<PlateRect | undefined>,
+  polylines: ReadonlyArray<ReadonlyArray<Point>>,
+  cubics: ReadonlyArray<boolean>,
+): Point[] {
+  return plates.map((p, i) => {
+    if (!p) return { x: 0, y: 0 };
+    const seg = homeSegment(polylines[i] ?? [], cubics[i] ?? false);
+    if (!seg) return { x: 0, y: 0 };
+    const horizontal = Math.abs(seg[1]!.x - seg[0]!.x) >= Math.abs(seg[1]!.y - seg[0]!.y);
+    // Clear the plate off the line by the plate dimension FACING it: height for a
+    // horizontal segment (lift up), width for a vertical one (shift right).
+    const dist = (horizontal ? p.h : p.w) / 2 + LABEL_LINE_GAP;
+    return horizontal ? { x: 0, y: -dist } : { x: dist, y: 0 };
+  });
+}
+
 /**
  * **FR6 — all-pairs edge-label plate de-collision.** Given every labelled edge's
  * final plate rect (centre from its routed `labelPos`, size from `labelPlateSize`;

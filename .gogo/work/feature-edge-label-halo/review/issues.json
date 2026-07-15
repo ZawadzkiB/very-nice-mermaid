@@ -1,0 +1,34 @@
+{
+  "slug": "edge-label-halo",
+  "track": "review",
+  "round": 1,
+  "updated": "2026-07-15",
+  "dispositions_by": "implement round 2 (orchestrator, warm context)",
+  "issues": [
+    {
+      "id": "REV-001",
+      "title": "Offset axis keys off theme edgeStyle, not labelPoint's per-edge segment (curved + waypoints)",
+      "description": "homeSegment (src/geometry/index.ts:58) special-cases `style === \"curved\" && points.length === 4` and returns the mid-curve tangent proxy `[(p0+c1),(c2+p3)]`, assuming the 4 points are a true cubic. But routeEdge (src/geometry/index.ts:1421-1423) routes a CURVED edge that has waypoints through routeElbow and centers its label via labelPoint(points, \"elbow\"), i.e. on the interior mid segment [points[mid-1], points[mid]] — NOT the bezier proxy. resolveLabelLineOffsets is invoked with theme.edgeStyle (src/layout/index.ts:148) and the runtime twin with the closure `edgeStyle` (src/render/dom/runtime.ts:1636), both = \"curved\". So for a curved edge whose elbow route is exactly 4 points, homeSegment can choose the wrong perpendicular axis relative to the segment the label actually sits on (e.g. lift UP when the home segment is vertical and the plate should move RIGHT), which can drop the plate back onto its own line and defeat FR1 for that edge. The doc comment at src/geometry/index.ts:391 asserts homeSegment is 'Kept in lockstep with labelPoint's segment choice' — that invariant does not hold for the curved+waypoints branch. Parity is NOT broken (static and runtime diverge identically) and I could not trigger a 4-point curved elbow via the CLI (skip edges route as 6-point staircases whose mid segment homeSegment and labelPoint agree on), so this is latent, not a currently-rendered defect; build + 401 tests stay green.",
+      "proposed_solution": "Make homeSegment's axis choice track routeEdge's own dispatch: apply the curved-4 tangent branch only when labelPoint used the \"curved\" branch (curved style AND no waypoints, i.e. a genuine cubic); otherwise fall through to the interior mid-segment branch [points[mid-1], points[mid]] like labelPoint(\"elbow\") does. Mirror the same gate in the runtime twin (src/render/dom/runtime.ts:1636) to keep byte-parity. Add a curved multi-rank labeled-edge fixture (fancy theme, an edge skipping a rank) to a route/geometry unit test and to dom-runtime-parity so the axis choice is locked. AGENT-FIXABLE.",
+      "severity": "minor",
+      "priority": "P2",
+      "status": "fixed",
+      "origin": "review",
+      "found_in_round": 1,
+      "fixed_in_round": 2,
+      "fix_summary": "Gated homeSegment's curved-4-point tangent branch on a per-edge `cubic` flag = (edgeStyle curved AND no waypoints), matching labelPoint's own dispatch: resolveLabelLineOffsets now takes a per-edge `cubics: boolean[]`, computed in layout.offsetLabelsOffLine as `theme.edgeStyle===\"curved\" && (e.waypoints?.length ?? 0)===0`; the runtime twin computes the byte-identical per-edge test from `edgeEls[i].waypoints`. A curved+waypoints (elbow-routed) edge now uses the interior mid segment like labelPoint(\"elbow\"). Snapshot-neutral (elbow tiers + genuine cubics unchanged; 405 tests green incl. dom-runtime-parity). Added 4 lock tests to test/geometry.test.ts (incl. a 4-point poly whose mid-seg axis differs from the tangent axis, asserting the flag picks the axis)."
+    },
+    {
+      "id": "REV-002",
+      "title": "Sequence plate re-inlines 0.6*size+6 / lines*lh+2 instead of sharing labelPlateSize",
+      "description": "src/native/sequence/svg.ts:192-193 inlines `w = maxChars * t.font.size * 0.6 + 6` and `h = lines.length * t.font.lineHeight + 2` rather than importing layout.labelPlateSize. This is convention-consistent (the flowchart sink at src/render/svg.ts:216 and the runtime plateSizeOf at src/render/dom/runtime.ts:1149-1152 already inline the same pair), but it now adds a fourth copy of the plate-padding constants. The project's own review gotcha (flowchart-render-legibility REV-002) warns to 'keep every tier's edgeLabel on the one labelPlateSize or the stagger math drifts.' Sequence has no de-collision / stagger dependency on this value, so real drift risk is low; recording for the audit trail only.",
+      "proposed_solution": "Optionally import labelPlateSize from src/layout (as the class/state sinks do) or extract the (0.6*size+6, lines*lh+2) pair into one shared constant/helper so all sinks share a single source of truth. Not required for this PR. AGENT-FIXABLE.",
+      "severity": "nit",
+      "priority": "P3",
+      "status": "wontfix",
+      "origin": "review",
+      "found_in_round": 1,
+      "fix_summary": "Deferred (nit). The inline (0.6*size+6 / lines*lh+2) matches the established flowchart sink (render/svg.ts) and runtime plateSizeOf convention; output is byte-identical to importing labelPlateSize, and sequence has no de-collision/stagger dependency on the value so there is no drift risk. The plan's D2 goal (the tightened size) is met. Not worth a fourth touch of a browser-safe sink in this patch; can be unified project-wide in a later cleanup."
+    }
+  ]
+}

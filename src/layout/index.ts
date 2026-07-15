@@ -24,6 +24,7 @@ import {
   resolveLabelCollisions,
   resolveLabelNodeCollisions,
   resolveLabelEdgeCollisions,
+  resolveLabelLineOffsets,
   applyEdgeBridges,
   separateLanes,
   separateAntiParallelJogs,
@@ -66,12 +67,44 @@ export function finishEdges(
   bridges?: boolean,
   nodeBoxes?: ReadonlyArray<NodeBox>,
 ): void {
+  offsetLabelsOffLine(edges, theme); // v0.6.4 (option d) — lift each label off its line FIRST so the line stays continuous; de-collision below then runs on the offset centres
   separateLanes(edges, theme.edgeStyle); // FR9 — give each merged run its own lane (compact, local)
   separateAntiParallelJogs(edges, theme.edgeStyle); // v0.6.2 — de-cramp a collinear anti-parallel elbow pair the lane gate skips
   deCollideLabels(edges, theme);
   deCollideLabelsFromEdges(edges, theme); // UAT-round: off other edges' crossing lines
   if (nodeBoxes) deCollideLabelsFromNodes(edges, theme, nodeBoxes); // UAT-1: off any node box
+  deCollideLabels(edges, theme); // v0.6.4 — final label-label pass: the node de-collision above can repack an offset label into a neighbour (tight anti-parallel jogs), so re-separate labels last to hold the no-label-label-overlap bar
   applyBridges(edges, theme, bridges);
+}
+
+/**
+ * v0.6.4 (option d) — lift each routed edge-label plate OFF its home line so the edge
+ * line reads continuous (no paint-over gap). Runs FIRST in {@link finishEdges}, before
+ * the de-collision chain, so FR6 / label-vs-edge / label-vs-node then de-collide the
+ * *offset* plates (the actually-drawn positions). Mirrored byte-for-byte in the runtime
+ * twin, on the *rounded* plate centre — same parity contract as {@link deCollideLabels}.
+ */
+function offsetLabelsOffLine(edges: RoutedEdge[], theme: Theme): void {
+  const plates: Array<PlateRect | undefined> = edges.map((e) => {
+    if (!e.label || !e.labelPos) return undefined;
+    const s = labelPlateSize(e.label, theme)!;
+    return { x: round(e.labelPos.x), y: round(e.labelPos.y), w: s.w, h: s.h };
+  });
+  const shifts = resolveLabelLineOffsets(
+    plates,
+    edges.map((e) => e.points),
+    // A label rides a genuine cubic (labelPoint used its "curved" branch) only when the
+    // edge is curved AND has no waypoints; a curved edge WITH waypoints routes as an elbow
+    // and centres via labelPoint("elbow"), so its home segment is the interior mid segment
+    // (REV-001). Mirrored in the runtime twin's per-edge cubic test.
+    edges.map((e) => theme.edgeStyle === "curved" && (e.waypoints?.length ?? 0) === 0),
+  );
+  edges.forEach((e, i) => {
+    const sh = shifts[i]!;
+    if (e.labelPos && (sh.x !== 0 || sh.y !== 0)) {
+      e.labelPos = { x: round(e.labelPos.x) + sh.x, y: round(e.labelPos.y) + sh.y };
+    }
+  });
 }
 
 /**
@@ -300,7 +333,7 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
   const allEdgePoints = edges.flatMap((e) => e.points);
   const bounds = contentBounds(
     [...subgraphBoxes, ...positionedNodes.map(toBox)],
-    allEdgePoints,
+    [...allEdgePoints, ...labelPlateCorners(edges, theme)], // v0.6.4 — include off-line label plates so they're never clipped
     BOUNDS_PADDING,
   );
 
@@ -444,7 +477,7 @@ export function applyPositions(
   }));
   const bounds = contentBounds(
     [...subgraphBoxes, ...nodes.map(toBox)],
-    edges.flatMap((e) => e.points),
+    [...edges.flatMap((e) => e.points), ...labelPlateCorners(edges, theme)], // v0.6.4 — include off-line label plates so they're never clipped
     BOUNDS_PADDING,
   );
   return { ...model, nodes, edges, subgraphs, bounds };
@@ -483,6 +516,26 @@ export function labelPlateSize(label: string | undefined, theme: Theme): { w: nu
   // widest real labels without clipping. Keep this formula identical in the SVG
   // sink (`edgeLabel`) and the DOM runtime twin, or the stagger math drifts.
   return { w: maxChars * f.size * 0.6 + 6, h: lines.length * f.lineHeight + 2 };
+}
+
+/**
+ * v0.6.4 — corner points of every labelled edge's *final* plate (centre `labelPos` +
+ * {@link labelPlateSize}), fed to {@link contentBounds} so an off-line label (the
+ * option-d offset can push a plate beyond the node/edge extent) is inside the diagram
+ * bounds and never clipped. Mirrored in the runtime twin's `boundsAbs` input for
+ * Save-SVG parity. Call AFTER {@link finishEdges} (labelPos is final then).
+ */
+function labelPlateCorners(edges: ReadonlyArray<RoutedEdge>, theme: Theme): Point[] {
+  const pts: Point[] = [];
+  for (const e of edges) {
+    if (!e.label || !e.labelPos) continue;
+    const s = labelPlateSize(e.label, theme)!;
+    pts.push(
+      { x: e.labelPos.x - s.w / 2, y: e.labelPos.y - s.h / 2 },
+      { x: e.labelPos.x + s.w / 2, y: e.labelPos.y + s.h / 2 },
+    );
+  }
+  return pts;
 }
 
 function toBox(node: PositionedNode): NodeBox {

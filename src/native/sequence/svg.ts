@@ -185,8 +185,12 @@ function messageLabel(label: string, cx: number, cy: number, theme: Theme): stri
   const t = theme.tokens;
   const lines = label.split("\n");
   const maxChars = lines.reduce((mx, l) => Math.max(mx, l.length), 0);
-  const w = maxChars * t.font.size * 0.62 + 10;
-  const h = lines.length * t.font.lineHeight + 4;
+  // v0.6.4 (D2) — unify on the shared tightened plate (layout.labelPlateSize:
+  // 0.6·size + 6 / lines·lh + 2), dropping the wider 0.62·size + 10 / lh + 4 so the
+  // plate no longer blanks a wide band of crossing lifelines. The label still rides
+  // LABEL_RISE above the arrow; a thin dashed lifeline behind the tight plate is fine.
+  const w = maxChars * t.font.size * 0.6 + 6;
+  const h = lines.length * t.font.lineHeight + 2;
   const x = n(cx - w / 2);
   const y = n(cy - h / 2);
   const parts = [

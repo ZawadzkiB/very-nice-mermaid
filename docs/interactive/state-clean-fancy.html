@@ -1250,6 +1250,31 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       }
     });
   }
+  function resolveLabelLineOffsets2(plates, polylines) {
+    return plates.map((p, i) => {
+      if (!p) return { x: 0, y: 0 };
+      const pts = polylines[i] ?? [];
+      if (pts.length < 2) return { x: 0, y: 0 };
+      const el = edgeEls[i];
+      const cubic = edgeStyle === "curved" && !(el && el.waypoints && el.waypoints.length);
+      let a;
+      let b;
+      if (cubic && pts.length === 4) {
+        a = { x: pts[0].x + pts[1].x, y: pts[0].y + pts[1].y };
+        b = { x: pts[2].x + pts[3].x, y: pts[2].y + pts[3].y };
+      } else if (pts.length === 2) {
+        a = pts[0];
+        b = pts[1];
+      } else {
+        const mid = Math.floor(pts.length / 2);
+        a = pts[mid - 1];
+        b = pts[mid];
+      }
+      const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+      const dist3 = (horizontal ? p.h : p.w) / 2 + 3;
+      return horizontal ? { x: 0, y: -dist3 } : { x: dist3, y: 0 };
+    });
+  }
   const bridgesEnabled = () => edgeStyle === "elbow" && (opt.bridges ?? true);
   function routeBoxes(from, to, waypoints, ports, isSelf) {
     const shift = ports && ports.labelShift;
@@ -1378,12 +1403,14 @@ var vnmRuntime = function vnmRuntime(root, payload) {
   function renderEdges() {
     const ports = computePorts();
     const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
+    foldLabelShifts(routed, resolveLabelLineOffsets2(labelPlatesOf(routed), routed.map((r) => r.points)));
     separateLanes2(routed);
     separateAntiParallelJogs2(routed, edgeEls);
     foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
     foldLabelShifts(routed, resolveLabelEdgeCollisions2(labelPlatesOf(routed), routed.map((r) => r.points)));
     const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id].x, y: positions[nd.id].y, w: sizes[nd.id].w, h: sizes[nd.id].h }));
     foldLabelShifts(routed, resolveLabelNodeCollisions2(labelPlatesOf(routed), nodeBoxesL));
+    foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
     const bridgedL = applyEdgeBridges2(routed.map((r) => r.points), bridgesEnabled());
     edgeEls.forEach((e, i) => {
       const r = routed[i];
@@ -2073,6 +2100,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : void 0;
       return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
     });
+    foldLabelShifts(routesB, resolveLabelLineOffsets2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     separateLanes2(routesB);
     separateAntiParallelJogs2(routesB, edgeEls);
     foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
@@ -2082,6 +2110,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       return { x: b2.x, y: b2.y, w: b2.w, h: b2.h };
     });
     foldLabelShifts(routesB, resolveLabelNodeCollisions2(labelPlatesOf(routesB), nodeBoxesB));
+    foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
     const bridgedB = applyEdgeBridges2(routesB.map((r) => r.points), bridgesEnabled());
     edgeEls.forEach((e, i) => {
       const r = routesB[i];
@@ -2091,6 +2120,9 @@ var vnmRuntime = function vnmRuntime(root, payload) {
         edgeLabelParts.push(svgEdgeLabel(e.label, r.labelPos.x, r.labelPos.y));
       }
     });
+    for (const pl of labelPlatesOf(routesB)) {
+      if (pl) allPts.push({ x: pl.x - pl.w / 2, y: pl.y - pl.h / 2 }, { x: pl.x + pl.w / 2, y: pl.y + pl.h / 2 });
+    }
     const b = boundsAbs(boxes, allPts);
     const parts = [];
     parts.push(
@@ -2185,7 +2217,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     toSvgString
   };
 };
-var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"root_start","label":"","shape":"circle","classes":[],"x":122,"y":40,"width":22,"height":22,"stateMarker":"start"},{"id":"Idle","label":"Idle","shape":"rounded","classes":[],"x":122,"y":167.5,"width":71,"height":47},{"id":"Loading","label":"Loading","shape":"rounded","classes":[],"x":122,"y":286.5,"width":97,"height":47},{"id":"Ready","label":"Ready","shape":"rounded","classes":[],"x":48,"y":405.5,"width":80,"height":47},{"id":"Error","label":"Error","shape":"rounded","classes":[],"x":176,"y":405.5,"width":80,"height":47},{"id":"root_end","label":"","shape":"circle","classes":[],"x":48,"y":533,"width":22,"height":22,"stateMarker":"end"}],"edges":[{"from":"root_start","to":"Idle","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":122,"y":51},{"x":122,"y":97.5},{"x":122,"y":97.5},{"x":122,"y":144}],"path":"M 122 51 C 122 97.5 122 97.5 122 144"},{"from":"Idle","to":"Loading","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"fetch","points":[{"x":122,"y":191},{"x":122,"y":227},{"x":122,"y":227},{"x":122,"y":263}],"path":"M 122 191 C 122 227 122 227 122 263","labelPos":{"x":122,"y":227}},{"from":"Loading","to":"Ready","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"2xx","points":[{"x":92,"y":310},{"x":92,"y":346},{"x":48,"y":346},{"x":48,"y":382}],"path":"M 92 310 C 92 346 48 346 48 382","ports":{"source":{"side":"bottom","offset":-30},"target":{"side":"top","offset":0}},"labelPos":{"x":70,"y":346}},{"from":"Loading","to":"Error","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"fail","points":[{"x":122,"y":310},{"x":122,"y":346},{"x":161,"y":346},{"x":161,"y":382}],"path":"M 122 310 C 122 346 161 346 161 382","ports":{"source":{"side":"bottom","offset":0},"target":{"side":"top","offset":-15},"labelShift":{"x":0,"y":-13.5}},"labelPos":{"x":126.2,"y":332.5}},{"from":"Error","to":"Loading","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"retry","points":[{"x":191,"y":382},{"x":191,"y":346},{"x":152,"y":346},{"x":152,"y":310}],"path":"M 191 382 C 191 346 152 346 152 310","ports":{"source":{"side":"top","offset":15},"target":{"side":"bottom","offset":30},"labelShift":{"x":0,"y":13.5}},"labelPos":{"x":191,"y":359.5}},{"from":"Ready","to":"root_end","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":48,"y":429},{"x":48,"y":475.5},{"x":48,"y":475.5},{"x":48,"y":522}],"path":"M 48 429 C 48 475.5 48 475.5 48 522"}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":9,"width":248,"height":555}},"theme":{"name":"fancy","edgeStyle":"curved","tokens":{"colors":{"background":"#0b1020","surface":"#151b34","surfaceStroke":"#3b4a7a","text":"#eef1ff","textMuted":"#9fa9d6","edge":"#7d88c4","edgeLabelBg":"#0b1020","edgeLabelText":"#c8cffb","subgraphFill":"#111834","subgraphStroke":"#3b4a7a","subgraphText":"#9fa9d6","accent":"#8b6cff","minimapBg":"rgba(12,16,34,0.9)","minimapViewport":"rgba(139,108,255,0.35)","roles":{"accent":{"fill":"#2a2160","stroke":"#8b6cff","text":"#eef1ff"},"success":{"fill":"#123a2e","stroke":"#3fd39b","text":"#d6ffef"},"warn":{"fill":"#3a2f0f","stroke":"#e6c04d","text":"#fff4cf"},"danger":{"fill":"#3f1830","stroke":"#ff6bb0","text":"#ffd9ec"}}},"radii":{"node":14,"card":14,"label":6},"spacing":{"nodePadX":18,"nodePadY":14,"nodesep":48,"ranksep":72,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":19,"weight":600},"edge":{"style":"curved","width":1.75,"thickWidth":3.5,"arrowSize":9},"effects":{"nodeShadow":"0 6px 22px rgba(80,60,180,0.35)","gradient":true,"hoverLift":3}}},"cssVars":"--vnm-bg: #0b1020; --vnm-surface: #151b34; --vnm-surface-stroke: #3b4a7a; --vnm-text: #eef1ff; --vnm-text-muted: #9fa9d6; --vnm-edge: #7d88c4; --vnm-edge-label-bg: #0b1020; --vnm-edge-label-text: #c8cffb; --vnm-subgraph-fill: #111834; --vnm-subgraph-stroke: #3b4a7a; --vnm-subgraph-text: #9fa9d6; --vnm-accent: #8b6cff; --vnm-minimap-bg: rgba(12,16,34,0.9); --vnm-minimap-viewport: rgba(139,108,255,0.35); --vnm-radius: 14px; --vnm-label-radius: 6px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 600; --vnm-node-shadow: 0 6px 22px rgba(80,60,180,0.35); --vnm-hover-lift: 3px; --vnm-edge-width: 1.75px;","options":{"fitPadding":60,"persistKey":"vnm-layout:fg11y1","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true}};
+var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"root_start","label":"","shape":"circle","classes":[],"x":122,"y":40,"width":22,"height":22,"stateMarker":"start"},{"id":"Idle","label":"Idle","shape":"rounded","classes":[],"x":122,"y":167.5,"width":71,"height":47},{"id":"Loading","label":"Loading","shape":"rounded","classes":[],"x":122,"y":286.5,"width":97,"height":47},{"id":"Ready","label":"Ready","shape":"rounded","classes":[],"x":48,"y":405.5,"width":80,"height":47},{"id":"Error","label":"Error","shape":"rounded","classes":[],"x":176,"y":405.5,"width":80,"height":47},{"id":"root_end","label":"","shape":"circle","classes":[],"x":48,"y":533,"width":22,"height":22,"stateMarker":"end"}],"edges":[{"from":"root_start","to":"Idle","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":122,"y":51},{"x":122,"y":97.5},{"x":122,"y":97.5},{"x":122,"y":144}],"path":"M 122 51 C 122 97.5 122 97.5 122 144"},{"from":"Idle","to":"Loading","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"fetch","points":[{"x":122,"y":191},{"x":122,"y":227},{"x":122,"y":227},{"x":122,"y":263}],"path":"M 122 191 C 122 227 122 227 122 263","labelPos":{"x":149,"y":227}},{"from":"Loading","to":"Ready","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"2xx","points":[{"x":92,"y":310},{"x":92,"y":346},{"x":48,"y":346},{"x":48,"y":382}],"path":"M 92 310 C 92 346 48 346 48 382","ports":{"source":{"side":"bottom","offset":-30},"target":{"side":"top","offset":0}},"labelPos":{"x":70,"y":332.5}},{"from":"Loading","to":"Error","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"fail","points":[{"x":122,"y":310},{"x":122,"y":346},{"x":161,"y":346},{"x":161,"y":382}],"path":"M 122 310 C 122 346 161 346 161 382","ports":{"source":{"side":"bottom","offset":0},"target":{"side":"top","offset":-15},"labelShift":{"x":0,"y":-13.5}},"labelPos":{"x":141.35,"y":330.5}},{"from":"Error","to":"Loading","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"retry","points":[{"x":191,"y":382},{"x":191,"y":346},{"x":152,"y":346},{"x":152,"y":310}],"path":"M 191 382 C 191 346 152 346 152 310","ports":{"source":{"side":"top","offset":15},"target":{"side":"bottom","offset":30},"labelShift":{"x":0,"y":13.5}},"labelPos":{"x":191.15,"y":346}},{"from":"Ready","to":"root_end","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":48,"y":429},{"x":48,"y":475.5},{"x":48,"y":475.5},{"x":48,"y":522}],"path":"M 48 429 C 48 475.5 48 475.5 48 522"}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":9,"width":248,"height":555}},"theme":{"name":"fancy","edgeStyle":"curved","tokens":{"colors":{"background":"#0b1020","surface":"#151b34","surfaceStroke":"#3b4a7a","text":"#eef1ff","textMuted":"#9fa9d6","edge":"#7d88c4","edgeLabelBg":"#0b1020","edgeLabelText":"#c8cffb","subgraphFill":"#111834","subgraphStroke":"#3b4a7a","subgraphText":"#9fa9d6","accent":"#8b6cff","minimapBg":"rgba(12,16,34,0.9)","minimapViewport":"rgba(139,108,255,0.35)","roles":{"accent":{"fill":"#2a2160","stroke":"#8b6cff","text":"#eef1ff"},"success":{"fill":"#123a2e","stroke":"#3fd39b","text":"#d6ffef"},"warn":{"fill":"#3a2f0f","stroke":"#e6c04d","text":"#fff4cf"},"danger":{"fill":"#3f1830","stroke":"#ff6bb0","text":"#ffd9ec"}}},"radii":{"node":14,"card":14,"label":6},"spacing":{"nodePadX":18,"nodePadY":14,"nodesep":48,"ranksep":72,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":19,"weight":600},"edge":{"style":"curved","width":1.75,"thickWidth":3.5,"arrowSize":9},"effects":{"nodeShadow":"0 6px 22px rgba(80,60,180,0.35)","gradient":true,"hoverLift":3}}},"cssVars":"--vnm-bg: #0b1020; --vnm-surface: #151b34; --vnm-surface-stroke: #3b4a7a; --vnm-text: #eef1ff; --vnm-text-muted: #9fa9d6; --vnm-edge: #7d88c4; --vnm-edge-label-bg: #0b1020; --vnm-edge-label-text: #c8cffb; --vnm-subgraph-fill: #111834; --vnm-subgraph-stroke: #3b4a7a; --vnm-subgraph-text: #9fa9d6; --vnm-accent: #8b6cff; --vnm-minimap-bg: rgba(12,16,34,0.9); --vnm-minimap-viewport: rgba(139,108,255,0.35); --vnm-radius: 14px; --vnm-label-radius: 6px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 600; --vnm-node-shadow: 0 6px 22px rgba(80,60,180,0.35); --vnm-hover-lift: 3px; --vnm-edge-width: 1.75px;","options":{"fitPadding":60,"persistKey":"vnm-layout:fg11y1","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true}};
 vnmRuntime(document.getElementById("vnm-root"), __vnm_payload);
 </script>
 </body>

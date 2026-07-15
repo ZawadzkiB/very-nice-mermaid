@@ -1622,6 +1622,47 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       }
     });
   }
+  // mirrors geometry.resolveLabelLineOffsets() (v0.6.4, option d): lift each label OFF
+  // its home line so the edge line reads continuous — clearing by the plate dimension
+  // FACING the line: a (near-)horizontal home segment shifts the plate UP by plateHalfH
+  // + LABEL_LINE_GAP(=3), a (near-)vertical one RIGHT by plateHalfW + 3. The home segment
+  // is the one geometry.labelPoint centres the label on (curved 4-pt → mid-curve tangent;
+  // else the interior midpoint segment). Run FIRST (before lanes), so the de-collision
+  // passes below de-collide the offset (drawn) plates. Byte-identical to the static twin.
+  function resolveLabelLineOffsets(
+    plates: Array<{ x: number; y: number; w: number; h: number } | undefined>,
+    polylines: Pt[][],
+  ): Pt[] {
+    return plates.map((p, i) => {
+      if (!p) return { x: 0, y: 0 };
+      const pts = polylines[i] ?? [];
+      if (pts.length < 2) return { x: 0, y: 0 };
+      // REV-001: only a genuine cubic (curved AND no waypoints — labelPoint used its
+      // "curved" branch) uses the mid-curve tangent; a curved+waypoints edge routes as
+      // an elbow, so its home segment is the interior mid segment. Byte-identical to the
+      // static twin's per-edge `cubics` test (theme curved && no waypoints).
+      const el = edgeEls[i];
+      const cubic = edgeStyle === "curved" && !(el && el.waypoints && el.waypoints.length);
+      let a: Pt;
+      let b: Pt;
+      if (cubic && pts.length === 4) {
+        a = { x: pts[0]!.x + pts[1]!.x, y: pts[0]!.y + pts[1]!.y };
+        b = { x: pts[2]!.x + pts[3]!.x, y: pts[2]!.y + pts[3]!.y };
+      } else if (pts.length === 2) {
+        a = pts[0]!;
+        b = pts[1]!;
+      } else {
+        const mid = Math.floor(pts.length / 2);
+        a = pts[mid - 1]!;
+        b = pts[mid]!;
+      }
+      const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+      // Clear the plate off the line by the dimension FACING it: height (horizontal
+      // segment → up) or width (vertical segment → right).
+      const dist = (horizontal ? p.h : p.w) / 2 + 3;
+      return horizontal ? { x: 0, y: -dist } : { x: dist, y: 0 };
+    });
+  }
   // Whether crossing bridges are baked into the clean path (FR7 / D4): ON for
   // elbow edges unless the option forces off; curved is deferred, sketch draws
   // from points so never shows a bridge. Matches layout.applyBridges' gate.
@@ -1804,6 +1845,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   function renderEdges(): void {
     const ports = computePorts();
     const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
+    // v0.6.4 (option d): lift each label off its line FIRST so the line stays continuous
+    // and the de-collision passes below de-collide the offset (drawn) plates.
+    foldLabelShifts(routed, resolveLabelLineOffsets(labelPlatesOf(routed), routed.map((r) => r.points)));
     // FR9: lane-separate FIRST (mutates points/path/labelPos), matching finishEdges.
     separateLanes(routed);
     // v0.6.2: de-cramp a collinear anti-parallel elbow pair the lane gate skips.
@@ -1817,6 +1861,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // label-vs-node (UAT-1): push any label off a node box (live world coords).
     const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id]!.x, y: positions[nd.id]!.y, w: sizes[nd.id]!.w, h: sizes[nd.id]!.h }));
     foldLabelShifts(routed, resolveLabelNodeCollisions(labelPlatesOf(routed), nodeBoxesL));
+    // v0.6.4: final label-label pass — node de-collision can repack an offset label into
+    // a neighbour, so re-separate labels last (matches finishEdges).
+    foldLabelShifts(routed, resolveLabelCollisions(labelPlatesOf(routed)));
     // FR7: bake crossing hops into the clean path (sketch draws from points).
     const bridgedL = applyEdgeBridges(routed.map((r) => r.points), bridgesEnabled());
     edgeEls.forEach((e, i) => {
@@ -2667,6 +2714,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : undefined;
       return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
     });
+    // v0.6.4 (option d): lift each label off its line FIRST so the line stays continuous
+    // and the de-collision passes below de-collide the offset (drawn) plates (parity).
+    foldLabelShifts(routesB, resolveLabelLineOffsets(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     // FR9: lane-separate FIRST (mutates points/path/labelPos), matching finishEdges,
     // so Save-SVG byte-matches the static layout()'s re-laned routes (parity).
     separateLanes(routesB);
@@ -2684,6 +2734,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       return { x: b.x, y: b.y, w: b.w, h: b.h };
     });
     foldLabelShifts(routesB, resolveLabelNodeCollisions(labelPlatesOf(routesB), nodeBoxesB));
+    // v0.6.4: final label-label pass — node de-collision can repack an offset label into
+    // a neighbour, so re-separate labels last (matches finishEdges).
+    foldLabelShifts(routesB, resolveLabelCollisions(labelPlatesOf(routesB)));
     // FR7: bake crossing hops into the clean path (svgEdge sketch ignores `path`).
     const bridgedB = applyEdgeBridges(routesB.map((r) => r.points), bridgesEnabled());
     edgeEls.forEach((e, i) => {
@@ -2694,6 +2747,11 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
         edgeLabelParts.push(svgEdgeLabel(e.label, r.labelPos.x, r.labelPos.y));
       }
     });
+    // v0.6.4: include off-line label plates in the bounds (mirrors the static
+    // labelPlateCorners → contentBounds) so Save-SVG never clips an offset label.
+    for (const pl of labelPlatesOf(routesB)) {
+      if (pl) allPts.push({ x: pl.x - pl.w / 2, y: pl.y - pl.h / 2 }, { x: pl.x + pl.w / 2, y: pl.y + pl.h / 2 });
+    }
     const b = boundsAbs(boxes, allPts);
     const parts: string[] = [];
     parts.push(
