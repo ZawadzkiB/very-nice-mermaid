@@ -1,0 +1,8 @@
+flowchart LR
+  src([Push commit]) --> build[Build]
+  build --> test{Tests pass?}
+  test -->|yes| scan[/Security scan/]
+  test -->|no| fix[Notify author]
+  fix --> build
+  scan --> deploy[Deploy]
+  deploy --> live((Live))

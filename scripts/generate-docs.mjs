@@ -12,7 +12,7 @@
  * interactive .html here — are copied through verbatim, so they stay fully interactive.
  */
 import { execFileSync } from "node:child_process";
-import { readdirSync, mkdirSync } from "node:fs";
+import { readdirSync, mkdirSync, copyFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, basename } from "node:path";
 
@@ -24,6 +24,11 @@ const htmlDir = join(repo, "docs", "interactive");
 const pngDir = join(repo, "docs", "assets");
 mkdirSync(htmlDir, { recursive: true });
 mkdirSync(pngDir, { recursive: true });
+
+// Vendor the self-contained <very-nice-mermaid> web-component bundle into docs/ so the
+// Library page can run a LIVE demo offline (no CDN, no version drift) — loaded as
+// /assets/vnm-element.js (cache-busted per deploy). It self-registers on import.
+copyFileSync(join(repo, "dist", "element.js"), join(pngDir, "vnm-element.js"));
 
 const STYLES = ["clean", "sketch"];
 const THEMES = ["light", "dark", "fancy"];
