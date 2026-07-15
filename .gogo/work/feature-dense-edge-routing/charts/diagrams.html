@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo diagrams — dense-edge-routing</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo diagrams — <code>dense-edge-routing</code></h1>
+    <p class="hint">Offline viewer · mermaid is vendored with the plugin (no network, no CLI) · regenerate via the gogo-mermaid skill.</p>
+  </header>
+
+  <h2>Intended design — v0.6.5 edge-routing quality passes</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  route["routeEdge() per edge — elbow polylines + perimeter ports<br/>(shared geometry: src/geometry/index.ts)"] --> fe["layout.finishEdges() — shared post-routing pipeline<br/>mirrored byte-for-byte in the vnmRuntime twin (src/render/dom/runtime.ts)"]
+  fe --> off["offsetLabelsOffLine()"]
+  off --> lanes["separateLanes() — FR9 near-parallel lane spread (elbow only)"]
+  lanes --> anti["separateAntiParallelJogs() — v0.6.2<br/>groups by NODE PAIR · 2-edge collinear jog stagger (UNCHANGED)"]
+  anti --> conv["separateConvergentJogs() — NEW v0.6.5 · defect #1<br/>groups by TARGET NODE + entered SIDE (both roles)<br/>N&#8805;2 attached edges whose border-adjacent jog is collinear<br/>&#8594; spread jogs onto lanes JOG_GAP apart (reuses moveLane / LaneSeg / toPath)"]
+  conv --> labels["deCollideLabels &#8594; …FromEdges &#8594; …FromNodes &#8594; deCollideLabels"]
+  labels --> bridges["applyBridges() — FR7 crossing gaps (elbow, gated)"]
+
+  ports["computePerimeterPorts() — NEW rule v0.6.5 · defect #2<br/>node with a lone in-top edge + lone out-bottom edge collinear at same x<br/>&#8594; nudge one port ~PORT_STEP/2 so the line steps around the node<br/>(mirrored in the runtime twin's computePorts)"] --> route
+
+  conv -. "RULES top: e8 REST · e4 MCP---RULES · e5 stream context · e6 findings<br/>collinear at y=1190 &#8594; spread to 4 lanes" .-> convEx["legible fan into RULES"]
+  ports -. "MCP: e3 author-rules (in-top) + e4 MCP---RULES (out-bottom) at x=400" .-> mcpEx["MCP reads clean"]
+
+  defer["DEFERRED to a follow-up · defect #3 — subgraph-aware routing<br/>long BE&#8596;RULES verticals cut through the ENGINE container.<br/>Root cause: container boxes are post-layout only (computeSubgraphBoxes),<br/>never obstacles for routing. Avoiding them = a LARGE, high-regression change."]:::defer
+
+  classDef defer fill:#ffe6e6,stroke:#c94a4a,color:#111
+  classDef ex fill:#e6f4ea,stroke:#4a9a5e,color:#111
+  class convEx,mcpEx ex
+  </pre></div>
+
+  <script src="../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from: ../../../resources/mermaid.min.js\n' +
+          'Re-run the gogo-mermaid skill, or read the .mmd source files directly.</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

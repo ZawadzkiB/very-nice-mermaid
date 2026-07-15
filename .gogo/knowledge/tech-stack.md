@@ -50,8 +50,18 @@ addon installed.
 ## gogo overrides
 <!-- Preserved across re-runs. -->
 - Entry points: `src/index.ts` (API), `src/element.ts` (web component), `src/cli/index.ts` (CLI bin).
-- **Current version: v0.6.4** (`package.json` + `src/cli/run.ts` VERSION; asserted in `test/cli.test.ts`;
+- **Current version: v0.6.5** (`package.json` + `src/cli/run.ts` VERSION; asserted in `test/cli.test.ts`;
   `docs/_config.yml` `version` is the gallery cache-buster fallback — bump all four together).
+  v0.6.5 (`dense-edge-routing`) adds two gated, elbow-only edge-routing passes for dense diagrams,
+  each mirrored byte-for-byte in the `vnmRuntime` twin (`dom-runtime-parity`): (1) a NEW
+  `separateConvergentJogs` in `finishEdges` (after `separateAntiParallelJogs`) de-tangles **≥3**
+  (`CONVERGE_MIN`) collinear border-adjacent jogs converging on one node side into a distinct fan
+  (JOG_GAP=26 lanes, anchored so the fan opens away from the border) — generalizes the v0.6.2 pass
+  from a node PAIR to a node SIDE; (2) a NEW deskewer in `computePerimeterPorts` nudges a lone-in +
+  lone-out pair whose FAR NODES head opposite ways apart by PORT_STEP/2. Both gated to no-op on the
+  whole current fixture corpus → **zero** snapshot/example/hero churn (docs interactive HTML grows only
+  by the inlined twin source). Subgraph-aware routing (long edges through an unrelated container) is
+  DEFERRED to its own feature (container boxes are post-layout via `computeSubgraphBoxes`, never routing obstacles).
   v0.6.4 (`edge-label-halo`) lifts routed-edge labels (flowchart/class/state) **off their own line** so
   the edge reads continuous: a `resolveLabelLineOffsets` pass folded FIRST into `finishEdges` shifts
   each label perpendicular to its home segment by the plate's half-extent facing the line (half-width →

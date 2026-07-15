@@ -199,3 +199,34 @@ Generated-by: /gogo:build (scaffold)
   293/319) and `order-state` (`Paused↔Running`). Always visually verify the actual
   `fail`/`retry` PNG region (multimodal Read of the render), and byte-diff the gallery so
   only the intended variants changed — a green unit test is not proof the visual bar is met.
+
+## Project-specific gotchas (verified — feature `dense-edge-routing`, 2026-07-15)
+- **A new `finishEdges` post-pass needs its byte-identical twin at BOTH runtime call sites
+  AND a real parity fixture that fires it.** v0.6.5 added `separateConvergentJogs`
+  (de-tangles ≥3 collinear border-adjacent jogs converging on one node side) and a deskewer
+  in `computePerimeterPorts`, mirrored in `vnmRuntime` (`separateConvergentJogs` called in
+  BOTH `renderEdges`≈1854 + `buildSvg`≈2724; the deskewer in `computePorts`). Confirm the
+  twin matches in OUTPUT: same `JOG_GAP=26`/`CONVERGE_MIN=3`/`PORT_STEP=30`/`PORT_MARGIN=6`,
+  same border-run pick (`len-3` for a target / `1` for a source), same `i>=1 && i+2<=len`,
+  `n`≡`nAt`, `toPath`≡`pathPoly`, identical bucket key + sort keys/tie-breaks, and the identical
+  closed-form lane `mean + (s-(k-1)/2 - toward*(k-1)/2)*JOG_GAP`. The `dom-runtime-parity` guard
+  must have a fixture that actually FIRES the pass (a small DSL may not reproduce the convergence
+  — the real `architecture.mmd` structure ranks BE above RULES to force the 4-way top bundle) and
+  must route `expectedPaths` through the REAL `finishEdges`, else the guard passes on a no-op.
+- **Gate a new gated pass on the RENDERED corpus, not just intuition.** The convergence gate is
+  `≥3` (not the plan's `≥2`) precisely because a corpus scan showed **zero** ≥3 bundles but seven
+  2-edge ones — firing on ≥2 would churn seven *clean* fixtures. Instrument every fixture through
+  `parse→layout` and count firings BEFORE choosing a threshold; the byte-identity bar ("clean
+  diagrams byte-identical") is a hard constraint that can override a plan's literal wording.
+- **A "collinear ports" skewer rule must gate on the FAR NODE, not the port heading.** dagre often
+  routes a node's in/out edges straight down its centre column, so the immediate bend heading reads
+  a false "aligned"; and a genuine straight `A→B→C` pass-through is *also* offset-0-collinear. Only
+  the far-node direction (opposite sides of the node centre) distinguishes a true skewer (nudge it)
+  from clean straight flow (leave it byte-identical). This is the difference between 0 corpus firings
+  and churning every vertical chain.
+- **Docs-interactive HTML churn on a pure-geometry change is expected + benign** IF it is only the
+  inlined `vnmRuntime` SOURCE growing. A geometry change that adds a twin function makes every
+  `docs/interactive/*.html` grow by that function's serialized length (e.g. +97 lines) with the
+  rendered payload (edge `d="..."`) byte-identical. Verify by grepping the HTML diff for `d="[ML]`
+  (zero rendered-path changes) — do NOT mistake the source growth for a geometry regression, and do
+  NOT expect zero HTML churn.

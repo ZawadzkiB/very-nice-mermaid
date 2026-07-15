@@ -1,0 +1,8 @@
+{
+  "slug": "dense-edge-routing",
+  "updated": "2026-07-15",
+  "note": "As-built v0.6.5. The shared finishEdges post-routing pipeline with the NEW separateConvergentJogs pass (defect #1) after separateAntiParallelJogs, and computePerimeterPorts with the NEW far-node deskewer rule (defect #2) — both gated, elbow-only, mirrored byte-for-byte in the vnmRuntime twin. Defect #3 (subgraph-aware routing) deferred.",
+  "diagrams": [
+    { "kind": "flow", "file": "flow.mmd", "title": "As-built: separateConvergentJogs (#1, gate >=3, anchor-away) + computePerimeterPorts far-node deskewer (#2) in the shared finishEdges pipeline; subgraph-aware routing (#3) deferred" }
+  ]
+}

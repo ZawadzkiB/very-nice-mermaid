@@ -323,6 +323,45 @@ export function computePerimeterPorts(
     });
   }
 
+  // v0.6.5 (defect #2) — de-skewer a lone-in / lone-out collinear pass-through. A
+  // node with exactly ONE edge on its top and ONE on its bottom (each the sole
+  // attachment on its side → both offset 0 → collinear at the side centre) reads as a
+  // single straight line impaling the node. Only when the two edges actually head in
+  // OPPOSITE directions (their headings land on opposite sides of the node centre — an
+  // unrelated in/out that merely coincidentally aligns, NOT a genuine straight A→B→C
+  // pass whose headings sit ON the centre) nudge one side's port by PORT_STEP/2 toward
+  // its own heading, so the in/out lines step around the node. Symmetric for a
+  // lone-left + lone-right pair. Narrow + gated: a straight pass-through (headings on
+  // the centre) and any spread side stay byte-identical. Mirrored in the runtime twin.
+  const deskewer = (nodeId: string, sideA: Side, sideB: Side): void => {
+    const ra = groups.get(nodeId + "|" + sideA);
+    const rb = groups.get(nodeId + "|" + sideB);
+    if (!ra || !rb || ra.length !== 1 || rb.length !== 1) return;
+    const box = boxes.get(nodeId)!;
+    const axisIsX = sideA === "top" || sideA === "bottom";
+    const c = axisIsX ? box.x : box.y;
+    // Direction each edge actually heads: its FAR node's centre (dagre may lay both
+    // waypoint runs straight through the node's column, so the immediate bend is a
+    // false "aligned" — the far node is the real heading).
+    const farOff = (rec: Rec): number | undefined => {
+      const e = edges[rec.edgeIndex]!;
+      const fb = boxes.get(rec.role === "target" ? e.from : e.to);
+      return fb ? (axisIsX ? fb.x : fb.y) - c : undefined;
+    };
+    const dA = farOff(ra[0]!);
+    const dB = farOff(rb[0]!);
+    if (dA === undefined || dB === undefined) return;
+    const tol = PORT_STEP / 2;
+    if (Math.sign(dA) === Math.sign(dB) || Math.abs(dA) < tol || Math.abs(dB) < tol) return;
+    if ((axisIsX ? box.width : box.height) / 2 - PORT_MARGIN < tol) return; // no room → leave
+    const rec = ra[0]!;
+    result[rec.edgeIndex]![rec.role].offset = Math.sign(dA) * tol;
+  };
+  for (const nodeId of new Set(groupNode.values())) {
+    deskewer(nodeId, "top", "bottom");
+    deskewer(nodeId, "left", "right");
+  }
+
   if (labelSizes) computeLabelShifts(edges, boxes, labelSizes, result);
   return result;
 }
@@ -986,6 +1025,17 @@ function shiftLabelOnSeg(e: { labelPos?: Point }, vertical: boolean, seg: LaneSe
 const JOG_GAP = 26;
 
 /**
+ * Minimum collinear border-adjacent jogs converging on ONE node side before the
+ * v0.6.5 convergence de-tangle ({@link separateConvergentJogs}) fires. A 2-edge
+ * same-side bundle is either an anti-parallel node **pair** (owned by
+ * {@link separateAntiParallelJogs}) or reads acceptably; a genuine knot — the
+ * `Rules · Sets · Runs` case — is **≥3**. Keeping the gate at 3 also means the pass
+ * no-ops on every current fixture (none has a ≥3 collinear border bundle), so clean
+ * diagrams stay byte-identical.
+ */
+const CONVERGE_MIN = 3;
+
+/**
  * **FR1–FR3 — de-cramp a collinear anti-parallel elbow bundle.** {@link separateLanes}
  * de-merges near-parallel runs, but its {@link LANE_MIN_OVERLAP} gate deliberately skips
  * an anti-parallel `A→B`/`B→A` pair between stacked nodes: both edges take the naive
@@ -1066,6 +1116,113 @@ export function separateAntiParallelJogs(
       if (Math.abs(lane - j.seg.along) < 1e-6) return; // already there → byte-identical
       moveLane(edges[j.edge]!, j.vertical, j.seg, lane);
       moved.add(j.edge);
+    });
+  }
+  for (const ei of moved) edges[ei]!.path = toPath(edges[ei]!.points, "elbow");
+}
+
+/**
+ * **v0.6.5 — de-tangle a convergence bundle at one node side (defect #1).** The
+ * natural generalization of {@link separateAntiParallelJogs} from a node *pair* to
+ * a node *side*: when **≥{@link CONVERGE_MIN}** edges attach to the SAME node border
+ * — across both roles, a target *entering* that side and a source *leaving* it both
+ * count — and their **border-adjacent jog** (the interior axis-aligned run nearest
+ * that border) is **collinear** (shared perpendicular coord), the jogs merge into a
+ * single crossbar knot that {@link separateLanes} (its {@link LANE_MIN_OVERLAP} gate
+ * skips them) and {@link separateAntiParallelJogs} (groups by node *pair*, and reads
+ * each edge's FIRST interior run — which for a long edge sits near its FAR node, not
+ * this border) both miss. This spreads those jogs onto distinct lanes {@link JOG_GAP}
+ * apart, ordered by each edge's far-end perpendicular coord so each jog biases toward
+ * its own far end. Because the jogs are border-adjacent (a rank-gap outside the node),
+ * a symmetric centre would push the border-nearest lane across the border — so the fan
+ * is centred on the bundle mean and then translated to anchor its border-nearest lane
+ * ON the mean, opening AWAY from the node (never crossing the border).
+ *
+ * Composes with the anti-parallel pass, which runs first on the node-*pair* key: on
+ * every current fixture the two are disjoint (convergent has zero firings corpus-wide;
+ * where it fires — architecture.mmd — the anti-parallel pass does not touch the bundle).
+ * The keys are not mutually exclusive in principle (a source endpoint's border jog is
+ * its `i=1` run, which the anti-parallel pass could also move), but a double-move is
+ * benign: {@link moveLane} writes an ABSOLUTE lane, so the convergent pass (running
+ * second) simply wins, the path is rebuilt from the final points, and the outcome is
+ * deterministic and byte-identical across both twins (both run anti-parallel → convergent
+ * in the same order). Reuses {@link moveLane}/{@link LaneSeg}/{@link toPath}. Elbow only,
+ * gated, deterministic, idempotent (a spread bundle is `JOG_GAP` apart → no longer
+ * collinear → never re-fires). Mirrored byte-for-byte in the runtime twin. Mutates
+ * `edge.points`/`path`/`labelPos` in place; leaves untouched edges byte-identical.
+ */
+export function separateConvergentJogs(
+  edges: Array<{ from: string; to: string; points: Point[]; path?: string; labelPos?: Point }>,
+  style: EdgeStyle,
+): void {
+  if (style !== "elbow") return;
+  interface Rec {
+    edge: number;
+    seg: LaneSeg;
+    vertical: boolean;
+    toward: number; // sign of the perpendicular approach/departure, jog → border
+    far: number; // far-end perpendicular coord (ordering key)
+  }
+  // The border-adjacent jog for one endpoint: a target's LAST interior run (just
+  // before its perpendicular approach into the border) / a source's FIRST interior
+  // run (just after its perpendicular departure). The same `i>=1 && i+2<len` interior
+  // rule as separateLanes / separateAntiParallelJogs, indexed from the border end.
+  const jogOf = (p: Point[], role: "source" | "target"): Omit<Rec, "edge"> | null => {
+    const len = p.length;
+    if (len < 4) return null;
+    const i = role === "target" ? len - 3 : 1;
+    if (i < 1 || i + 2 > len) return null;
+    const a = p[i]!;
+    const b = p[i + 1]!;
+    const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+    const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+    if (!isVert && !isHorz) return null;
+    const along = isVert ? a.x : a.y;
+    const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+    const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+    const appFrom = role === "target" ? p[i + 1]! : p[1]!;
+    const appTo = role === "target" ? p[len - 1]! : p[0]!;
+    const toward = isVert ? Math.sign(appTo.x - appFrom.x) : Math.sign(appTo.y - appFrom.y);
+    const end = role === "target" ? p[0]! : p[len - 1]!;
+    const far = isVert ? end.x : end.y;
+    return { seg: { edge: 0, i, along, lo, hi }, vertical: isVert, toward, far };
+  };
+  // Group each endpoint's border-adjacent jog by (node, orientation, toward-border,
+  // collinear `along`). "|" can never occur in a node id ([A-Za-z0-9_]+) so distinct
+  // nodes never collide; the orientation + toward pair uniquely recovers the side
+  // (top/bottom = horizontal jog, left/right = vertical), and the shared `along`
+  // makes every member of a bucket collinear by construction.
+  const buckets = new Map<string, Rec[]>();
+  edges.forEach((e, idx) => {
+    for (const [role, node] of [
+      ["source", e.from],
+      ["target", e.to],
+    ] as const) {
+      const j = jogOf(e.points, role);
+      if (!j) continue;
+      const key = node + "|" + (j.vertical ? "V" : "H") + "|" + j.toward + "|" + n(j.seg.along);
+      const rec: Rec = { edge: idx, seg: { ...j.seg, edge: idx }, vertical: j.vertical, toward: j.toward, far: j.far };
+      (buckets.get(key) ?? buckets.set(key, []).get(key)!).push(rec);
+    }
+  });
+  const moved = new Set<number>();
+  for (const recs of buckets.values()) {
+    if (recs.length < CONVERGE_MIN) continue;
+    // Order by far-end perpendicular coord (edge-index tie-break) so each jog moves
+    // toward its own far end; deterministic across the twins.
+    recs.sort((x, y) => x.far - y.far || x.edge - y.edge);
+    const mean = recs.reduce((s, r) => s + r.seg.along, 0) / recs.length;
+    const k = recs.length;
+    const toward = recs[0]!.toward;
+    recs.forEach((r, s) => {
+      // Centre on the mean (matching separateAntiParallelJogs) then translate the fan
+      // by −toward·(k−1)/2·JOG_GAP so the border-facing extreme lands on the mean: the
+      // border-nearest jog keeps the bundle's original clearance and the rest fan out
+      // away from the node, so no lane ever crosses the border.
+      const lane = n(mean + (s - (k - 1) / 2 - (toward * (k - 1)) / 2) * JOG_GAP);
+      if (Math.abs(lane - r.seg.along) < 1e-6) return;
+      moveLane(edges[r.edge]!, r.vertical, r.seg, lane);
+      moved.add(r.edge);
     });
   }
   for (const ei of moved) edges[ei]!.path = toPath(edges[ei]!.points, "elbow");
