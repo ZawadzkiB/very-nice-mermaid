@@ -3,6 +3,8 @@ title: Library
 nav_order: 4
 ---
 
+{%- assign cachebust = site.github.build_revision | default: site.version -%}
+
 # Library API
 {: .no_toc }
 
@@ -156,3 +158,13 @@ Angular / Vue / plain HTML.
 <!-- or load the DSL from a file -->
 <very-nice-mermaid theme="fancy" src="./pipeline.mmd" style="height: 420px"></very-nice-mermaid>
 ```
+
+### Live demo
+{: .no_toc }
+
+The same element, running right here — it self-registers from the bundle and renders
+[`pipeline.mmd`]({{ '/pipeline.mmd' | relative_url }}) live (drag a node, scroll to zoom):
+
+<script type="module" src="{{ '/assets/vnm-element.js' | relative_url }}?v={{ cachebust }}"></script>
+
+<very-nice-mermaid theme="fancy" src="{{ '/pipeline.mmd' | relative_url }}?v={{ cachebust }}" style="display:block; height:440px; margin:1rem 0; border:1px solid #30363d; border-radius:8px; overflow:hidden;"></very-nice-mermaid>
