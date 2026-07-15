@@ -50,7 +50,16 @@ addon installed.
 ## gogo overrides
 <!-- Preserved across re-runs. -->
 - Entry points: `src/index.ts` (API), `src/element.ts` (web component), `src/cli/index.ts` (CLI bin).
-- **Current version: v0.6.2** (`package.json` + `src/cli/run.ts` VERSION; asserted in `test/cli.test.ts`).
+- **Current version: v0.6.4** (`package.json` + `src/cli/run.ts` VERSION; asserted in `test/cli.test.ts`;
+  `docs/_config.yml` `version` is the gallery cache-buster fallback — bump all four together).
+  v0.6.4 (`edge-label-halo`) lifts routed-edge labels (flowchart/class/state) **off their own line** so
+  the edge reads continuous: a `resolveLabelLineOffsets` pass folded FIRST into `finishEdges` shifts
+  each label perpendicular to its home segment by the plate's half-extent facing the line (half-width →
+  right for a vertical run, half-height → up for a horizontal one), the existing de-collision chain then
+  runs on the offset centres (with a final `deCollideLabels` last), off-line plate corners feed
+  `contentBounds` (`labelPlateCorners`) so labels never clip, and sequence `messageLabel` is unified on
+  the shared tightened `labelPlateSize`. Mirrored byte-for-byte in the `vnmRuntime` twin
+  (`dom-runtime-parity`). Snapshot churn is label-only (nodes/edges unchanged).
   v0.6.2 added `separateAntiParallelJogs` in `finishEdges` (de-cramps a collinear anti-parallel
   elbow pair; mirrored in the `vnmRuntime` twin) — elbow-only, so only the state diagram's elbow
   variants change; fancy (curved) and all other tiers stay byte-identical.

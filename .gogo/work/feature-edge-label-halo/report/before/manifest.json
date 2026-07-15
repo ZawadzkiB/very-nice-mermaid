@@ -1,0 +1,10 @@
+{
+  "slug": "edge-label-halo",
+  "diagrams": [
+    {
+      "kind": "flow",
+      "file": "flow.mmd",
+      "title": "Before — shared edge-label plate pipeline (opaque plate masks the line)"
+    }
+  ]
+}

@@ -7,8 +7,8 @@ exports[`renderSvg > produces a stable, well-formed SVG for the dark theme 1`] =
 <path d="M 110 50 L 110 110" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 95 165.06 L 95 202.03 L 50 202.03 L 50 239" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 125 165.06 L 125 199.03 L 170 199.03 L 170 233" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
-<rect x="56.9" y="192.03" width="31.2" height="20" rx="4" fill="#0f1117"/><text x="72.5" y="202.03" fill="#c3cadb" font-size="13" text-anchor="middle" dominant-baseline="central">yes</text>
-<rect x="136.1" y="189.03" width="22.8" height="20" rx="4" fill="#0f1117"/><text x="147.5" y="199.03" fill="#c3cadb" font-size="13" text-anchor="middle" dominant-baseline="central">no</text>
+<rect x="56.9" y="183" width="31.2" height="20" rx="4" fill="#0f1117"/><text x="72.5" y="193" fill="#c3cadb" font-size="13" text-anchor="middle" dominant-baseline="central">yes</text>
+<rect x="136.1" y="183" width="22.8" height="20" rx="4" fill="#0f1117"/><text x="147.5" y="193" fill="#c3cadb" font-size="13" text-anchor="middle" dominant-baseline="central">no</text>
 <g><rect x="72" y="8" width="76" height="42" rx="6" fill="#f00" stroke="#900" stroke-width="1.5"/><text x="110" y="29" fill="#fff" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Start</text></g>
 <g><polygon points="110,110 169.5,141.5 110,173 50.5,141.5" fill="#1a1f2b" stroke="#3a4152" stroke-width="1.5"/><text x="110" y="141.5" fill="#e7eaf2" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Choice</text></g>
 <g><rect x="8" y="239" width="84" height="42" rx="21" fill="#1a1f2b" stroke="#3a4152" stroke-width="1.5"/><text x="50" y="260" fill="#e7eaf2" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Done</text></g>
@@ -23,8 +23,8 @@ exports[`renderSvg > produces a stable, well-formed SVG for the fancy theme 1`] 
 <path d="M 119.5 55 C 119.5 91 119.5 91 119.5 127" fill="none" stroke="#7d88c4" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 104.5 189.48 C 104.5 232.74 53 232.74 53 276" fill="none" stroke="#7d88c4" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 134.5 189.48 C 134.5 229.74 186 229.74 186 270" fill="none" stroke="#7d88c4" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
-<rect x="63.15" y="222.24" width="31.2" height="21" rx="6" fill="#0b1020"/><text x="78.75" y="232.74" fill="#c8cffb" font-size="13" text-anchor="middle" dominant-baseline="central">yes</text>
-<rect x="148.85" y="219.24" width="22.8" height="21" rx="6" fill="#0b1020"/><text x="160.25" y="229.74" fill="#c8cffb" font-size="13" text-anchor="middle" dominant-baseline="central">no</text>
+<rect x="63.15" y="208.74" width="31.2" height="21" rx="6" fill="#0b1020"/><text x="78.75" y="219.24" fill="#c8cffb" font-size="13" text-anchor="middle" dominant-baseline="central">yes</text>
+<rect x="148.85" y="208" width="22.8" height="21" rx="6" fill="#0b1020"/><text x="160.25" y="218.5" fill="#c8cffb" font-size="13" text-anchor="middle" dominant-baseline="central">no</text>
 <g filter="url(#vnm-shadow)"><rect x="79.5" y="8" width="80" height="47" rx="6" fill="#f00" stroke="#900" stroke-width="1.5"/><text x="119.5" y="31.5" fill="#fff" font-size="14" font-weight="600" text-anchor="middle" dominant-baseline="central">Start</text></g>
 <g filter="url(#vnm-shadow)"><polygon points="119.5,127 182,162.5 119.5,198 57,162.5" fill="#151b34" stroke="#3b4a7a" stroke-width="1.5"/><text x="119.5" y="162.5" fill="#eef1ff" font-size="14" font-weight="600" text-anchor="middle" dominant-baseline="central">Choice</text></g>
 <g filter="url(#vnm-shadow)"><rect x="8" y="276" width="90" height="47" rx="23.5" fill="#151b34" stroke="#3b4a7a" stroke-width="1.5"/><text x="53" y="299.5" fill="#eef1ff" font-size="14" font-weight="600" text-anchor="middle" dominant-baseline="central">Done</text></g>
@@ -39,8 +39,8 @@ exports[`renderSvg > produces a stable, well-formed SVG for the light theme 1`] 
 <path d="M 110 50 L 110 110" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 95 165.06 L 95 202.03 L 50 202.03 L 50 239" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 <path d="M 125 165.06 L 125 199.03 L 170 199.03 L 170 233" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
-<rect x="56.9" y="192.03" width="31.2" height="20" rx="4" fill="#f7f8fb"/><text x="72.5" y="202.03" fill="#3a4152" font-size="13" text-anchor="middle" dominant-baseline="central">yes</text>
-<rect x="136.1" y="189.03" width="22.8" height="20" rx="4" fill="#f7f8fb"/><text x="147.5" y="199.03" fill="#3a4152" font-size="13" text-anchor="middle" dominant-baseline="central">no</text>
+<rect x="56.9" y="183" width="31.2" height="20" rx="4" fill="#f7f8fb"/><text x="72.5" y="193" fill="#3a4152" font-size="13" text-anchor="middle" dominant-baseline="central">yes</text>
+<rect x="136.1" y="183" width="22.8" height="20" rx="4" fill="#f7f8fb"/><text x="147.5" y="193" fill="#3a4152" font-size="13" text-anchor="middle" dominant-baseline="central">no</text>
 <g><rect x="72" y="8" width="76" height="42" rx="6" fill="#f00" stroke="#900" stroke-width="1.5"/><text x="110" y="29" fill="#fff" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Start</text></g>
 <g><polygon points="110,110 169.5,141.5 110,173 50.5,141.5" fill="#ffffff" stroke="#c7cdd9" stroke-width="1.5"/><text x="110" y="141.5" fill="#1b2030" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Choice</text></g>
 <g><rect x="8" y="239" width="84" height="42" rx="21" fill="#ffffff" stroke="#c7cdd9" stroke-width="1.5"/><text x="50" y="260" fill="#1b2030" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Done</text></g>

@@ -1,0 +1,21 @@
+{
+  "slug": "edge-label-halo",
+  "track": "test",
+  "round": 1,
+  "updated": "2026-07-15",
+  "issues": [
+    {
+      "id": "TEST-001",
+      "title": "e2e anti-parallel jog test correlated labels to paths by proximity, which the intended off-line label design breaks",
+      "description": "e2e/state.spec.ts:61 ('anti-parallel jog de-cramp (v0.6.2): pause/resume stagger onto distinct lanes in the LIVE-rendered runtime') matched each label to its edge path by finding the path with the nearest sampled point to the label plate's center. That heuristic assumed a label sits near its own line — true before v0.6.4. Now every label is deliberately offset perpendicular off its own line (option d), and on this fixture (order-state.mmd Running<->Paused, JOG_GAP=26px apart) the offset pause-label plate (center measured at (46.23,296) in the rendered SVG) landed geometrically closer to the NEIGHBOURING resume path's vertical segment (distance ~19.3px) than to its own pause path's jog line (distance ~23px) -- so pathFor('pause') silently returned the resume path, making pauseJogY === resumeJogY (diff 0) and failing the >20 assertion. Verified this is a TEST-CORRELATION artifact, not a product regression: the raw static SVG path data for this fixture (fixtures/order-state.mmd, dark theme) shows the pause path's home jog at y=319 and the resume path's home jog at y=293 -- a 26px stagger, exactly satisfying JOG_GAP and the >20 invariant. The rendered image (cropped) also shows the two jogs visibly separated with no line/label overlap. Full unit suite (405/405 incl. dom-runtime-parity 37/37) and the rest of the e2e suite (84/85) were green; only this one label-correlation assumption was stale.",
+      "proposed_solution": "Rewrite the test's path selection to use graph structure (which node each path starts/ends at) instead of label proximity: read each '.vnm-node' card's offsetLeft/offsetTop/offsetWidth/offsetHeight (same untransformed coordinate space as the SVG path points, so no unit conversion needed), then for each candidate path check whether its first point lies on/near the Running node's border and its last point (arrowhead) lies on/near the Paused node's border (= the 'pause' edge, Running-->Paused), and vice versa for 'resume'. This is robust to wherever the label plate itself is drawn and directly tests the real invariant (the two anti-parallel jogs are staggered), not an incidental proxy.",
+      "severity": "minor",
+      "priority": "P2",
+      "status": "fixed",
+      "origin": "test",
+      "found_in_round": 1,
+      "fixed_in_round": 1,
+      "fix_summary": "Rewrote e2e/state.spec.ts:61-142's page.evaluate to identify the pause/resume paths via node-anchored start/end matching (nodeBox('Running')/nodeBox('Paused') read from .vnm-node offsetLeft/Top/Width/Height, matched against each path's getPointAtLength(0)/getPointAtLength(len) within a 6px pad) instead of nearest-point-to-label-center proximity. jogY() measurement logic unchanged. Re-ran e2e/state.spec.ts alone (5/5 green, including this test) and the full e2e suite (85/85 green). This is a test-file-only change (permitted per the tester's remit); no product code touched."
+    }
+  ]
+}

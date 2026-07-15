@@ -1,0 +1,11 @@
+{
+  "phase": "implement",
+  "status": "ok",
+  "slug": "edge-label-halo",
+  "round": 1,
+  "inputs": ["plan.md", "coding-rules.md", "tech-stack.md"],
+  "outputs": ["src/geometry/index.ts", "src/layout/index.ts", "src/render/dom/runtime.ts", "src/native/sequence/svg.ts", "package.json", "src/cli/run.ts", "test/cli.test.ts", "docs/_config.yml", "test/__snapshots__/render-svg.test.ts.snap", "test/__snapshots__/class-svg.test.ts.snap", "test/__snapshots__/sequence-svg.test.ts.snap", "test/__snapshots__/state-svg.test.ts.snap", "charts/flow.mmd"],
+  "validated_in": true,
+  "validated_out": true,
+  "summary": "v0.6.4: option-d perpendicular label offset (resolveLabelLineOffsets, folded FIRST into finishEdges; mirrored byte-for-byte in vnmRuntime for both renderEdges + toSvgString) lifts routed-edge labels off their line so it stays continuous; sequence messageLabel unified on the shared tightened labelPlateSize. Three as-built refinements satisfy the hard bar: (1) clearance uses the plate dimension FACING the line (half-width for a vertical run's right shift, half-height for a horizontal run's up shift); (2) off-line plate corners feed contentBounds (layout + applyPositions + runtime buildSvg) so a label never clips; (3) a final deCollideLabels pass runs LAST so node de-collision can't leave an offset label overlapping a neighbour (state fail/retry). Version bumped 4 sites. 401/401 unit+snapshot tests + 37/37 dom-runtime-parity green; snapshot churn is label-plate/text/viewBox only (nodes + edge paths unchanged); renders byte-deterministic."
+}

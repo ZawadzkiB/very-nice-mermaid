@@ -1,0 +1,10 @@
+{
+  "phase": "report",
+  "status": "ok",
+  "slug": "edge-label-halo",
+  "inputs": ["plan.md", "state.md", "review/issues.json", "test/issues.json", "charts/manifest.json", "charts/before/manifest.json", "decisions.md"],
+  "outputs": ["report/report.md", "report/flow.mmd", "report/manifest.json", "report/before/flow.mmd", "report/before/manifest.json", "report/diagrams.html", ".gogo/knowledge/tech-stack.md"],
+  "validated_in": true,
+  "validated_out": true,
+  "summary": "v0.6.4 edge-label-halo report-complete. Option-d perpendicular label offset (routed tiers) + sequence plate tightening shipped as accepted (D1/D2/D3=A), with 3 as-built refinements (half-extent-facing magnitude, labelPlateCorners-in-bounds, final deCollideLabels) and REV-001 fixed. Review CLEAN; test ALL GREEN (405 unit incl 37 parity, 85 e2e, real-PNG visual verification). Awaiting UAT."
+}

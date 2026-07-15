@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gogo diagrams — edge-label-halo (before)</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+           margin: 0; padding: 2rem; background: #0b0e14; color: #e6e6e6; line-height: 1.4; }
+    header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 2rem 0 .5rem; opacity: .9; }
+    .hint { opacity: .55; font-size: .82rem; margin: 0; }
+    .diagram { background: #ffffff; border-radius: 10px; padding: 1.25rem; margin: .5rem 0 2rem;
+               overflow: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    .err { background: #2a1416; color: #ffb4b4; padding: 1rem; border-radius: 8px; white-space: pre-wrap;
+           font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>gogo diagrams — <code>edge-label-halo</code> (before / as-is)</h1>
+    <p class="hint">Offline viewer · mermaid is vendored with the plugin (no network, no CLI) · regenerate via the gogo-mermaid skill.</p>
+  </header>
+
+  <h2>Before — shared edge-label plate pipeline (opaque plate masks the line)</h2>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  route["routeEdge / labelPoint\n(geometry): labelPos = segment MIDPOINT (on the line)"]
+  finish["finishEdges (layout): separateLanes -> antiParallelJogs\n-> deCollideLabels (FR6) -> ...FromEdges -> ...FromNodes\nall fold shifts into edge.labelPos (still on the line)"]
+  size["labelPlateSize (layout): w = chars*size*0.6 + 6, h = lineHeight + 2\n(sequence uses its own wider chars*size*0.62 + 10)"]
+  emit["edgeLabel / messageLabel (svg sinks + runtime twin):\nrect fill=edgeLabelBg (OPAQUE) + centred text"]
+  layer["5-layer draw order: boxes -> EDGES -> LABELS -> titles -> nodes\nplate paints AFTER the edge path"]
+  gap(["RESULT: opaque plate masks a ~text-width run of the line\n-> edge looks broken; sequence plate blanks crossing lifelines"]):::bad
+
+  route --> finish --> size --> emit --> layer --> gap
+  classDef bad fill:#ffe3e3,stroke:#e03131,color:#111
+  </pre></div>
+
+  <script src="../../../../resources/mermaid.min.js"></script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        document.body.insertAdjacentHTML('beforeend',
+          '<div class="err">Could not load mermaid from: ../../../../resources/mermaid.min.js\n' +
+          'Re-run the gogo-mermaid skill, or read the .mmd source files directly.</div>');
+        return;
+      }
+      window.mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    })();
+  </script>
+</body>
+</html>

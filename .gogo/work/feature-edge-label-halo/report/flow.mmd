@@ -1,0 +1,37 @@
+%% AS-BUILT (v0.6.4): continuous-line edge labels — per-tier hybrid.
+%% Routed edges (flowchart/class/state): resolveLabelLineOffsets lifts each label
+%% anchor OFF its home line as the FIRST step of finishEdges, before de-collision,
+%% so the line stays continuous. Sequence: labels already ride above the arrow, so
+%% messageLabel is tightened to the shared labelPlateSize. Three refinements vs the
+%% plan: (1) the offset clears by the plate's half-extent ALONG the offset direction
+%% (half-WIDTH for a vertical run's right shift, not a fixed half-height) so even a
+%% wide label fully clears; (2) offset plate corners feed contentBounds so an
+%% off-line label is never clipped; (3) a final deCollideLabels pass runs LAST (after
+%% the node de-collision, which can repack an offset label into a neighbour on tight
+%% anti-parallel jogs) so the no-label-overlap bar holds.
+flowchart TD
+  route["routeEdge / labelPoint (geometry): labelPos = segment MIDPOINT"]
+
+  subgraph ROUTED["Routed edges: flowchart + class + state"]
+    offset["resolveLabelLineOffsets (geometry) — finishEdges step 1 (FIRST):\nshift labelPos PERPENDICULAR to the home segment\nhoriz seg -> UP by plateHalfHeight + gap(3)\nvert seg -> RIGHT by plateHalfWIDTH + gap(3)"]
+    decol["existing de-collision passes run on the OFFSET centres:\ndeCollideLabels (FR6) + ...FromEdges + ...FromNodes\n-> invariants hold on the ACTUAL drawn plates"]
+    relast["deCollideLabels AGAIN (LAST): node de-collision can repack an\noffset label into a neighbour; re-separate labels last"]
+    offset --> decol --> relast
+  end
+
+  subgraph SEQ["Sequence tier"]
+    seqrise["labels already ride LABEL_RISE=12 above the arrow"]
+    seqtight["messageLabel -> shared labelPlateSize (0.6*size+6 / lines*lh+2)\ndrops the wider 0.62*size+10; thin dashed lifeline crossing accepted"]
+    seqrise --> seqtight
+  end
+
+  size["labelPlateSize (layout): single shared tightened bbox"]
+  bounds["labelPlateCorners -> contentBounds (layout):\noff-line plate corners widen the viewBox so a label never clips"]
+  emit["edgeLabel / messageLabel (svg sinks) + runtime twin (parity):\nrect fill=edgeLabelBg backs the TEXT only"]
+  twin["dom-runtime-parity: offset + size + label-in-bounds mirrored\nbyte-for-byte in vnmRuntime (both renderEdges + toSvgString)"]
+  good(["RESULT: edge line stays CONTINUOUS; label reads beside it, in-frame;\nno FR6 / TEST-006 / label-vs-node regressions; 401 tests green"]):::ok
+
+  route --> ROUTED --> size
+  route --> SEQ --> size
+  size --> bounds --> emit --> twin --> good
+  classDef ok fill:#d3f9d8,stroke:#2f9e44,color:#111

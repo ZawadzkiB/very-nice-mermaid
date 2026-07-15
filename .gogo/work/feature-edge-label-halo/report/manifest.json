@@ -1,0 +1,10 @@
+{
+  "slug": "edge-label-halo",
+  "diagrams": [
+    {
+      "kind": "flow",
+      "file": "flow.mmd",
+      "title": "As-built — continuous-line edge labels (per-tier hybrid, v0.6.4)"
+    }
+  ]
+}

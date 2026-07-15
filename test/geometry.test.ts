@@ -12,6 +12,8 @@ import {
   computePerimeterPorts,
   resolveLabelCollisions,
   resolveLabelEdgeCollisions,
+  resolveLabelLineOffsets,
+  LABEL_LINE_GAP,
   segmentsCross,
   applyEdgeBridges,
   separateLanes,
@@ -430,6 +432,50 @@ describe("resolveLabelCollisions de-collides overlapping edge-label plates (FR6)
     const shifts = resolveLabelCollisions([rect(0, 0, 40, 20), undefined, rect(5, 5, 40, 20)]);
     expect(shifts).toHaveLength(3);
     expect(shifts[1]).toEqual({ x: 0, y: 0 }); // the hole stays zero
+  });
+});
+
+describe("resolveLabelLineOffsets lifts a label off its home line (option d, v0.6.4)", () => {
+  const rect = (x: number, y: number, w: number, h: number): PlateRect => ({ x, y, w, h });
+
+  it("shifts a label on a VERTICAL home segment RIGHT by plateHalfWidth + gap (line stays continuous)", () => {
+    // A vertical run through the plate centre → move RIGHT by half the WIDTH (+gap) so the
+    // wide plate fully clears the line (the naive half-height would still mask it).
+    const plate = rect(100, 100, 120, 20);
+    const vertical = [{ x: 100, y: 0 }, { x: 100, y: 200 }];
+    const [sh] = resolveLabelLineOffsets([plate], [vertical], [false]);
+    expect(sh).toEqual({ x: 120 / 2 + LABEL_LINE_GAP, y: 0 });
+  });
+
+  it("shifts a label on a HORIZONTAL home segment UP by plateHalfHeight + gap", () => {
+    const plate = rect(100, 100, 120, 20);
+    const horizontal = [{ x: 0, y: 100 }, { x: 200, y: 100 }];
+    const [sh] = resolveLabelLineOffsets([plate], [horizontal], [false]);
+    expect(sh).toEqual({ x: 0, y: -(20 / 2 + LABEL_LINE_GAP) });
+  });
+
+  it("REV-001: the cubic flag (not point-count) picks the axis for a 4-point route", () => {
+    // Same 4-point polyline: its interior mid segment [pt1,pt2] is VERTICAL, but the
+    // mid-curve tangent (p0+c1)->(c2+p3) is HORIZONTAL. A curved edge WITH waypoints
+    // (cubics=false, routes as an elbow) must use the MID segment → RIGHT; only a genuine
+    // cubic (cubics=true) uses the tangent → UP. Guards the elbow-4 mis-axis regression.
+    const plate = rect(0, 0, 40, 20);
+    const poly = [{ x: 0, y: 50 }, { x: 50, y: 0 }, { x: 50, y: 100 }, { x: 200, y: 50 }];
+    const [elbow] = resolveLabelLineOffsets([plate], [poly], [false]); // curved+waypoints → mid seg (vertical)
+    const [cubic] = resolveLabelLineOffsets([plate], [poly], [true]); //  genuine cubic → tangent (horizontal)
+    expect(elbow).toEqual({ x: 40 / 2 + LABEL_LINE_GAP, y: 0 }); // RIGHT
+    expect(cubic).toEqual({ x: 0, y: -(20 / 2 + LABEL_LINE_GAP) }); // UP
+    expect(elbow).not.toEqual(cubic); // the flag genuinely changes the axis
+  });
+
+  it("returns a zero shift for an unlabelled (undefined) plate, aligned by index", () => {
+    const shifts = resolveLabelLineOffsets(
+      [undefined, rect(0, 0, 40, 20)],
+      [[], [{ x: 0, y: 0 }, { x: 0, y: 100 }]],
+      [false, false],
+    );
+    expect(shifts[0]).toEqual({ x: 0, y: 0 });
+    expect(shifts[1]).toEqual({ x: 40 / 2 + LABEL_LINE_GAP, y: 0 });
   });
 });
 

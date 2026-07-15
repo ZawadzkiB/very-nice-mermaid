@@ -1,0 +1,27 @@
+{
+  "slug": "edge-label-halo",
+  "phase": "test",
+  "status": "ok",
+  "round": 1,
+  "inputs": [
+    ".gogo/work/feature-edge-label-halo/plan.md",
+    ".gogo/knowledge/test-strategy.md",
+    ".gogo/knowledge/testing-tools.md",
+    ".gogo/knowledge/tech-stack.md",
+    ".gogo/knowledge/non-functional-requirements.md",
+    ".gogo/work/feature-edge-label-halo/review/issues.json",
+    ".gogo/work/feature-edge-label-halo/charts/manifest.json"
+  ],
+  "outputs": [
+    ".gogo/work/feature-edge-label-halo/test/issues.json",
+    ".gogo/work/feature-edge-label-halo/test-01.md",
+    ".gogo/work/feature-edge-label-halo/test/result.json",
+    ".gogo/work/feature-edge-label-halo/state.md",
+    ".gogo/work/feature-edge-label-halo/events.jsonl",
+    "e2e/state.spec.ts"
+  ],
+  "validated_in": true,
+  "validated_out": true,
+  "open_issues": 0,
+  "summary": "All green: build clean, 405/405 unit (incl. dom-runtime-parity 37/37), 85/85 e2e (after fixing one stale test-correlation issue, TEST-001, not a product regression), CLI 0.6.4, byte-deterministic renders, and hands-on visual verification (architecture.mmd + gallery + sequence, clean/sketch x light/dark/fancy) confirms the hard acceptance bar: routed-edge labels sit off their line with the line reading continuous, no label/node or label/label overlaps, sequence labels tightened. Interactive check via the bundled gogo-playwright MCP ran successfully (no fallback needed). Advance to report."
+}

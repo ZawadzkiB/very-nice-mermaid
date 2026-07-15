@@ -1250,6 +1250,31 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       }
     });
   }
+  function resolveLabelLineOffsets2(plates, polylines) {
+    return plates.map((p, i) => {
+      if (!p) return { x: 0, y: 0 };
+      const pts = polylines[i] ?? [];
+      if (pts.length < 2) return { x: 0, y: 0 };
+      const el = edgeEls[i];
+      const cubic = edgeStyle === "curved" && !(el && el.waypoints && el.waypoints.length);
+      let a;
+      let b;
+      if (cubic && pts.length === 4) {
+        a = { x: pts[0].x + pts[1].x, y: pts[0].y + pts[1].y };
+        b = { x: pts[2].x + pts[3].x, y: pts[2].y + pts[3].y };
+      } else if (pts.length === 2) {
+        a = pts[0];
+        b = pts[1];
+      } else {
+        const mid = Math.floor(pts.length / 2);
+        a = pts[mid - 1];
+        b = pts[mid];
+      }
+      const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+      const dist3 = (horizontal ? p.h : p.w) / 2 + 3;
+      return horizontal ? { x: 0, y: -dist3 } : { x: dist3, y: 0 };
+    });
+  }
   const bridgesEnabled = () => edgeStyle === "elbow" && (opt.bridges ?? true);
   function routeBoxes(from, to, waypoints, ports, isSelf) {
     const shift = ports && ports.labelShift;
@@ -1378,12 +1403,14 @@ var vnmRuntime = function vnmRuntime(root, payload) {
   function renderEdges() {
     const ports = computePorts();
     const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
+    foldLabelShifts(routed, resolveLabelLineOffsets2(labelPlatesOf(routed), routed.map((r) => r.points)));
     separateLanes2(routed);
     separateAntiParallelJogs2(routed, edgeEls);
     foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
     foldLabelShifts(routed, resolveLabelEdgeCollisions2(labelPlatesOf(routed), routed.map((r) => r.points)));
     const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id].x, y: positions[nd.id].y, w: sizes[nd.id].w, h: sizes[nd.id].h }));
     foldLabelShifts(routed, resolveLabelNodeCollisions2(labelPlatesOf(routed), nodeBoxesL));
+    foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
     const bridgedL = applyEdgeBridges2(routed.map((r) => r.points), bridgesEnabled());
     edgeEls.forEach((e, i) => {
       const r = routed[i];
@@ -2073,6 +2100,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : void 0;
       return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
     });
+    foldLabelShifts(routesB, resolveLabelLineOffsets2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     separateLanes2(routesB);
     separateAntiParallelJogs2(routesB, edgeEls);
     foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
@@ -2082,6 +2110,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       return { x: b2.x, y: b2.y, w: b2.w, h: b2.h };
     });
     foldLabelShifts(routesB, resolveLabelNodeCollisions2(labelPlatesOf(routesB), nodeBoxesB));
+    foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
     const bridgedB = applyEdgeBridges2(routesB.map((r) => r.points), bridgesEnabled());
     edgeEls.forEach((e, i) => {
       const r = routesB[i];
@@ -2091,6 +2120,9 @@ var vnmRuntime = function vnmRuntime(root, payload) {
         edgeLabelParts.push(svgEdgeLabel(e.label, r.labelPos.x, r.labelPos.y));
       }
     });
+    for (const pl of labelPlatesOf(routesB)) {
+      if (pl) allPts.push({ x: pl.x - pl.w / 2, y: pl.y - pl.h / 2 }, { x: pl.x + pl.w / 2, y: pl.y + pl.h / 2 });
+    }
     const b = boundsAbs(boxes, allPts);
     const parts = [];
     parts.push(

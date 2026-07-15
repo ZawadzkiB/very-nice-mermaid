@@ -1250,6 +1250,31 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       }
     });
   }
+  function resolveLabelLineOffsets2(plates, polylines) {
+    return plates.map((p, i) => {
+      if (!p) return { x: 0, y: 0 };
+      const pts = polylines[i] ?? [];
+      if (pts.length < 2) return { x: 0, y: 0 };
+      const el = edgeEls[i];
+      const cubic = edgeStyle === "curved" && !(el && el.waypoints && el.waypoints.length);
+      let a;
+      let b;
+      if (cubic && pts.length === 4) {
+        a = { x: pts[0].x + pts[1].x, y: pts[0].y + pts[1].y };
+        b = { x: pts[2].x + pts[3].x, y: pts[2].y + pts[3].y };
+      } else if (pts.length === 2) {
+        a = pts[0];
+        b = pts[1];
+      } else {
+        const mid = Math.floor(pts.length / 2);
+        a = pts[mid - 1];
+        b = pts[mid];
+      }
+      const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+      const dist3 = (horizontal ? p.h : p.w) / 2 + 3;
+      return horizontal ? { x: 0, y: -dist3 } : { x: dist3, y: 0 };
+    });
+  }
   const bridgesEnabled = () => edgeStyle === "elbow" && (opt.bridges ?? true);
   function routeBoxes(from, to, waypoints, ports, isSelf) {
     const shift = ports && ports.labelShift;
@@ -1378,12 +1403,14 @@ var vnmRuntime = function vnmRuntime(root, payload) {
   function renderEdges() {
     const ports = computePorts();
     const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
+    foldLabelShifts(routed, resolveLabelLineOffsets2(labelPlatesOf(routed), routed.map((r) => r.points)));
     separateLanes2(routed);
     separateAntiParallelJogs2(routed, edgeEls);
     foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
     foldLabelShifts(routed, resolveLabelEdgeCollisions2(labelPlatesOf(routed), routed.map((r) => r.points)));
     const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id].x, y: positions[nd.id].y, w: sizes[nd.id].w, h: sizes[nd.id].h }));
     foldLabelShifts(routed, resolveLabelNodeCollisions2(labelPlatesOf(routed), nodeBoxesL));
+    foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
     const bridgedL = applyEdgeBridges2(routed.map((r) => r.points), bridgesEnabled());
     edgeEls.forEach((e, i) => {
       const r = routed[i];
@@ -2073,6 +2100,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : void 0;
       return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
     });
+    foldLabelShifts(routesB, resolveLabelLineOffsets2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     separateLanes2(routesB);
     separateAntiParallelJogs2(routesB, edgeEls);
     foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
@@ -2082,6 +2110,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       return { x: b2.x, y: b2.y, w: b2.w, h: b2.h };
     });
     foldLabelShifts(routesB, resolveLabelNodeCollisions2(labelPlatesOf(routesB), nodeBoxesB));
+    foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
     const bridgedB = applyEdgeBridges2(routesB.map((r) => r.points), bridgesEnabled());
     edgeEls.forEach((e, i) => {
       const r = routesB[i];
@@ -2091,6 +2120,9 @@ var vnmRuntime = function vnmRuntime(root, payload) {
         edgeLabelParts.push(svgEdgeLabel(e.label, r.labelPos.x, r.labelPos.y));
       }
     });
+    for (const pl of labelPlatesOf(routesB)) {
+      if (pl) allPts.push({ x: pl.x - pl.w / 2, y: pl.y - pl.h / 2 }, { x: pl.x + pl.w / 2, y: pl.y + pl.h / 2 });
+    }
     const b = boundsAbs(boxes, allPts);
     const parts = [];
     parts.push(
@@ -2185,7 +2217,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     toSvgString
   };
 };
-var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"start","label":"Push to main","shape":"stadium","classes":[],"x":302.75,"y":31.5,"width":160,"height":47},{"id":"lint","label":"Lint passes?","shape":"diamond","classes":[],"x":302.75,"y":162.5,"width":197,"height":71},{"id":"test","label":"Run tests","shape":"rect","classes":[],"x":197.5,"y":293.5,"width":115,"height":47},{"id":"fail","label":"Report failure","shape":"cylinder","classes":[],"x":515,"y":537.5,"width":158,"height":59},{"id":"deploy","label":"Deploy?","shape":"hexagon","classes":[],"x":197.5,"y":412.5,"width":125,"height":47},{"id":"prod","label":"Ship to prod","shape":"parallelogram","classes":[],"x":90.5,"y":537.5,"width":165,"height":47},{"id":"stg","label":"Ship to staging","shape":"rect","classes":[],"x":304.5,"y":537.5,"width":167,"height":47},{"id":"done","label":"Done","shape":"circle","classes":[],"x":304.5,"y":680,"width":82,"height":82}],"edges":[{"from":"start","to":"lint","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":302.75,"y":55},{"x":302.75,"y":91},{"x":302.75,"y":91},{"x":302.75,"y":127}],"path":"M 302.75 55 C 302.75 91 302.75 91 302.75 127"},{"from":"lint","to":"test","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"yes","points":[{"x":287.75,"y":192.59390862944161},{"x":287.75,"y":231.2969543147208},{"x":197.5,"y":231.2969543147208},{"x":197.5,"y":270}],"path":"M 287.75 192.59 C 287.75 231.3 197.5 231.3 197.5 270","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":242.63,"y":231.3}},{"from":"lint","to":"fail","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"no","points":[{"x":317.75,"y":192.59390862944161},{"x":317.75,"y":234},{"x":515,"y":234},{"x":515,"y":508}],"path":"M 317.75 192.59 L 317.75 222 Q 317.75 234 329.75 234 L 503 234 Q 515 234 515 246 L 515 508","waypoints":[{"x":515,"y":234},{"x":515,"y":293.5},{"x":515,"y":353},{"x":515,"y":412.5},{"x":515,"y":472}],"ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":416.38,"y":234}},{"from":"test","to":"deploy","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":197.5,"y":317},{"x":197.5,"y":353},{"x":197.5,"y":353},{"x":197.5,"y":389}],"path":"M 197.5 317 C 197.5 353 197.5 353 197.5 389"},{"from":"deploy","to":"prod","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"prod","points":[{"x":182.5,"y":436},{"x":182.5,"y":475},{"x":90.5,"y":475},{"x":90.5,"y":514}],"path":"M 182.5 436 C 182.5 475 90.5 475 90.5 514","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":136.5,"y":475}},{"from":"deploy","to":"stg","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"staging","points":[{"x":212.5,"y":436},{"x":212.5,"y":475},{"x":304.5,"y":475},{"x":304.5,"y":514}],"path":"M 212.5 436 C 212.5 475 304.5 475 304.5 514","ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":258.5,"y":475}},{"from":"prod","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":90.5,"y":561},{"x":90.5,"y":620.5},{"x":204,"y":680},{"x":263.5,"y":680}],"path":"M 90.5 561 C 90.5 620.5 204 680 263.5 680"},{"from":"stg","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":304.5,"y":561},{"x":304.5,"y":600},{"x":304.5,"y":600},{"x":304.5,"y":639}],"path":"M 304.5 561 C 304.5 600 304.5 600 304.5 639"},{"from":"fail","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":515,"y":567},{"x":515,"y":623.5},{"x":402,"y":680},{"x":345.5,"y":680}],"path":"M 515 567 C 515 623.5 402 680 345.5 680"}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":-12,"width":626,"height":753}},"theme":{"name":"fancy","edgeStyle":"curved","tokens":{"colors":{"background":"#0b1020","surface":"#151b34","surfaceStroke":"#3b4a7a","text":"#eef1ff","textMuted":"#9fa9d6","edge":"#7d88c4","edgeLabelBg":"#0b1020","edgeLabelText":"#c8cffb","subgraphFill":"#111834","subgraphStroke":"#3b4a7a","subgraphText":"#9fa9d6","accent":"#8b6cff","minimapBg":"rgba(12,16,34,0.9)","minimapViewport":"rgba(139,108,255,0.35)","roles":{"accent":{"fill":"#2a2160","stroke":"#8b6cff","text":"#eef1ff"},"success":{"fill":"#123a2e","stroke":"#3fd39b","text":"#d6ffef"},"warn":{"fill":"#3a2f0f","stroke":"#e6c04d","text":"#fff4cf"},"danger":{"fill":"#3f1830","stroke":"#ff6bb0","text":"#ffd9ec"}}},"radii":{"node":14,"card":14,"label":6},"spacing":{"nodePadX":18,"nodePadY":14,"nodesep":48,"ranksep":72,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":19,"weight":600},"edge":{"style":"curved","width":1.75,"thickWidth":3.5,"arrowSize":9},"effects":{"nodeShadow":"0 6px 22px rgba(80,60,180,0.35)","gradient":true,"hoverLift":3}}},"cssVars":"--vnm-bg: #0b1020; --vnm-surface: #151b34; --vnm-surface-stroke: #3b4a7a; --vnm-text: #eef1ff; --vnm-text-muted: #9fa9d6; --vnm-edge: #7d88c4; --vnm-edge-label-bg: #0b1020; --vnm-edge-label-text: #c8cffb; --vnm-subgraph-fill: #111834; --vnm-subgraph-stroke: #3b4a7a; --vnm-subgraph-text: #9fa9d6; --vnm-accent: #8b6cff; --vnm-minimap-bg: rgba(12,16,34,0.9); --vnm-minimap-viewport: rgba(139,108,255,0.35); --vnm-radius: 14px; --vnm-label-radius: 6px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 600; --vnm-node-shadow: 0 6px 22px rgba(80,60,180,0.35); --vnm-hover-lift: 3px; --vnm-edge-width: 1.75px;","options":{"fitPadding":60,"persistKey":"vnm-layout:1wui0yq","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true}};
+var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"start","label":"Push to main","shape":"stadium","classes":[],"x":302.75,"y":31.5,"width":160,"height":47},{"id":"lint","label":"Lint passes?","shape":"diamond","classes":[],"x":302.75,"y":162.5,"width":197,"height":71},{"id":"test","label":"Run tests","shape":"rect","classes":[],"x":197.5,"y":293.5,"width":115,"height":47},{"id":"fail","label":"Report failure","shape":"cylinder","classes":[],"x":515,"y":537.5,"width":158,"height":59},{"id":"deploy","label":"Deploy?","shape":"hexagon","classes":[],"x":197.5,"y":412.5,"width":125,"height":47},{"id":"prod","label":"Ship to prod","shape":"parallelogram","classes":[],"x":90.5,"y":537.5,"width":165,"height":47},{"id":"stg","label":"Ship to staging","shape":"rect","classes":[],"x":304.5,"y":537.5,"width":167,"height":47},{"id":"done","label":"Done","shape":"circle","classes":[],"x":304.5,"y":680,"width":82,"height":82}],"edges":[{"from":"start","to":"lint","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":302.75,"y":55},{"x":302.75,"y":91},{"x":302.75,"y":91},{"x":302.75,"y":127}],"path":"M 302.75 55 C 302.75 91 302.75 91 302.75 127"},{"from":"lint","to":"test","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"yes","points":[{"x":287.75,"y":192.59390862944161},{"x":287.75,"y":231.2969543147208},{"x":197.5,"y":231.2969543147208},{"x":197.5,"y":270}],"path":"M 287.75 192.59 C 287.75 231.3 197.5 231.3 197.5 270","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":242.63,"y":218.5}},{"from":"lint","to":"fail","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"no","points":[{"x":317.75,"y":192.59390862944161},{"x":317.75,"y":234},{"x":515,"y":234},{"x":515,"y":508}],"path":"M 317.75 192.59 L 317.75 222 Q 317.75 234 329.75 234 L 503 234 Q 515 234 515 246 L 515 508","waypoints":[{"x":515,"y":234},{"x":515,"y":293.5},{"x":515,"y":353},{"x":515,"y":412.5},{"x":515,"y":472}],"ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":416.38,"y":220.5}},{"from":"test","to":"deploy","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":197.5,"y":317},{"x":197.5,"y":353},{"x":197.5,"y":353},{"x":197.5,"y":389}],"path":"M 197.5 317 C 197.5 353 197.5 353 197.5 389"},{"from":"deploy","to":"prod","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"prod","points":[{"x":182.5,"y":436},{"x":182.5,"y":475},{"x":90.5,"y":475},{"x":90.5,"y":514}],"path":"M 182.5 436 C 182.5 475 90.5 475 90.5 514","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":136.5,"y":461.5}},{"from":"deploy","to":"stg","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"staging","points":[{"x":212.5,"y":436},{"x":212.5,"y":475},{"x":304.5,"y":475},{"x":304.5,"y":514}],"path":"M 212.5 436 C 212.5 475 304.5 475 304.5 514","ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":258.5,"y":461.5}},{"from":"prod","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":90.5,"y":561},{"x":90.5,"y":620.5},{"x":204,"y":680},{"x":263.5,"y":680}],"path":"M 90.5 561 C 90.5 620.5 204 680 263.5 680"},{"from":"stg","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":304.5,"y":561},{"x":304.5,"y":600},{"x":304.5,"y":600},{"x":304.5,"y":639}],"path":"M 304.5 561 C 304.5 600 304.5 600 304.5 639"},{"from":"fail","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":515,"y":567},{"x":515,"y":623.5},{"x":402,"y":680},{"x":345.5,"y":680}],"path":"M 515 567 C 515 623.5 402 680 345.5 680"}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":-12,"width":626,"height":753}},"theme":{"name":"fancy","edgeStyle":"curved","tokens":{"colors":{"background":"#0b1020","surface":"#151b34","surfaceStroke":"#3b4a7a","text":"#eef1ff","textMuted":"#9fa9d6","edge":"#7d88c4","edgeLabelBg":"#0b1020","edgeLabelText":"#c8cffb","subgraphFill":"#111834","subgraphStroke":"#3b4a7a","subgraphText":"#9fa9d6","accent":"#8b6cff","minimapBg":"rgba(12,16,34,0.9)","minimapViewport":"rgba(139,108,255,0.35)","roles":{"accent":{"fill":"#2a2160","stroke":"#8b6cff","text":"#eef1ff"},"success":{"fill":"#123a2e","stroke":"#3fd39b","text":"#d6ffef"},"warn":{"fill":"#3a2f0f","stroke":"#e6c04d","text":"#fff4cf"},"danger":{"fill":"#3f1830","stroke":"#ff6bb0","text":"#ffd9ec"}}},"radii":{"node":14,"card":14,"label":6},"spacing":{"nodePadX":18,"nodePadY":14,"nodesep":48,"ranksep":72,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":19,"weight":600},"edge":{"style":"curved","width":1.75,"thickWidth":3.5,"arrowSize":9},"effects":{"nodeShadow":"0 6px 22px rgba(80,60,180,0.35)","gradient":true,"hoverLift":3}}},"cssVars":"--vnm-bg: #0b1020; --vnm-surface: #151b34; --vnm-surface-stroke: #3b4a7a; --vnm-text: #eef1ff; --vnm-text-muted: #9fa9d6; --vnm-edge: #7d88c4; --vnm-edge-label-bg: #0b1020; --vnm-edge-label-text: #c8cffb; --vnm-subgraph-fill: #111834; --vnm-subgraph-stroke: #3b4a7a; --vnm-subgraph-text: #9fa9d6; --vnm-accent: #8b6cff; --vnm-minimap-bg: rgba(12,16,34,0.9); --vnm-minimap-viewport: rgba(139,108,255,0.35); --vnm-radius: 14px; --vnm-label-radius: 6px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 600; --vnm-node-shadow: 0 6px 22px rgba(80,60,180,0.35); --vnm-hover-lift: 3px; --vnm-edge-width: 1.75px;","options":{"fitPadding":60,"persistKey":"vnm-layout:1wui0yq","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true}};
 vnmRuntime(document.getElementById("vnm-root"), __vnm_payload);
 </script>
 </body>

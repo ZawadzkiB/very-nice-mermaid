@@ -66,6 +66,14 @@ test("anti-parallel jog de-cramp (v0.6.2): pause/resume stagger onto distinct la
   // or the static SVG) and asserts the live geometry is actually staggered — the
   // dom-runtime-parity unit test already byte-compares the twin under jsdom; this
   // closes the loop with a genuine browser-rendered check.
+  //
+  // v0.6.4 (edge-label-halo) moved every label OFF its own line (perpendicular
+  // offset), by design. On this tight anti-parallel pair the two home lines are
+  // only JOG_GAP (26px) apart, so a label's offset plate can end up geometrically
+  // CLOSER to the neighbour's line than to its own — nearest-point-to-label-center
+  // is no longer a reliable way to correlate a label to "its" path. Correlate by
+  // graph structure instead (which node each path starts/ends at) — robust to
+  // where the label plate itself sits.
   const found = await page.evaluate(() => {
     // Longest contiguous near-horizontal run of sampled points == the interior jog;
     // its (constant) y is the "lane" the pass staggers onto.
@@ -94,43 +102,46 @@ test("anti-parallel jog de-cramp (v0.6.2): pause/resume stagger onto distinct la
 
     const edgesLayer = document.querySelector("svg.vnm-edges")!;
     const paths = [...edgesLayer.querySelectorAll<SVGPathElement>("path[marker-end]")];
-    const labelGroup = [...edgesLayer.children].find((g) => g.querySelector("text"))!;
-    const rects = [...labelGroup.querySelectorAll("rect")];
-    const texts = [...labelGroup.querySelectorAll("text")];
 
-    // Correlate each label to its edge path by proximity (closest sampled point on
-    // the path to the label's center) — real geometry, no assumption about DOM order.
-    function closestDistance(path: SVGPathElement, x: number, y: number): number {
-      const len = path.getTotalLength();
-      let best = Infinity;
-      for (let i = 0; i <= 40; i++) {
-        const p = path.getPointAtLength((len * i) / 40);
-        const d = Math.hypot(p.x - x, p.y - y);
-        if (d < best) best = d;
-      }
-      return best;
+    // Node cards are positioned via style.left/top in the SAME coordinate space as
+    // the edge paths (both live unTransformed inside .vnm-world), so offsetLeft/Top
+    // can be compared directly against path.getPointAtLength() with no unit conversion.
+    function nodeBox(label: string) {
+      const card = [...document.querySelectorAll<HTMLElement>(".vnm-node")].find(
+        (n) => n.textContent?.trim() === label,
+      )!;
+      const x = card.offsetLeft;
+      const y = card.offsetTop;
+      const w = card.offsetWidth;
+      const h = card.offsetHeight;
+      return { x, y, w, h };
+    }
+    const running = nodeBox("Running");
+    const paused = nodeBox("Paused");
+
+    function nearBox(pt: { x: number; y: number }, box: { x: number; y: number; w: number; h: number }, pad = 6) {
+      return (
+        pt.x >= box.x - pad &&
+        pt.x <= box.x + box.w + pad &&
+        pt.y >= box.y - pad &&
+        pt.y <= box.y + box.h + pad
+      );
     }
 
-    function pathFor(label: string): SVGPathElement {
-      const idx = texts.findIndex((t) => t.textContent === label);
-      const r = rects[idx]!.getBBox();
-      const cx = r.x + r.width / 2;
-      const cy = r.y + r.height / 2;
-      let bestPath: SVGPathElement | undefined = paths[0];
-      let bestDist = Infinity;
-      for (const p of paths) {
-        const d = closestDistance(p, cx, cy);
-        if (d < bestDist) {
-          bestDist = d;
-          bestPath = p;
-        }
-      }
-      return bestPath!;
+    let pausePath: SVGPathElement | null = null;
+    let resumePath: SVGPathElement | null = null;
+    for (const p of paths) {
+      const len = p.getTotalLength();
+      const start = p.getPointAtLength(0);
+      const end = p.getPointAtLength(len);
+      if (nearBox(start, running) && nearBox(end, paused)) pausePath = p; // Running --> Paused
+      if (nearBox(start, paused) && nearBox(end, running)) resumePath = p; // Paused --> Running
     }
 
-    const pausePath = pathFor("pause");
-    const resumePath = pathFor("resume");
-    return { pauseJogY: jogY(pausePath), resumeJogY: jogY(resumePath) };
+    return {
+      pauseJogY: pausePath ? jogY(pausePath) : null,
+      resumeJogY: resumePath ? jogY(resumePath) : null,
+    };
   });
 
   expect(found.pauseJogY).not.toBeNull();
