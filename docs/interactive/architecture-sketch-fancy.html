@@ -1,0 +1,2632 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture — sketch / fancy</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: #0b1020; font-family: 'Kalam', 'Comic Sans MS', 'Segoe Print', 'Bradley Hand', cursive; }
+  #vnm-root { position: absolute; inset: 0; }
+  .vnm-node { box-sizing: border-box; }
+  button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="vnm-root"></div>
+<script>
+"use strict";
+var vnmRuntime = function vnmRuntime(root, payload) {
+  const doc = root.ownerDocument;
+  const win = doc.defaultView;
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const model = payload.model;
+  const opt = payload.options;
+  let tokens = payload.theme.tokens;
+  let edgeStyle = payload.theme.edgeStyle;
+  const sketch = opt.style === "sketch";
+  const arrowCaps = opt.arrowCaps !== false;
+  const SK_ROUGHNESS = 2.4;
+  const SK_BOWING = 2.2;
+  const SK_OUTLINE_STROKES = 2;
+  const SK_ELLIPSE_STEPS = 22;
+  const SK_FILL_ROUGHNESS = 1.2;
+  const offsetX = model.bounds.x;
+  const offsetY = model.bounds.y;
+  const contentW = model.bounds.width;
+  const contentH = model.bounds.height;
+  const positions = {};
+  const sizes = {};
+  const baseSizes = {};
+  const shapeById = {};
+  for (const nd of model.nodes) {
+    positions[nd.id] = { x: nd.x - offsetX, y: nd.y - offsetY };
+    sizes[nd.id] = { w: nd.width, h: nd.height };
+    baseSizes[nd.id] = { w: nd.width, h: nd.height };
+    shapeById[nd.id] = nd.shape;
+  }
+  const anchorsOv = {};
+  let tx = 0;
+  let ty = 0;
+  let scale = 1;
+  root.classList.add("vnm-root");
+  const viewport = doc.createElement("div");
+  viewport.className = "vnm-viewport";
+  viewport.setAttribute(
+    "style",
+    "position:absolute;inset:0;overflow:hidden;background:var(--vnm-bg);cursor:grab;touch-action:none;user-select:none;font-family:var(--vnm-font);" + payload.cssVars
+  );
+  if (getComputedStyle(root).position === "static") root.style.position = "relative";
+  root.appendChild(viewport);
+  if (sketch && payload.sketch) {
+    const fontStyle = doc.createElement("style");
+    fontStyle.textContent = payload.sketch.fontFace;
+    viewport.appendChild(fontStyle);
+  }
+  const world = doc.createElement("div");
+  world.className = "vnm-world";
+  world.setAttribute("style", "position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform;");
+  viewport.appendChild(world);
+  const svg = doc.createElementNS(SVGNS, "svg");
+  svg.setAttribute("class", "vnm-edges");
+  svg.setAttribute("width", String(contentW));
+  svg.setAttribute("height", String(contentH));
+  svg.setAttribute("style", "position:absolute;left:0;top:0;overflow:visible;pointer-events:none;");
+  const defs5 = doc.createElementNS(SVGNS, "defs");
+  defs5.innerHTML = '<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M0 0 L10 5 L0 10 z"></path></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M10 0 L0 5 L10 10 z"></path></marker>';
+  svg.appendChild(defs5);
+  const gBoxes = doc.createElementNS(SVGNS, "g");
+  const gEdges = doc.createElementNS(SVGNS, "g");
+  const gLabels = doc.createElementNS(SVGNS, "g");
+  const gTitles = doc.createElementNS(SVGNS, "g");
+  const gNodes = doc.createElementNS(SVGNS, "g");
+  gBoxes.setAttribute("class", "vnm-subgraph-layer");
+  gEdges.setAttribute("class", "vnm-edge-layer");
+  gLabels.setAttribute("class", "vnm-label-layer");
+  gTitles.setAttribute("class", "vnm-title-layer");
+  gNodes.setAttribute("class", "vnm-node-layer");
+  svg.appendChild(gBoxes);
+  svg.appendChild(gEdges);
+  svg.appendChild(gLabels);
+  svg.appendChild(gTitles);
+  svg.appendChild(gNodes);
+  world.appendChild(svg);
+  const SG_PAD = 14;
+  const SG_TITLE = 22;
+  const subgraphMembers = {};
+  {
+    const childrenById = {};
+    for (const sg of model.subgraphs) childrenById[sg.id] = sg.children;
+    const isNode = (id) => !!positions[id];
+    const resolve = (id, seen) => {
+      const out = [];
+      for (const child of childrenById[id] || []) {
+        if (isNode(child)) out.push(child);
+        else if (childrenById[child] && !seen[child]) {
+          seen[child] = true;
+          out.push(...resolve(child, seen));
+        }
+      }
+      return out;
+    };
+    for (const sg of model.subgraphs) subgraphMembers[sg.id] = resolve(sg.id, { [sg.id]: true });
+  }
+  function sgBoxFrom(boxes, hasTitle) {
+    if (!boxes.length) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const b of boxes) {
+      minX = Math.min(minX, b.x - b.w / 2);
+      minY = Math.min(minY, b.y - b.h / 2);
+      maxX = Math.max(maxX, b.x + b.w / 2);
+      maxY = Math.max(maxY, b.y + b.h / 2);
+    }
+    const top = SG_PAD + (hasTitle ? SG_TITLE : 0);
+    const x0 = minX - SG_PAD;
+    const y0 = minY - top;
+    const x1 = maxX + SG_PAD;
+    const y1 = maxY + SG_PAD;
+    return { x: nAt((x0 + x1) / 2), y: nAt((y0 + y1) / 2), w: nAt(x1 - x0), h: nAt(y1 - y0) };
+  }
+  function subgraphWorldBox(sg) {
+    const ids = subgraphMembers[sg.id] || [];
+    const boxes = ids.map((id) => ({ x: positions[id].x, y: positions[id].y, w: sizes[id].w, h: sizes[id].h }));
+    return sgBoxFrom(boxes, !!sg.title) ?? { x: sg.x - offsetX, y: sg.y - offsetY, w: sg.width, h: sg.height };
+  }
+  const subgraphEls = [];
+  for (const sg of model.subgraphs) {
+    const r = doc.createElementNS(SVGNS, "rect");
+    r.setAttribute("class", "vnm-subgraph");
+    r.setAttribute("rx", String(tokens.radii.card));
+    r.setAttribute("fill", "var(--vnm-subgraph-fill)");
+    r.setAttribute("stroke", "var(--vnm-subgraph-stroke)");
+    r.setAttribute("stroke-dasharray", "4 4");
+    gBoxes.appendChild(r);
+    const rec = { sg, rect: r };
+    if (sg.title) {
+      const plate = doc.createElementNS(SVGNS, "rect");
+      plate.setAttribute("class", "vnm-subgraph-title-plate");
+      plate.setAttribute("fill", "var(--vnm-subgraph-fill)");
+      plate.setAttribute("rx", String(tokens.radii.label));
+      gTitles.appendChild(plate);
+      const tnode = doc.createElementNS(SVGNS, "text");
+      tnode.setAttribute("class", "vnm-subgraph-title");
+      tnode.setAttribute("fill", "var(--vnm-subgraph-text)");
+      tnode.setAttribute("font-size", String(tokens.font.size - 1));
+      tnode.setAttribute("font-weight", "600");
+      tnode.textContent = sg.title;
+      gTitles.appendChild(tnode);
+      rec.plate = plate;
+      rec.text = tnode;
+    }
+    subgraphEls.push(rec);
+  }
+  function renderSubgraphs() {
+    for (const rec of subgraphEls) {
+      const b = subgraphWorldBox(rec.sg);
+      rec.rect.setAttribute("x", String(b.x - b.w / 2));
+      rec.rect.setAttribute("y", String(b.y - b.h / 2));
+      rec.rect.setAttribute("width", String(b.w));
+      rec.rect.setAttribute("height", String(b.h));
+      if (rec.text) {
+        const tx2 = b.x - b.w / 2 + 12;
+        const ty2 = b.y - b.h / 2 + 18;
+        rec.text.setAttribute("x", String(tx2));
+        rec.text.setAttribute("y", String(ty2));
+        if (rec.plate) {
+          const fs = tokens.font.size - 1;
+          const pad = 5;
+          const pw = rec.sg.title.length * fs * 0.6 + pad * 2;
+          rec.plate.setAttribute("x", String(nAt(tx2 - pad)));
+          rec.plate.setAttribute("y", String(nAt(ty2 - fs + 1)));
+          rec.plate.setAttribute("width", String(nAt(pw)));
+          rec.plate.setAttribute("height", String(fs + 4));
+        }
+      }
+    }
+  }
+  const edgeEls = [];
+  for (const e of model.edges) {
+    const path = doc.createElementNS(SVGNS, "path");
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "var(--vnm-edge)");
+    path.setAttribute("stroke-width", String(e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width));
+    path.setAttribute("stroke-linejoin", "round");
+    path.setAttribute("stroke-linecap", "round");
+    if (e.kind === "dotted") path.setAttribute("stroke-dasharray", "2 5");
+    if (!sketch && e.arrows.end) path.setAttribute("marker-end", "url(#vnm-arrow)");
+    if (!sketch && e.arrows.start) path.setAttribute("marker-start", "url(#vnm-arrow-start)");
+    gEdges.appendChild(path);
+    const rec = { from: e.from, to: e.to, kind: e.kind, arrows: e.arrows, path };
+    if (sketch && (e.arrows.end || e.arrows.start)) {
+      const head = doc.createElementNS(SVGNS, "path");
+      head.setAttribute("fill", "none");
+      head.setAttribute("stroke", "var(--vnm-edge)");
+      head.setAttribute("stroke-width", String(e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width));
+      head.setAttribute("stroke-linejoin", "round");
+      head.setAttribute("stroke-linecap", "round");
+      gEdges.appendChild(head);
+      rec.headPath = head;
+    }
+    if (e.waypoints && e.waypoints.length) {
+      rec.waypoints = e.waypoints.map((p) => ({ x: p.x - offsetX, y: p.y - offsetY }));
+    }
+    if (e.label) {
+      rec.label = e.label;
+      const plate = doc.createElementNS(SVGNS, "rect");
+      plate.setAttribute("fill", "var(--vnm-edge-label-bg)");
+      plate.setAttribute("rx", String(tokens.radii.label));
+      gLabels.appendChild(plate);
+      const text = doc.createElementNS(SVGNS, "text");
+      text.setAttribute("fill", "var(--vnm-edge-label-text)");
+      text.setAttribute("font-size", String(tokens.font.size - 1));
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("dominant-baseline", "central");
+      text.textContent = e.label;
+      gLabels.appendChild(text);
+      rec.plate = plate;
+      rec.text = text;
+    }
+    edgeEls.push(rec);
+  }
+  defs5.querySelector("marker path")?.setAttribute("fill", tokens.colors.edge);
+  const classDefs = model.classDefs;
+  const cards = {};
+  for (const nd of model.nodes) {
+    const card = doc.createElement("div");
+    card.className = "vnm-node";
+    card.dataset.id = nd.id;
+    card.dataset.shape = nd.shape;
+    const st = styleForNode(nd.id, nd.classes, nd.style);
+    card.setAttribute("style", cardStyle(nd.id, st));
+    const inner = doc.createElement("div");
+    inner.setAttribute("style", "white-space:pre-line;text-align:center;pointer-events:none;");
+    inner.textContent = nd.label;
+    card.appendChild(inner);
+    world.appendChild(card);
+    cards[nd.id] = card;
+  }
+  const capOverlay = arrowCaps ? doc.createElementNS(SVGNS, "svg") : null;
+  if (capOverlay) {
+    capOverlay.setAttribute("class", "vnm-arrow-caps");
+    capOverlay.setAttribute("width", String(contentW));
+    capOverlay.setAttribute("height", String(contentH));
+    capOverlay.setAttribute("style", "position:absolute;left:0;top:0;overflow:visible;pointer-events:none;");
+    world.appendChild(capOverlay);
+  }
+  const nodeShapeEls = {};
+  const stateMarkerEls = {};
+  if (sketch) {
+    for (const nd of model.nodes) {
+      if (nd.stateMarker) {
+        const circles = [];
+        const mk = () => {
+          const c = doc.createElementNS(SVGNS, "circle");
+          gNodes.appendChild(c);
+          circles.push(c);
+          return c;
+        };
+        if (nd.stateMarker === "start") {
+          mk().setAttribute("fill", tokens.colors.text);
+        } else {
+          const ring = mk();
+          ring.setAttribute("fill", "none");
+          ring.setAttribute("stroke", tokens.colors.text);
+          ring.setAttribute("stroke-width", "1.5");
+          mk().setAttribute("fill", tokens.colors.text);
+        }
+        stateMarkerEls[nd.id] = circles;
+        continue;
+      }
+      const st = styleForNode(nd.id, nd.classes, nd.style);
+      const sw = st.strokeWidth ?? "1.5";
+      const fillEl = doc.createElementNS(SVGNS, "path");
+      fillEl.setAttribute("fill", st.fill);
+      fillEl.setAttribute("stroke", "none");
+      gNodes.appendChild(fillEl);
+      const probe = sketchShapePoints2(nd.shape, 0, 0, 100, 100);
+      const strokeCount = SK_OUTLINE_STROKES + probe.extras.length * SK_OUTLINE_STROKES;
+      const strokes = [];
+      for (let i = 0; i < strokeCount; i++) {
+        const p = doc.createElementNS(SVGNS, "path");
+        p.setAttribute("fill", "none");
+        p.setAttribute("stroke", st.stroke);
+        p.setAttribute("stroke-width", sw);
+        p.setAttribute("stroke-linejoin", "round");
+        p.setAttribute("stroke-linecap", "round");
+        if (st.strokeDasharray) p.setAttribute("stroke-dasharray", st.strokeDasharray);
+        gNodes.appendChild(p);
+        strokes.push(p);
+      }
+      nodeShapeEls[nd.id] = { fill: fillEl, strokes };
+    }
+  }
+  function renderNodeShape(id) {
+    const markers = stateMarkerEls[id];
+    if (markers) {
+      const mp = positions[id];
+      const ms = sizes[id];
+      const r = Math.min(9, ms.w / 2);
+      for (const c of markers) {
+        c.setAttribute("cx", String(nAt(mp.x)));
+        c.setAttribute("cy", String(nAt(mp.y)));
+      }
+      markers[0].setAttribute("r", String(nAt(r)));
+      if (markers[1]) markers[1].setAttribute("r", String(nAt(r - 4)));
+      return;
+    }
+    const els = nodeShapeEls[id];
+    if (!els) return;
+    const p = positions[id];
+    const s = sizes[id];
+    const { pts, extras } = sketchShapePoints2(shapeById[id], p.x - s.w / 2, p.y - s.h / 2, s.w, s.h);
+    const rs = roughShape2(pts, id);
+    els.fill.setAttribute("d", rs.fill);
+    const ds = rs.outline.slice();
+    extras.forEach((seg, i) => {
+      for (const d of roughPolyline2(seg, id + "#x" + i)) ds.push(d);
+    });
+    els.strokes.forEach((el, i) => el.setAttribute("d", ds[i] ?? ""));
+  }
+  const HANDLE = 10;
+  const MIN_SIZE = 24;
+  const handleEls = [];
+  for (const [sx, sy] of [
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1]
+  ]) {
+    const h = doc.createElement("div");
+    h.className = "vnm-resize-handle";
+    h.dataset.sx = String(sx);
+    h.dataset.sy = String(sy);
+    h.setAttribute(
+      "style",
+      "position:absolute;width:" + HANDLE + "px;height:" + HANDLE + "px;box-sizing:border-box;background:var(--vnm-surface);border:1.5px solid var(--vnm-accent);border-radius:2px;display:none;touch-action:none;z-index:6;cursor:" + (sx * sy > 0 ? "nwse-resize" : "nesw-resize") + ";"
+    );
+    world.appendChild(h);
+    handleEls.push(h);
+  }
+  function hideHandles() {
+    for (const h of handleEls) h.style.display = "none";
+  }
+  function positionHandles() {
+    if (!selected || !cards[selected]) {
+      hideHandles();
+      return;
+    }
+    const p = positions[selected];
+    const s = sizes[selected];
+    for (const h of handleEls) {
+      const sx = Number(h.dataset.sx);
+      const sy = Number(h.dataset.sy);
+      h.style.left = p.x + sx * s.w / 2 - HANDLE / 2 + "px";
+      h.style.top = p.y + sy * s.h / 2 - HANDLE / 2 + "px";
+      h.style.display = "block";
+    }
+  }
+  function applyCardSize(id) {
+    const s = sizes[id];
+    cards[id].style.width = s.w + "px";
+    cards[id].style.height = s.h + "px";
+  }
+  const EP = 9;
+  const edgeHandles = [];
+  edgeEls.forEach((_e, i) => {
+    for (const end of ["source", "target"]) {
+      const h = doc.createElement("div");
+      h.className = "vnm-edge-handle";
+      h.dataset.ei = String(i);
+      h.dataset.end = end;
+      h.setAttribute(
+        "style",
+        "position:absolute;width:" + EP + "px;height:" + EP + "px;box-sizing:border-box;background:var(--vnm-accent);border:1.5px solid var(--vnm-surface);border-radius:50%;display:none;touch-action:none;z-index:7;cursor:grab;"
+      );
+      world.appendChild(h);
+      edgeHandles.push({ el: h, ei: i, end });
+    }
+  });
+  function positionEdgeHandles(ports) {
+    for (const eh of edgeHandles) {
+      const e = edgeEls[eh.ei];
+      const nodeId = eh.end === "source" ? e.from : e.to;
+      const isSelf = e.from === e.to;
+      if (nodeId !== selected || isSelf) {
+        eh.el.style.display = "none";
+        continue;
+      }
+      const p = positions[nodeId];
+      const s = sizes[nodeId];
+      const a = ports[eh.ei][eh.end];
+      const pt = anchor({ x: p.x, y: p.y, w: s.w, h: s.h, shape: shapeById[nodeId] }, a.side, a.offset);
+      eh.el.style.left = pt.x - EP / 2 + "px";
+      eh.el.style.top = pt.y - EP / 2 + "px";
+      eh.el.style.display = "block";
+    }
+  }
+  function anchorFromPointer(box, wx, wy) {
+    const dx = wx - box.x;
+    const dy = wy - box.y;
+    const nx = box.w ? dx / (box.w / 2) : 0;
+    const ny = box.h ? dy / (box.h / 2) : 0;
+    if (Math.abs(nx) >= Math.abs(ny)) {
+      return { side: dx >= 0 ? "right" : "left", offset: clampOff(dy, box.h / 2) };
+    }
+    return { side: dy >= 0 ? "bottom" : "top", offset: clampOff(dx, box.w / 2) };
+  }
+  let minimap = null;
+  if (opt.minimap) {
+    minimap = doc.createElement("canvas");
+    minimap.className = "vnm-minimap";
+    minimap.width = 180;
+    minimap.height = Math.max(80, Math.round(180 * contentH / Math.max(contentW, 1)));
+    minimap.setAttribute(
+      "style",
+      "position:absolute;right:12px;bottom:12px;border:1px solid var(--vnm-surface-stroke);border-radius:8px;background:var(--vnm-minimap-bg);cursor:pointer;box-shadow:var(--vnm-node-shadow);"
+    );
+    viewport.appendChild(minimap);
+  }
+  const toolbar = doc.createElement("div");
+  toolbar.className = "vnm-toolbar";
+  toolbar.setAttribute(
+    "style",
+    "position:absolute;left:12px;top:12px;display:flex;gap:6px;"
+  );
+  const mkBtn = (label, title, on) => {
+    const btn = doc.createElement("button");
+    btn.type = "button";
+    btn.textContent = label;
+    btn.title = title;
+    btn.setAttribute(
+      "style",
+      "width:28px;height:28px;border:1px solid var(--vnm-surface-stroke);border-radius:6px;background:var(--vnm-surface);color:var(--vnm-text);cursor:pointer;font-size:15px;line-height:1;"
+    );
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      on();
+    });
+    toolbar.appendChild(btn);
+    return btn;
+  };
+  mkBtn("\u2922", "Fit to view", () => fit());
+  mkBtn("+", "Zoom in", () => zoomBy(1.2));
+  mkBtn("\u2212", "Zoom out", () => zoomBy(1 / 1.2));
+  mkBtn("\u27F2", "Reset layout", () => resetLayout());
+  const mkTextBtn = (label, title, on) => {
+    const btn = doc.createElement("button");
+    btn.type = "button";
+    btn.textContent = label;
+    btn.title = title;
+    btn.className = "vnm-export-btn";
+    btn.setAttribute(
+      "style",
+      "height:28px;padding:0 9px;border:1px solid var(--vnm-surface-stroke);border-radius:6px;background:var(--vnm-surface);color:var(--vnm-text);cursor:pointer;font-size:12px;font-weight:600;line-height:1;"
+    );
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      on();
+    });
+    toolbar.appendChild(btn);
+    return btn;
+  };
+  mkTextBtn("SVG", "Save as SVG", () => saveSvg());
+  mkTextBtn("PNG", "Save as PNG", () => savePng());
+  viewport.appendChild(toolbar);
+  function nAt(v) {
+    return Math.round(v * 100) / 100;
+  }
+  function roughSeed2(key) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < key.length; i++) {
+      h ^= key.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h >>> 0;
+  }
+  function mulberry322(seed) {
+    let a = seed >>> 0;
+    return function() {
+      a = a + 1831565813 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function roughStroke(pts, closed, rand, rough, bow) {
+    if (pts.length === 0) return "";
+    const jv = pts.map((p) => [p[0] + (rand() * 2 - 1) * rough, p[1] + (rand() * 2 - 1) * rough]);
+    const seq = closed ? [...jv, jv[0]] : jv;
+    let d = "M " + nAt(seq[0][0]) + " " + nAt(seq[0][1]);
+    for (let i = 1; i < seq.length; i++) {
+      const ax = seq[i - 1][0];
+      const ay = seq[i - 1][1];
+      const bx = seq[i][0];
+      const by = seq[i][1];
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const px = -(by - ay) / len;
+      const py = (bx - ax) / len;
+      const k = (rand() * 2 - 1) * bow;
+      const cx = (ax + bx) / 2 + px * k;
+      const cy = (ay + by) / 2 + py * k;
+      d += " Q " + nAt(cx) + " " + nAt(cy) + " " + nAt(bx) + " " + nAt(by);
+    }
+    if (closed) d += " Z";
+    return d;
+  }
+  function roughShape2(pts, key) {
+    const fill = roughStroke(pts, true, mulberry322(roughSeed2(key + "#f")), SK_FILL_ROUGHNESS, SK_BOWING);
+    const outline = [];
+    for (let s = 0; s < SK_OUTLINE_STROKES; s++) {
+      outline.push(roughStroke(pts, true, mulberry322(roughSeed2(key + "#o" + s)), SK_ROUGHNESS, SK_BOWING));
+    }
+    return { fill, outline };
+  }
+  function sketchEllipsePoints(cx, cy, rx, ry) {
+    const pts = [];
+    for (let i = 0; i < SK_ELLIPSE_STEPS; i++) {
+      const a = i / SK_ELLIPSE_STEPS * Math.PI * 2;
+      pts.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]);
+    }
+    return pts;
+  }
+  function roughPolyline2(pts, key) {
+    const out = [];
+    for (let s = 0; s < SK_OUTLINE_STROKES; s++) {
+      out.push(roughStroke(pts, false, mulberry322(roughSeed2(key + "#e" + s)), SK_ROUGHNESS * 0.8, SK_BOWING * 0.8));
+    }
+    return out;
+  }
+  function openArrowhead2(tip, from, size, key) {
+    const ang = Math.atan2(tip[1] - from[1], tip[0] - from[0]);
+    const r = mulberry322(roughSeed2(key + "#a"));
+    const spread = 0.52;
+    const len = size * 2.1;
+    const a1 = ang + Math.PI - spread + (r() * 2 - 1) * 0.12;
+    const a2 = ang + Math.PI + spread + (r() * 2 - 1) * 0.12;
+    const l1 = len * (1 + (r() * 2 - 1) * 0.14);
+    const l2 = len * (1 + (r() * 2 - 1) * 0.14);
+    const b1x = tip[0] + Math.cos(a1) * l1;
+    const b1y = tip[1] + Math.sin(a1) * l1;
+    const b2x = tip[0] + Math.cos(a2) * l2;
+    const b2y = tip[1] + Math.sin(a2) * l2;
+    return "M " + nAt(b1x) + " " + nAt(b1y) + " L " + nAt(tip[0]) + " " + nAt(tip[1]) + " L " + nAt(b2x) + " " + nAt(b2y);
+  }
+  function sketchShapePoints2(shape, x, y, w, h) {
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    if (shape === "circle") return { pts: sketchEllipsePoints(cx, cy, w / 2, h / 2), extras: [] };
+    if (shape === "diamond") return { pts: [[cx, y], [x + w, cy], [cx, y + h], [x, cy]], extras: [] };
+    if (shape === "hexagon") {
+      const k = Math.min(w * 0.22, h * 0.5);
+      return { pts: [[x + k, y], [x + w - k, y], [x + w, cy], [x + w - k, y + h], [x + k, y + h], [x, cy]], extras: [] };
+    }
+    if (shape === "parallelogram") {
+      const k = Math.min(w * 0.22, h);
+      return { pts: [[x + k, y], [x + w, y], [x + w - k, y + h], [x, y + h]], extras: [] };
+    }
+    if (shape === "parallelogram-alt") {
+      const k = Math.min(w * 0.22, h);
+      return { pts: [[x, y], [x + w - k, y], [x + w, y + h], [x + k, y + h]], extras: [] };
+    }
+    if (shape === "subroutine") {
+      const inset = 6;
+      return {
+        pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]],
+        extras: [[[x + inset, y], [x + inset, y + h]], [[x + w - inset, y], [x + w - inset, y + h]]]
+      };
+    }
+    return { pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]], extras: [] };
+  }
+  function sketchEdgeParts(pts, key, arrows, size) {
+    const arr = pts.map((p) => [p.x, p.y]);
+    const line = roughPolyline2(arr, key).join(" ");
+    const m = arr.length;
+    let head = "";
+    if (arrows.end && m >= 2) head += openArrowhead2(arr[m - 1], arr[m - 2], size, key + "@end");
+    if (arrows.start && m >= 2) head += (head ? " " : "") + openArrowhead2(arr[0], arr[1], size, key + "@start");
+    return { line, head };
+  }
+  function simplify2(points) {
+    const out = [];
+    for (const p of points) {
+      const last = out[out.length - 1];
+      if (last && nAt(last.x) === nAt(p.x) && nAt(last.y) === nAt(p.y)) continue;
+      out.push(p);
+    }
+    for (let i = out.length - 2; i >= 1; i--) {
+      const a = out[i - 1];
+      const b = out[i];
+      const c = out[i + 1];
+      const collinear = nAt(a.x) === nAt(b.x) && nAt(b.x) === nAt(c.x) || nAt(a.y) === nAt(b.y) && nAt(b.y) === nAt(c.y);
+      if (collinear) out.splice(i, 1);
+    }
+    return out;
+  }
+  function raySide2(b, dx, dy) {
+    const sx = dx !== 0 ? b.w / 2 / Math.abs(dx) : Infinity;
+    const sy = dy !== 0 ? b.h / 2 / Math.abs(dy) : Infinity;
+    if (sx < sy) return dx > 0 ? "right" : "left";
+    return dy > 0 ? "bottom" : "top";
+  }
+  function clampOff(off, half) {
+    const max = Math.max(0, half - 6);
+    return Math.max(-max, Math.min(max, off));
+  }
+  function anchorBound2(shape, horiz, hw, hh) {
+    const half = horiz ? hw : hh;
+    const cap = half - 6;
+    if (shape === "rounded") return Math.min(cap, half - 14);
+    if (shape === "stadium") return Math.min(cap, half - hh);
+    if (shape === "hexagon") return horiz ? Math.min(cap, half - Math.min(hw * 0.44, hh)) : cap;
+    if (shape === "parallelogram" || shape === "parallelogram-alt")
+      return horiz ? Math.min(cap, half - Math.min(hw * 0.44, 2 * hh)) : cap;
+    if (shape === "cylinder") return horiz ? cap : Math.min(cap, half - Math.min(10, hh * 0.36));
+    return cap;
+  }
+  function anchor(b, side, off = 0) {
+    const hw = b.w / 2;
+    const hh = b.h / 2;
+    const cx = b.x;
+    const cy = b.y;
+    const shape = b.shape || "rect";
+    const horiz = side === "top" || side === "bottom";
+    const bound = Math.max(0, anchorBound2(shape, horiz, hw, hh));
+    const t = Math.max(-bound, Math.min(bound, off));
+    if (horiz) {
+      const sgn2 = side === "top" ? -1 : 1;
+      let y = cy + sgn2 * hh;
+      if (shape === "diamond") y = cy + sgn2 * hh * (1 - Math.abs(t) / hw);
+      else if (shape === "circle") y = cy + sgn2 * hh * Math.sqrt(1 - t / hw * (t / hw));
+      else if (shape === "cylinder") {
+        const ry = Math.min(10, hh * 0.36);
+        y = cy + sgn2 * (hh - ry + ry * Math.sqrt(1 - t / hw * (t / hw)));
+      }
+      return { x: cx + t, y };
+    }
+    const sgn = side === "left" ? -1 : 1;
+    let x = cx + sgn * hw;
+    if (shape === "diamond") x = cx + sgn * hw * (1 - Math.abs(t) / hh);
+    else if (shape === "circle") x = cx + sgn * hw * Math.sqrt(1 - t / hh * (t / hh));
+    else if (shape === "hexagon") {
+      const k = Math.min(hw * 0.44, hh);
+      x = cx + sgn * (hw - k * Math.abs(t) / hh);
+    } else if (shape === "parallelogram") {
+      const k = Math.min(hw * 0.44, 2 * hh);
+      x = side === "left" ? cx - hw + k * (hh - t) / (2 * hh) : cx + hw - k * (t + hh) / (2 * hh);
+    } else if (shape === "parallelogram-alt") {
+      const k = Math.min(hw * 0.44, 2 * hh);
+      x = side === "left" ? cx - hw + k * (t + hh) / (2 * hh) : cx + hw - k * (hh - t) / (2 * hh);
+    }
+    return { x, y: cy + t };
+  }
+  function offAlong(p, side, k) {
+    if (side === "top") return { x: p.x, y: p.y - k };
+    if (side === "bottom") return { x: p.x, y: p.y + k };
+    if (side === "left") return { x: p.x - k, y: p.y };
+    return { x: p.x + k, y: p.y };
+  }
+  function snapWaypoints2(interior, start, end) {
+    const xs = [start.x, end.x];
+    const ys = [start.y, end.y];
+    return interior.map((p) => {
+      let x = p.x;
+      let y = p.y;
+      for (const ax of xs) {
+        if (Math.abs(x - ax) <= 2) {
+          x = ax;
+          break;
+        }
+      }
+      for (const ay of ys) {
+        if (Math.abs(y - ay) <= 2) {
+          y = ay;
+          break;
+        }
+      }
+      return { x, y };
+    });
+  }
+  function elbowThrough2(start, end, interior, exitVertical, entryVertical, primaryVertical) {
+    const guide = [start, ...snapWaypoints2(interior, start, end), end];
+    const out = [guide[0]];
+    for (let i = 1; i < guide.length; i++) {
+      const prev = out[out.length - 1];
+      const cur = guide[i];
+      if (nAt(prev.x) !== nAt(cur.x) && nAt(prev.y) !== nAt(cur.y)) {
+        let verticalFirst;
+        if (i === 1) verticalFirst = exitVertical;
+        else if (i === guide.length - 1) verticalFirst = !entryVertical;
+        else verticalFirst = primaryVertical;
+        out.push(verticalFirst ? { x: prev.x, y: cur.y } : { x: cur.x, y: prev.y });
+      }
+      out.push(cur);
+    }
+    perpendicularizeEntry2(out, entryVertical);
+    return simplify2(out);
+  }
+  function perpendicularizeEntry2(out, entryVertical) {
+    if (out.length < 3) return;
+    const end = out[out.length - 1];
+    const a = out[out.length - 3];
+    const b = out[out.length - 2];
+    const finalPerp = entryVertical ? nAt(b.x) === nAt(end.x) : nAt(b.y) === nAt(end.y);
+    const swappable = entryVertical ? nAt(a.y) !== nAt(end.y) : nAt(a.x) !== nAt(end.x);
+    if (!finalPerp && swappable) {
+      out[out.length - 2] = entryVertical ? { x: end.x, y: a.y } : { x: a.x, y: end.y };
+    }
+  }
+  function dist2(a, b) {
+    return Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
+  }
+  function along2(from, toward, r) {
+    const d = dist2(from, toward) || 1;
+    return { x: from.x + (toward.x - from.x) * r / d, y: from.y + (toward.y - from.y) * r / d };
+  }
+  function pathRounded(points) {
+    if (points.length <= 2) return pathPoly(points);
+    let d = "M " + nAt(points[0].x) + " " + nAt(points[0].y);
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = points[i - 1];
+      const cur = points[i];
+      const next = points[i + 1];
+      const r = Math.min(12, dist2(prev, cur) / 2, dist2(cur, next) / 2);
+      const a = along2(cur, prev, r);
+      const b = along2(cur, next, r);
+      d += " L " + nAt(a.x) + " " + nAt(a.y) + " Q " + nAt(cur.x) + " " + nAt(cur.y) + " " + nAt(b.x) + " " + nAt(b.y);
+    }
+    const last = points[points.length - 1];
+    d += " L " + nAt(last.x) + " " + nAt(last.y);
+    return d;
+  }
+  function pathPoly(points) {
+    if (points.length === 0) return "";
+    let d = "M " + nAt(points[0].x) + " " + nAt(points[0].y);
+    for (let i = 1; i < points.length; i++) d += " L " + nAt(points[i].x) + " " + nAt(points[i].y);
+    return d;
+  }
+  function pathBezier(p) {
+    return "M " + nAt(p[0].x) + " " + nAt(p[0].y) + " C " + nAt(p[1].x) + " " + nAt(p[1].y) + " " + nAt(p[2].x) + " " + nAt(p[2].y) + " " + nAt(p[3].x) + " " + nAt(p[3].y);
+  }
+  function labelPoly(points) {
+    if (points.length === 2) return { x: nAt((points[0].x + points[1].x) / 2), y: nAt((points[0].y + points[1].y) / 2) };
+    const mid = Math.floor(points.length / 2);
+    return { x: nAt((points[mid - 1].x + points[mid].x) / 2), y: nAt((points[mid - 1].y + points[mid].y) / 2) };
+  }
+  function labelBezier(p) {
+    return {
+      x: nAt(0.125 * p[0].x + 0.375 * p[1].x + 0.375 * p[2].x + 0.125 * p[3].x),
+      y: nAt(0.125 * p[0].y + 0.375 * p[1].y + 0.375 * p[2].y + 0.125 * p[3].y)
+    };
+  }
+  function computePorts() {
+    const res = edgeEls.map(() => ({
+      source: { side: "bottom", offset: 0 },
+      target: { side: "top", offset: 0 }
+    }));
+    const boxOf = (id) => {
+      const p = positions[id];
+      const sz = sizes[id];
+      return { x: p.x, y: p.y, w: sz.w, h: sz.h, shape: shapeById[id] };
+    };
+    const axisX = (side) => side === "top" || side === "bottom";
+    const groups = {};
+    edgeEls.forEach((e, i) => {
+      const from = boxOf(e.from);
+      const to = boxOf(e.to);
+      if (from.x === to.x && from.y === to.y) return;
+      const exit = raySide2(from, to.x - from.x, to.y - from.y);
+      const entry = raySide2(to, from.x - to.x, from.y - to.y);
+      const wp = e.waypoints;
+      const srcHead = wp && wp.length ? wp[0] : to;
+      const tgtHead = wp && wp.length ? wp[wp.length - 1] : from;
+      const ov = anchorsOv[i];
+      if (ov && ov.source) {
+        res[i].source = { side: ov.source.side, offset: ov.source.offset };
+      } else {
+        res[i].source = { side: exit, offset: 0 };
+        const gs = e.from + "|" + exit;
+        (groups[gs] || (groups[gs] = [])).push({ i, role: "source", along: axisX(exit) ? srcHead.x : srcHead.y });
+      }
+      if (ov && ov.target) {
+        res[i].target = { side: ov.target.side, offset: ov.target.offset };
+      } else {
+        res[i].target = { side: entry, offset: 0 };
+        const gt = e.to + "|" + entry;
+        (groups[gt] || (groups[gt] = [])).push({ i, role: "target", along: axisX(entry) ? tgtHead.x : tgtHead.y });
+      }
+    });
+    for (const key in groups) {
+      const recs = groups[key];
+      if (recs.length < 2) continue;
+      const side = key.slice(key.lastIndexOf("|") + 1);
+      const b = boxOf(key.slice(0, key.lastIndexOf("|")));
+      const borderLen = side === "top" || side === "bottom" ? b.w : b.h;
+      recs.sort((a, c) => a.along - c.along || a.i - c.i || a.role.localeCompare(c.role));
+      const k = recs.length;
+      const step = Math.min(30, (borderLen - 2 * 6) / (k - 1));
+      recs.forEach((r, slot) => {
+        res[r.i][r.role].offset = (slot - (k - 1) / 2) * step;
+      });
+    }
+    const deskewer = (nodeId, sideA, sideB) => {
+      const ra = groups[nodeId + "|" + sideA];
+      const rb = groups[nodeId + "|" + sideB];
+      if (!ra || !rb || ra.length !== 1 || rb.length !== 1) return;
+      const box = boxOf(nodeId);
+      const axisIsX = sideA === "top" || sideA === "bottom";
+      const c = axisIsX ? box.x : box.y;
+      const farOff = (rec2) => {
+        const e = edgeEls[rec2.i];
+        const fb = boxOf(rec2.role === "target" ? e.from : e.to);
+        return fb ? (axisIsX ? fb.x : fb.y) - c : void 0;
+      };
+      const dA = farOff(ra[0]);
+      const dB = farOff(rb[0]);
+      if (dA === void 0 || dB === void 0) return;
+      const tol = 30 / 2;
+      if (Math.sign(dA) === Math.sign(dB) || Math.abs(dA) < tol || Math.abs(dB) < tol) return;
+      if ((axisIsX ? box.w : box.h) / 2 - 6 < tol) return;
+      const rec = ra[0];
+      res[rec.i][rec.role].offset = Math.sign(dA) * tol;
+    };
+    const skNodes = {};
+    for (const key in groups) skNodes[key.slice(0, key.lastIndexOf("|"))] = true;
+    for (const nodeId in skNodes) {
+      deskewer(nodeId, "top", "bottom");
+      deskewer(nodeId, "left", "right");
+    }
+    const pairs = {};
+    edgeEls.forEach((e, i) => {
+      if (!e.label) return;
+      const from = boxOf(e.from);
+      const to = boxOf(e.to);
+      if (from.x === to.x && from.y === to.y) return;
+      const key = e.from < e.to ? e.from + "|" + e.to : e.to + "|" + e.from;
+      (pairs[key] || (pairs[key] = [])).push(i);
+    });
+    for (const key in pairs) {
+      const idxs = pairs[key];
+      if (idxs.length < 2) continue;
+      idxs.sort((a2, c) => a2 - c);
+      const first = edgeEls[idxs[0]];
+      const a = boxOf(first.from);
+      const b = boxOf(first.to);
+      const runX = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+      const extent = (i) => {
+        const lns = edgeEls[i].label.split("\n");
+        const maxChars = lns.reduce((m, l) => Math.max(m, l.length), 0);
+        return runX ? maxChars * (tokens.font.size * 0.6) + 6 : lns.length * tokens.font.lineHeight + 2;
+      };
+      const pos = [0];
+      for (let s = 1; s < idxs.length; s++) {
+        pos.push(pos[s - 1] + (extent(idxs[s - 1]) + extent(idxs[s])) / 2 + 6);
+      }
+      const center2 = (pos[0] + pos[pos.length - 1]) / 2;
+      idxs.forEach((i, s) => {
+        const d = pos[s] - center2;
+        res[i].labelShift = runX ? { x: d, y: 0 } : { x: 0, y: d };
+      });
+    }
+    return res;
+  }
+  function plateSizeOf(label) {
+    const lns = label.split("\n");
+    const maxChars = lns.reduce((m, l) => Math.max(m, l.length), 0);
+    return { w: maxChars * tokens.font.size * 0.6 + 6, h: lns.length * tokens.font.lineHeight + 2 };
+  }
+  function resolveLabelCollisions2(plates) {
+    const shifts = plates.map(() => ({ x: 0, y: 0 }));
+    const idxs = [];
+    plates.forEach((p, i) => {
+      if (p) idxs.push(i);
+    });
+    if (idxs.length < 2) return shifts;
+    const cx = plates.map((p) => p ? p.x : 0);
+    const cy = plates.map((p) => p ? p.y : 0);
+    for (let pass = 0; pass < 8; pass++) {
+      let moved2 = false;
+      for (let a = 0; a < idxs.length; a++) {
+        for (let b = a + 1; b < idxs.length; b++) {
+          const i = idxs[a];
+          const j = idxs[b];
+          const pi = plates[i];
+          const pj = plates[j];
+          const dx = cx[j] - cx[i];
+          const dy = cy[j] - cy[i];
+          const ox = (pi.w + pj.w) / 2 + 6 - Math.abs(dx);
+          const oy = (pi.h + pj.h) / 2 + 6 - Math.abs(dy);
+          if (ox <= 0 || oy <= 0) continue;
+          moved2 = true;
+          if (ox <= oy) {
+            const push = ox / 2;
+            const dir = dx === 0 ? 1 : Math.sign(dx);
+            cx[i] = cx[i] - push * dir;
+            cx[j] = cx[j] + push * dir;
+          } else {
+            const push = oy / 2;
+            const dir = dy === 0 ? 1 : Math.sign(dy);
+            cy[i] = cy[i] - push * dir;
+            cy[j] = cy[j] + push * dir;
+          }
+        }
+      }
+      if (!moved2) break;
+    }
+    for (const i of idxs) shifts[i] = { x: nAt(cx[i] - plates[i].x), y: nAt(cy[i] - plates[i].y) };
+    return shifts;
+  }
+  function segmentsCross2(a1, a2, b1, b2) {
+    const rx = a2.x - a1.x;
+    const ry = a2.y - a1.y;
+    const sx = b2.x - b1.x;
+    const sy = b2.y - b1.y;
+    const denom = rx * sy - ry * sx;
+    if (denom === 0) return null;
+    const qpx = b1.x - a1.x;
+    const qpy = b1.y - a1.y;
+    const t = (qpx * sy - qpy * sx) / denom;
+    const u = (qpx * ry - qpy * rx) / denom;
+    if (t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6) return { x: a1.x + t * rx, y: a1.y + t * ry };
+    return null;
+  }
+  function gappedPath2(points, gaps) {
+    const bySeg = {};
+    for (const g of gaps) (bySeg[g.seg] || (bySeg[g.seg] = [])).push({ at: g.at, dist: g.dist });
+    for (const k in bySeg) bySeg[k].sort((p, q) => p.dist - q.dist);
+    let d = "M " + nAt(points[0].x) + " " + nAt(points[0].y);
+    for (let s = 0; s + 1 < points.length; s++) {
+      const p = points[s];
+      const q = points[s + 1];
+      const segGaps = bySeg[s];
+      if (!segGaps || !segGaps.length) {
+        d += " L " + nAt(q.x) + " " + nAt(q.y);
+        continue;
+      }
+      const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+      const ux = (q.x - p.x) / len;
+      const uy = (q.y - p.y) / len;
+      let lastGapDist = -Infinity;
+      for (const g of segGaps) {
+        if (g.dist - lastGapDist < 8) continue;
+        lastGapDist = g.dist;
+        const ex = g.at.x - ux * 4;
+        const ey = g.at.y - uy * 4;
+        const xx = g.at.x + ux * 4;
+        const xy = g.at.y + uy * 4;
+        d += " L " + nAt(ex) + " " + nAt(ey) + " M " + nAt(xx) + " " + nAt(xy);
+      }
+      d += " L " + nAt(q.x) + " " + nAt(q.y);
+    }
+    return d;
+  }
+  function applyEdgeBridges2(polys, enabled) {
+    const out = polys.map(() => null);
+    if (!enabled) return out;
+    const rp = polys.map((pts) => pts.map((p) => ({ x: nAt(p.x), y: nAt(p.y) })));
+    const gaps = polys.map(() => []);
+    for (let i = 0; i < rp.length; i++) {
+      const pi = rp[i];
+      if (pi.length < 2) continue;
+      for (let j = i + 1; j < rp.length; j++) {
+        const pj = rp[j];
+        if (pj.length < 2) continue;
+        for (let si = 0; si + 1 < pi.length; si++) {
+          const a1 = pi[si];
+          const a2 = pi[si + 1];
+          for (let sj = 0; sj + 1 < pj.length; sj++) {
+            const b1 = pj[sj];
+            const b2 = pj[sj + 1];
+            const x = segmentsCross2(a1, a2, b1, b2);
+            if (!x) continue;
+            const horizI = Math.abs(a2.x - a1.x) >= Math.abs(a2.y - a1.y);
+            const horizJ = Math.abs(b2.x - b1.x) >= Math.abs(b2.y - b1.y);
+            const iGaps = horizI === horizJ ? true : !horizI;
+            const ge = iGaps ? i : j;
+            const gs = iGaps ? si : sj;
+            const s1 = iGaps ? a1 : b1;
+            const s2 = iGaps ? a2 : b2;
+            const dEntry = Math.hypot(x.x - s1.x, x.y - s1.y);
+            const dExit = Math.hypot(x.x - s2.x, x.y - s2.y);
+            if (dEntry < 4 || dExit < 4) continue;
+            gaps[ge].push({ seg: gs, at: x, dist: dEntry });
+          }
+        }
+      }
+    }
+    for (let e = 0; e < rp.length; e++) if (gaps[e].length) out[e] = gappedPath2(rp[e], gaps[e]);
+    return out;
+  }
+  function shiftLabelOnSeg2(e, vertical, seg, target) {
+    const lp = e.labelPos;
+    if (!lp) return;
+    if (vertical) {
+      if (Math.abs(lp.x - seg.along) < 26 && lp.y >= seg.lo - 1 && lp.y <= seg.hi + 1) {
+        e.labelPos = { x: nAt(lp.x + (target - seg.along)), y: lp.y };
+      }
+    } else if (Math.abs(lp.y - seg.along) < 26 && lp.x >= seg.lo - 1 && lp.x <= seg.hi + 1) {
+      e.labelPos = { x: lp.x, y: nAt(lp.y + (target - seg.along)) };
+    }
+  }
+  function avoidSubgraphs2(edges, pairs, containers) {
+    if (edgeStyle !== "elbow" || !containers.length) return;
+    const MARGIN2 = 28;
+    const MIN_CROSS = 120;
+    const APPROACH = 30;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const lowerReentry2 = (p, trunkEndIdx, cornerIdx, anchor2, vertical) => {
+      if (cornerIdx < 0 || cornerIdx >= p.length || trunkEndIdx < 0 || trunkEndIdx >= p.length) return;
+      const anchorPar = vertical ? anchor2.y : anchor2.x;
+      const cornerOld = vertical ? p[cornerIdx].y : p[cornerIdx].x;
+      const dir = Math.sign(cornerOld - anchorPar);
+      if (dir === 0) return;
+      const target = nAt(anchorPar + dir * APPROACH);
+      if (Math.abs(target - anchorPar) >= Math.abs(cornerOld - anchorPar)) return;
+      if (vertical) {
+        p[cornerIdx] = { x: p[cornerIdx].x, y: target };
+        p[trunkEndIdx] = { x: p[trunkEndIdx].x, y: target };
+      } else {
+        p[cornerIdx] = { x: target, y: p[cornerIdx].y };
+        p[trunkEndIdx] = { x: target, y: p[trunkEndIdx].y };
+      }
+    };
+    const moved2 = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      const len = p.length;
+      if (len < 4) return;
+      const ep = pairs[ei];
+      let best;
+      for (let i = 1; i + 2 < len; i++) {
+        const a = p[i];
+        const b = p[i + 1];
+        const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+        const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+        if (!isVert && !isHorz) continue;
+        const along3 = isVert ? a.x : a.y;
+        const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+        const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+        const runLen = hi - lo;
+        for (const c of containers) {
+          if (c.members[ep.from] && c.members[ep.to]) continue;
+          if (i === 1 && c.members[ep.from] || i === len - 3 && c.members[ep.to]) continue;
+          const cx0 = c.box.x - c.box.w / 2;
+          const cx1 = c.box.x + c.box.w / 2;
+          const cy0 = c.box.y - c.box.h / 2;
+          const cy1 = c.box.y + c.box.h / 2;
+          const perpLo = isVert ? cx0 : cy0;
+          const perpHi = isVert ? cx1 : cy1;
+          const parLo = isVert ? cy0 : cx0;
+          const parHi = isVert ? cy1 : cx1;
+          if (along3 <= perpLo || along3 >= perpHi) continue;
+          if (Math.min(hi, parHi) - Math.max(lo, parLo) < MIN_CROSS) continue;
+          const side = along3 - perpLo <= perpHi - along3 ? nAt(perpLo - MARGIN2) : nAt(perpHi + MARGIN2);
+          if (!best || runLen > best.runLen) best = { i, vertical: isVert, along: along3, lo, hi, side, container: c, runLen };
+        }
+      }
+      if (!best) return;
+      moveLane2(edges[ei], best.vertical, { i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+      moved2[ei] = true;
+      if (best.container.members[ep.from]) lowerReentry2(p, best.i, best.i - 1, p[0], best.vertical);
+      if (best.container.members[ep.to]) lowerReentry2(p, best.i + 1, best.i + 2, p[len - 1], best.vertical);
+    });
+    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+  }
+  function avoidContainersFrom(boxOf) {
+    const out = [];
+    for (const sg of model.subgraphs) {
+      const ids = subgraphMembers[sg.id] || [];
+      if (!ids.length) continue;
+      const members = {};
+      for (const id of ids) members[id] = true;
+      out.push({ box: boxOf(sg), members });
+    }
+    return out;
+  }
+  const NODE_AVOID_MARGIN2 = 14;
+  const NODE_AVOID_MIN_CROSS2 = 14;
+  const NODE_AVOID_PASSES2 = 4;
+  const isOrthoT = (pts) => {
+    for (let i = 0; i + 1 < pts.length; i++) if (Math.abs(pts[i].x - pts[i + 1].x) >= 0.5 && Math.abs(pts[i].y - pts[i + 1].y) >= 0.5) return false;
+    return true;
+  };
+  const orthoPathT = (pts) => edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts);
+  function avoidNodes2(edges, pairs, nodeBoxes) {
+    if (!nodeBoxes.length) return;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const moved2 = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      const len = p.length;
+      if (len < 4 || edgeStyle === "curved" && !isOrthoT(p)) return;
+      const ep = pairs[ei];
+      let best;
+      for (let i = 1; i + 2 < len; i++) {
+        const a = p[i];
+        const b = p[i + 1];
+        const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+        const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+        if (!isVert && !isHorz) continue;
+        const along3 = isVert ? a.x : a.y;
+        const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+        const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+        const runLen = hi - lo;
+        for (const nb of nodeBoxes) {
+          if (nb.id === ep.from || nb.id === ep.to) continue;
+          const cx0 = nb.x - nb.w / 2;
+          const cx1 = nb.x + nb.w / 2;
+          const cy0 = nb.y - nb.h / 2;
+          const cy1 = nb.y + nb.h / 2;
+          const perpLo = isVert ? cx0 : cy0;
+          const perpHi = isVert ? cx1 : cy1;
+          const parLo = isVert ? cy0 : cx0;
+          const parHi = isVert ? cy1 : cx1;
+          if (along3 <= perpLo || along3 >= perpHi) continue;
+          if (Math.min(hi, parHi) - Math.max(lo, parLo) < NODE_AVOID_MIN_CROSS2) continue;
+          const side = along3 - perpLo <= perpHi - along3 ? nAt(perpLo - NODE_AVOID_MARGIN2) : nAt(perpHi + NODE_AVOID_MARGIN2);
+          if (!best || runLen > best.runLen) best = { i, vertical: isVert, along: along3, lo, hi, side, runLen };
+        }
+      }
+      if (!best) return;
+      moveLane2(edges[ei], best.vertical, { i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+      moved2[ei] = true;
+    });
+    for (const kk in moved2) edges[Number(kk)].path = orthoPathT(edges[Number(kk)].points);
+  }
+  function detourApproaches2(edges, pairs, nodeBoxes) {
+    if (!nodeBoxes.length) return;
+    const spans = (nb) => ({ l: nb.x - nb.w / 2, r: nb.x + nb.w / 2, t: nb.y - nb.h / 2, b: nb.y + nb.h / 2 });
+    const detour = (a, pp, nb) => {
+      const s = spans(nb);
+      if (Math.abs(a.x - pp.x) < 0.5) {
+        const sideX = a.x - s.l <= s.r - a.x ? nAt(s.l - NODE_AVOID_MARGIN2) : nAt(s.r + NODE_AVOID_MARGIN2);
+        const gapY = pp.y > a.y ? nAt(s.b + NODE_AVOID_MARGIN2) : nAt(s.t - NODE_AVOID_MARGIN2);
+        return [{ x: sideX, y: a.y }, { x: sideX, y: gapY }, { x: nAt(a.x), y: gapY }];
+      }
+      const sideY = a.y - s.t <= s.b - a.y ? nAt(s.t - NODE_AVOID_MARGIN2) : nAt(s.b + NODE_AVOID_MARGIN2);
+      const gapX = pp.x > a.x ? nAt(s.r + NODE_AVOID_MARGIN2) : nAt(s.l - NODE_AVOID_MARGIN2);
+      return [{ x: a.x, y: sideY }, { x: gapX, y: sideY }, { x: gapX, y: nAt(a.y) }];
+    };
+    const pierces = (a, pp, nb) => {
+      const s = spans(nb);
+      const vert = Math.abs(a.x - pp.x) < 0.5;
+      if (!vert && Math.abs(a.y - pp.y) >= 0.5) return false;
+      const along3 = vert ? a.x : a.y;
+      const lo = vert ? Math.min(a.y, pp.y) : Math.min(a.x, pp.x);
+      const hi = vert ? Math.max(a.y, pp.y) : Math.max(a.x, pp.x);
+      const perpLo = vert ? s.l : s.t;
+      const perpHi = vert ? s.r : s.b;
+      const parLo = vert ? s.t : s.l;
+      const parHi = vert ? s.b : s.r;
+      if (along3 <= perpLo || along3 >= perpHi) return false;
+      return Math.min(hi, parHi) - Math.max(lo, parLo) >= NODE_AVOID_MIN_CROSS2;
+    };
+    const changed = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      if (p.length < 2 || edgeStyle === "curved" && !isOrthoT(p)) return;
+      const ep = pairs[ei];
+      const a = p[p.length - 2];
+      const port = p[p.length - 1];
+      for (const nb of nodeBoxes) {
+        if (nb.id === ep.from || nb.id === ep.to) continue;
+        if (pierces(a, port, nb)) {
+          p.splice(p.length - 1, 0, ...detour(a, port, nb));
+          changed[ei] = true;
+          break;
+        }
+      }
+    });
+    for (const kk in changed) {
+      const e = edges[Number(kk)];
+      const sp = simplify2(e.points);
+      e.points.splice(0, e.points.length, ...sp);
+      e.path = orthoPathT(e.points);
+    }
+  }
+  function trimEndpointReentry2(edges, pairs, nodeBoxes) {
+    const boxById = {};
+    for (const b of nodeBoxes) if (b.id) boxById[b.id] = b;
+    const inside = (pt, b) => pt.x > b.x - b.w / 2 + 0.5 && pt.x < b.x + b.w / 2 - 0.5 && pt.y > b.y - b.h / 2 + 0.5 && pt.y < b.y + b.h / 2 - 0.5;
+    const cross = (inPt, outPt, b) => Math.abs(inPt.x - outPt.x) < 0.5 ? { x: nAt(inPt.x), y: nAt(outPt.y > inPt.y ? b.y + b.h / 2 : b.y - b.h / 2) } : { x: nAt(outPt.x > inPt.x ? b.x + b.w / 2 : b.x - b.w / 2), y: nAt(inPt.y) };
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      if (p.length < 3 || edgeStyle === "curved" && !isOrthoT(p)) return;
+      const ep = pairs[ei];
+      const src = boxById[ep.from];
+      const tgt = boxById[ep.to];
+      let did = false;
+      if (src && inside(p[1], src)) {
+        let k = 1;
+        while (k < p.length && inside(p[k], src)) k++;
+        if (k < p.length) {
+          p.splice(0, k, cross(p[k - 1], p[k], src));
+          did = true;
+        }
+      }
+      if (tgt && p.length >= 3 && inside(p[p.length - 2], tgt)) {
+        let j = p.length - 2;
+        while (j >= 0 && inside(p[j], tgt)) j--;
+        if (j >= 0) {
+          p.splice(j + 1, p.length - 1 - j, cross(p[j + 1], p[j], tgt));
+          did = true;
+        }
+      }
+      if (did) {
+        const sp = simplify2(p);
+        p.splice(0, p.length, ...sp);
+        e.path = orthoPathT(p);
+      }
+    });
+  }
+  const avoidNodeBoxes = (boxOf) => model.nodes.map((nd) => {
+    const b = boxOf(nd.id);
+    return { id: nd.id, x: b.x, y: b.y, w: b.w, h: b.h };
+  });
+  function separateLanes2(edges) {
+    if (edgeStyle !== "elbow" && edgeStyle !== "curved") return;
+    const LANE_GAP2 = 26;
+    const LANE_MIN_OVERLAP2 = 40;
+    const LANE_PASSES2 = 8;
+    const moved2 = {};
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    for (let pass = 0; pass < LANE_PASSES2; pass++) {
+      let changed = false;
+      for (const vertical of [true, false]) {
+        const segs = [];
+        edges.forEach((e, ei) => {
+          const p = e.points;
+          for (let i = 1; i + 2 < p.length; i++) {
+            const a = p[i];
+            const b = p[i + 1];
+            const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+            const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+            if (vertical ? !isVert : !isHorz) continue;
+            const along3 = vertical ? a.x : a.y;
+            const lo = vertical ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+            const hi = vertical ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+            segs.push({ edge: ei, i, along: along3, lo, hi });
+          }
+        });
+        segs.sort((s, t) => s.along - t.along || s.edge - t.edge || s.i - t.i);
+        for (let a = 0; a < segs.length; a++) {
+          for (let b = a + 1; b < segs.length; b++) {
+            const sa = segs[a];
+            const sb = segs[b];
+            if (sa.edge === sb.edge) continue;
+            if (Math.min(sa.hi, sb.hi) - Math.max(sa.lo, sb.lo) < LANE_MIN_OVERLAP2) continue;
+            const d = LANE_GAP2 - Math.abs(sb.along - sa.along);
+            if (d <= 1e-6) continue;
+            const dir = sb.along >= sa.along ? 1 : -1;
+            const push = d / 2;
+            moveLane2(edges[sa.edge], vertical, sa, nAt(sa.along - push * dir));
+            moveLane2(edges[sb.edge], vertical, sb, nAt(sb.along + push * dir));
+            moved2[sa.edge] = true;
+            moved2[sb.edge] = true;
+            changed = true;
+          }
+        }
+      }
+      if (!changed) break;
+    }
+    for (const kk in moved2) edges[Number(kk)].path = orthoPathT(edges[Number(kk)].points);
+  }
+  function separateAntiParallelJogs2(edges, pairs) {
+    if (edgeStyle !== "elbow") return;
+    const JOG_GAP2 = 26;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const groups = {};
+    pairs.forEach((e, i) => {
+      const key = e.from < e.to ? e.from + "|" + e.to : e.to + "|" + e.from;
+      (groups[key] = groups[key] || []).push(i);
+    });
+    const moved2 = {};
+    for (const key in groups) {
+      const idxs = groups[key];
+      if (idxs.length < 2) continue;
+      idxs.sort((a, b) => a - b);
+      const jogs = [];
+      let orient;
+      for (const ei of idxs) {
+        const p = edges[ei].points;
+        let jog;
+        for (let i = 1; i + 2 < p.length; i++) {
+          const a = p[i];
+          const b = p[i + 1];
+          const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+          const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+          if (!isVert && !isHorz) continue;
+          const along3 = isVert ? a.x : a.y;
+          const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+          const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+          const end = p[p.length - 1];
+          const target = isVert ? end.x : end.y;
+          jog = { edge: ei, seg: { edge: ei, i, along: along3, lo, hi }, vertical: isVert, target };
+          break;
+        }
+        if (!jog) break;
+        if (orient === void 0) orient = jog.vertical;
+        else if (orient !== jog.vertical) {
+          jogs.length = 0;
+          break;
+        }
+        jogs.push(jog);
+      }
+      if (jogs.length < 2) continue;
+      const a0 = jogs[0].seg.along;
+      let collinear = true;
+      for (const j of jogs) if (Math.abs(j.seg.along - a0) >= 1) collinear = false;
+      if (!collinear) continue;
+      jogs.sort((x, y) => x.target - y.target || x.edge - y.edge);
+      let sum = 0;
+      for (const j of jogs) sum += j.seg.along;
+      const mean = sum / jogs.length;
+      const k = jogs.length;
+      jogs.forEach((j, s) => {
+        const lane = nAt(mean + (s - (k - 1) / 2) * JOG_GAP2);
+        if (Math.abs(lane - j.seg.along) < 1e-6) return;
+        moveLane2(edges[j.edge], j.vertical, j.seg, lane);
+        moved2[j.edge] = true;
+      });
+    }
+    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+  }
+  function separateConvergentJogs2(edges, pairs) {
+    if (edgeStyle !== "elbow") return;
+    const JOG_GAP2 = 26;
+    const CONVERGE_MIN2 = 3;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const jogOf = (p, role) => {
+      const len = p.length;
+      if (len < 4) return null;
+      const i = role === "target" ? len - 3 : 1;
+      if (i < 1 || i + 2 > len) return null;
+      const a = p[i];
+      const b = p[i + 1];
+      const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+      const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+      if (!isVert && !isHorz) return null;
+      const along3 = isVert ? a.x : a.y;
+      const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+      const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+      const appFrom = role === "target" ? p[i + 1] : p[1];
+      const appTo = role === "target" ? p[len - 1] : p[0];
+      const toward = isVert ? Math.sign(appTo.x - appFrom.x) : Math.sign(appTo.y - appFrom.y);
+      const end = role === "target" ? p[0] : p[len - 1];
+      const far = isVert ? end.x : end.y;
+      return { seg: { edge: 0, i, along: along3, lo, hi }, vertical: isVert, toward, far };
+    };
+    const buckets = {};
+    edges.forEach((e, idx) => {
+      const ep = pairs[idx];
+      const roles = [["source", ep.from], ["target", ep.to]];
+      for (const [role, node] of roles) {
+        const j = jogOf(e.points, role);
+        if (!j) continue;
+        const key = node + "|" + (j.vertical ? "V" : "H") + "|" + j.toward + "|" + nAt(j.seg.along);
+        const rec = { edge: idx, seg: { edge: idx, i: j.seg.i, along: j.seg.along, lo: j.seg.lo, hi: j.seg.hi }, vertical: j.vertical, toward: j.toward, far: j.far };
+        (buckets[key] || (buckets[key] = [])).push(rec);
+      }
+    });
+    const moved2 = {};
+    for (const key in buckets) {
+      const recs = buckets[key];
+      if (recs.length < CONVERGE_MIN2) continue;
+      recs.sort((x, y) => x.far - y.far || x.edge - y.edge);
+      let sum = 0;
+      for (const r of recs) sum += r.seg.along;
+      const mean = sum / recs.length;
+      const k = recs.length;
+      const toward = recs[0].toward;
+      recs.forEach((r, s) => {
+        const lane = nAt(mean + (s - (k - 1) / 2 - toward * (k - 1) / 2) * JOG_GAP2);
+        if (Math.abs(lane - r.seg.along) < 1e-6) return;
+        moveLane2(edges[r.edge], r.vertical, r.seg, lane);
+        moved2[r.edge] = true;
+      });
+    }
+    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+  }
+  function resolveLabelNodeCollisions2(plates, nodeBoxes) {
+    const shifts = plates.map(() => ({ x: 0, y: 0 }));
+    if (!nodeBoxes.length) return shifts;
+    const cx = plates.map((p) => p ? p.x : 0);
+    const cy = plates.map((p) => p ? p.y : 0);
+    for (let pass = 0; pass < 4; pass++) {
+      let moved2 = false;
+      for (let i = 0; i < plates.length; i++) {
+        const p = plates[i];
+        if (!p) continue;
+        for (const nb of nodeBoxes) {
+          const dx = cx[i] - nb.x;
+          const dy = cy[i] - nb.y;
+          const ox = (p.w + nb.w) / 2 + 10 - Math.abs(dx);
+          const oy = (p.h + nb.h) / 2 + 10 - Math.abs(dy);
+          if (ox <= 0 || oy <= 0) continue;
+          moved2 = true;
+          if (oy <= ox) cy[i] = cy[i] + oy * (dy < 0 ? -1 : 1);
+          else cx[i] = cx[i] + ox * (dx < 0 ? -1 : 1);
+        }
+      }
+      if (!moved2) break;
+    }
+    for (let i = 0; i < plates.length; i++) if (plates[i]) shifts[i] = { x: nAt(cx[i] - plates[i].x), y: nAt(cy[i] - plates[i].y) };
+    return shifts;
+  }
+  function nearestRunAxis2(points, cx, cy) {
+    let best = Infinity;
+    let axis = null;
+    for (let s = 0; s + 1 < points.length; s++) {
+      const a = points[s];
+      const b = points[s + 1];
+      const horiz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 0.5;
+      const vert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 0.5;
+      if (!horiz && !vert) continue;
+      let dx;
+      let dy;
+      if (horiz) {
+        const lo = Math.min(a.x, b.x);
+        const hi = Math.max(a.x, b.x);
+        dx = cx < lo ? cx - lo : cx > hi ? cx - hi : 0;
+        dy = cy - a.y;
+      } else {
+        const lo = Math.min(a.y, b.y);
+        const hi = Math.max(a.y, b.y);
+        dx = cx - a.x;
+        dy = cy < lo ? cy - lo : cy > hi ? cy - hi : 0;
+      }
+      const dd = dx * dx + dy * dy;
+      if (dd < best) {
+        best = dd;
+        axis = horiz ? "x" : "y";
+      }
+    }
+    return axis;
+  }
+  function resolveLabelEdgeCollisions2(plates, polylines) {
+    const shifts = plates.map(() => ({ x: 0, y: 0 }));
+    const cx = plates.map((p) => p ? p.x : 0);
+    const cy = plates.map((p) => p ? p.y : 0);
+    for (let pass = 0; pass < 4; pass++) {
+      let moved2 = false;
+      for (let i = 0; i < plates.length; i++) {
+        const p = plates[i];
+        if (!p) continue;
+        const axis = nearestRunAxis2(polylines[i] ?? [], cx[i], cy[i]);
+        if (!axis) continue;
+        const hw = p.w / 2;
+        const hh = p.h / 2;
+        let hasHit = false;
+        let hiTarget = -Infinity;
+        let loTarget = Infinity;
+        for (let j = 0; j < polylines.length; j++) {
+          if (j === i) continue;
+          const pts = polylines[j] ?? [];
+          for (let s = 0; s + 1 < pts.length; s++) {
+            const a = pts[s];
+            const b = pts[s + 1];
+            if (axis === "x") {
+              if (Math.abs(a.x - b.x) < 0.5) {
+                const gx = a.x;
+                if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
+                if (cy[i] + hh <= Math.min(a.y, b.y) || cy[i] - hh >= Math.max(a.y, b.y)) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, gx + hw + 6);
+                loTarget = Math.min(loTarget, gx - hw - 6);
+              } else if (Math.abs(a.y - b.y) < 0.5) {
+                const gy = a.y;
+                if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
+                const lo = Math.min(a.x, b.x);
+                const hi = Math.max(a.x, b.x);
+                if (cx[i] + hw <= lo || cx[i] - hw >= hi) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, hi + hw + 6);
+                loTarget = Math.min(loTarget, lo - hw - 6);
+              }
+            } else {
+              if (Math.abs(a.y - b.y) < 0.5) {
+                const gy = a.y;
+                if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
+                if (cx[i] + hw <= Math.min(a.x, b.x) || cx[i] - hw >= Math.max(a.x, b.x)) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, gy + hh + 6);
+                loTarget = Math.min(loTarget, gy - hh - 6);
+              } else if (Math.abs(a.x - b.x) < 0.5) {
+                const gx = a.x;
+                if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
+                const lo = Math.min(a.y, b.y);
+                const hi = Math.max(a.y, b.y);
+                if (cy[i] + hh <= lo || cy[i] - hh >= hi) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, hi + hh + 6);
+                loTarget = Math.min(loTarget, lo - hh - 6);
+              }
+            }
+          }
+        }
+        if (!hasHit) continue;
+        const cur = axis === "x" ? cx[i] : cy[i];
+        const target = hiTarget - cur <= cur - loTarget ? hiTarget : loTarget;
+        if (axis === "x") cx[i] = target;
+        else cy[i] = target;
+        moved2 = true;
+      }
+      if (!moved2) break;
+    }
+    for (let i = 0; i < plates.length; i++) if (plates[i]) shifts[i] = { x: nAt(cx[i] - plates[i].x), y: nAt(cy[i] - plates[i].y) };
+    return shifts;
+  }
+  function labelPlatesOf(routed) {
+    return edgeEls.map((e, i) => {
+      if (!e.label) return void 0;
+      const s = plateSizeOf(e.label);
+      return { x: nAt(routed[i].labelPos.x), y: nAt(routed[i].labelPos.y), w: s.w, h: s.h };
+    });
+  }
+  function foldLabelShifts(routed, shifts) {
+    routed.forEach((r, i) => {
+      const sh = shifts[i];
+      if (edgeEls[i].label && (sh.x !== 0 || sh.y !== 0)) {
+        r.labelPos = { x: nAt(r.labelPos.x) + sh.x, y: nAt(r.labelPos.y) + sh.y };
+      }
+    });
+  }
+  function resolveLabelLineOffsets2(plates, polylines) {
+    return plates.map((p, i) => {
+      if (!p) return { x: 0, y: 0 };
+      const pts = polylines[i] ?? [];
+      if (pts.length < 2) return { x: 0, y: 0 };
+      const el = edgeEls[i];
+      const cubic = edgeStyle === "curved" && !(el && el.waypoints && el.waypoints.length);
+      let a;
+      let b;
+      if (cubic && pts.length === 4) {
+        a = { x: pts[0].x + pts[1].x, y: pts[0].y + pts[1].y };
+        b = { x: pts[2].x + pts[3].x, y: pts[2].y + pts[3].y };
+      } else if (pts.length === 2) {
+        a = pts[0];
+        b = pts[1];
+      } else {
+        const mid = Math.floor(pts.length / 2);
+        a = pts[mid - 1];
+        b = pts[mid];
+      }
+      const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+      const dist3 = (horizontal ? p.h : p.w) / 2 + 3;
+      return horizontal ? { x: 0, y: -dist3 } : { x: dist3, y: 0 };
+    });
+  }
+  const bridgesEnabled = () => edgeStyle === "elbow" && (opt.bridges ?? true);
+  function routeBoxes(from, to, waypoints, ports, isSelf) {
+    const shift = ports && ports.labelShift;
+    const withShift = (p) => shift ? { x: p.x + shift.x, y: p.y + shift.y } : p;
+    if (isSelf) {
+      const r = anchor(from, "right");
+      const t = anchor(from, "top");
+      const off = Math.max(24, from.h * 0.6);
+      const pts2 = [r, { x: r.x + off, y: r.y }, { x: r.x + off, y: t.y - off }, { x: t.x, y: t.y - off }, t];
+      return { path: pathPoly(pts2), labelPos: labelPoly(pts2), points: pts2 };
+    }
+    const exit = ports ? ports.source.side : raySide2(from, to.x - from.x, to.y - from.y);
+    const entry = ports ? ports.target.side : raySide2(to, from.x - to.x, from.y - to.y);
+    const start = anchor(from, exit, ports ? ports.source.offset : 0);
+    const end = anchor(to, entry, ports ? ports.target.offset : 0);
+    const horizontal = exit === "left" || exit === "right";
+    const hasWps = !!(waypoints && waypoints.length > 0);
+    if (edgeStyle === "curved" && !hasWps) {
+      const k = horizontal ? Math.max(24, Math.abs(end.x - start.x) * 0.5) : Math.max(24, Math.abs(end.y - start.y) * 0.5);
+      const c1 = offAlong(start, exit, k);
+      const c2 = offAlong(end, entry, k);
+      const pts2 = [start, c1, c2, end];
+      return { path: pathBezier(pts2), labelPos: withShift(labelBezier(pts2)), points: pts2 };
+    }
+    const entryVertical = entry === "top" || entry === "bottom";
+    let pts;
+    if (hasWps) {
+      pts = elbowThrough2(
+        start,
+        end,
+        waypoints,
+        !horizontal,
+        entryVertical,
+        !(model.direction === "LR" || model.direction === "RL")
+      );
+    } else if (horizontal) {
+      const midX = (start.x + end.x) / 2;
+      pts = [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end];
+      perpendicularizeEntry2(pts, entryVertical);
+      pts = simplify2(pts);
+    } else {
+      const midY = (start.y + end.y) / 2;
+      pts = [start, { x: start.x, y: midY }, { x: end.x, y: midY }, end];
+      perpendicularizeEntry2(pts, entryVertical);
+      pts = simplify2(pts);
+    }
+    const path = edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts);
+    return { path, labelPos: withShift(labelPoly(pts)), points: pts };
+  }
+  function routeEdgePath(fromId, toId, waypoints, ports) {
+    const fp = positions[fromId];
+    const tp = positions[toId];
+    const fs = sizes[fromId];
+    const ts = sizes[toId];
+    return routeBoxes(
+      { x: fp.x, y: fp.y, w: fs.w, h: fs.h, shape: shapeById[fromId] },
+      { x: tp.x, y: tp.y, w: ts.w, h: ts.h, shape: shapeById[toId] },
+      waypoints,
+      ports,
+      fromId === toId
+    );
+  }
+  function styleForNode(_id, classes, inline) {
+    const c = tokens.colors;
+    let fill = c.surface;
+    let stroke = c.surfaceStroke;
+    let text = c.text;
+    let strokeWidth;
+    let strokeDasharray;
+    for (const cls of classes) {
+      const role = c.roles[cls];
+      if (role) {
+        fill = role.fill;
+        stroke = role.stroke;
+        text = role.text;
+      }
+      const def = classDefs[cls];
+      if (def) {
+        if (def.fill) fill = def.fill;
+        if (def.stroke) stroke = def.stroke;
+        if (def.color) text = def.color;
+        if (def.strokeWidth) strokeWidth = def.strokeWidth;
+        if (def.strokeDasharray) strokeDasharray = def.strokeDasharray;
+      }
+    }
+    if (inline) {
+      if (inline.fill) fill = inline.fill;
+      if (inline.stroke) stroke = inline.stroke;
+      if (inline.color) text = inline.color;
+      if (inline.strokeWidth) strokeWidth = inline.strokeWidth;
+      if (inline.strokeDasharray) strokeDasharray = inline.strokeDasharray;
+    }
+    const out = { fill, stroke, text };
+    if (strokeWidth !== void 0) out.strokeWidth = strokeWidth;
+    if (strokeDasharray !== void 0) out.strokeDasharray = strokeDasharray;
+    return out;
+  }
+  function cardStyle(id, st) {
+    const s = sizes[id];
+    let radius = tokens.radii.node + "px";
+    const shapeEl = model.nodes.find((x) => x.id === id);
+    const shape = shapeEl ? shapeEl.shape : "rect";
+    if (shape === "stadium" || shape === "circle") radius = "999px";
+    else if (shape === "rounded") radius = tokens.radii.card + 4 + "px";
+    const borderWidth = st.strokeWidth ? /^[0-9.]+$/.test(st.strokeWidth) ? st.strokeWidth + "px" : st.strokeWidth : "1.5px";
+    const borderStyle = st.strokeDasharray ? "dashed" : "solid";
+    if (sketch) {
+      return "position:absolute;box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:" + s.w + "px;height:" + s.h + "px;padding:0 " + tokens.spacing.nodePadX + "px;cursor:grab;transition:transform .12s ease;font-size:var(--vnm-font-size);font-weight:var(--vnm-font-weight);background:transparent;border:0;color:" + st.text + ";";
+    }
+    return "position:absolute;box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:" + s.w + "px;height:" + s.h + "px;padding:0 " + tokens.spacing.nodePadX + "px;border-radius:" + radius + ";cursor:grab;transition:box-shadow .12s ease, transform .12s ease;font-size:var(--vnm-font-size);font-weight:var(--vnm-font-weight);box-shadow:var(--vnm-node-shadow);background:" + st.fill + ";border:" + borderWidth + " " + borderStyle + " " + st.stroke + ";color:" + st.text + ";";
+  }
+  function positionCard(id) {
+    const card = cards[id];
+    const p = positions[id];
+    const s = sizes[id];
+    card.style.left = p.x - s.w / 2 + "px";
+    card.style.top = p.y - s.h / 2 + "px";
+    if (sketch) renderNodeShape(id);
+  }
+  function renderNodes() {
+    for (const id in cards) {
+      applyCardSize(id);
+      positionCard(id);
+    }
+  }
+  function renderEdges() {
+    const ports = computePorts();
+    const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
+    avoidSubgraphs2(routed, edgeEls, avoidContainersFrom(subgraphWorldBox));
+    const nabL = avoidNodeBoxes((id) => ({ x: positions[id].x, y: positions[id].y, w: sizes[id].w, h: sizes[id].h }));
+    trimEndpointReentry2(routed, edgeEls, nabL);
+    for (let k = 0; k < NODE_AVOID_PASSES2; k++) {
+      avoidNodes2(routed, edgeEls, nabL);
+      detourApproaches2(routed, edgeEls, nabL);
+    }
+    foldLabelShifts(routed, resolveLabelLineOffsets2(labelPlatesOf(routed), routed.map((r) => r.points)));
+    separateLanes2(routed);
+    separateAntiParallelJogs2(routed, edgeEls);
+    separateConvergentJogs2(routed, edgeEls);
+    foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
+    foldLabelShifts(routed, resolveLabelEdgeCollisions2(labelPlatesOf(routed), routed.map((r) => r.points)));
+    const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id].x, y: positions[nd.id].y, w: sizes[nd.id].w, h: sizes[nd.id].h }));
+    foldLabelShifts(routed, resolveLabelNodeCollisions2(labelPlatesOf(routed), nodeBoxesL));
+    foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
+    const bridgedL = applyEdgeBridges2(routed.map((r) => r.points), bridgesEnabled());
+    edgeEls.forEach((e, i) => {
+      const r = routed[i];
+      if (sketch) {
+        const sk = sketchEdgeParts(r.points, e.from + "->" + e.to, e.arrows, tokens.edge.arrowSize);
+        e.path.setAttribute("d", sk.line);
+        if (e.headPath) e.headPath.setAttribute("d", sk.head);
+      } else {
+        e.path.setAttribute("d", bridgedL[i] ?? r.path);
+      }
+      if (e.plate && e.text && e.label) {
+        const lx = r.labelPos.x;
+        const ly = r.labelPos.y;
+        const w = e.label.length * (tokens.font.size * 0.6) + 6;
+        const h = tokens.font.lineHeight + 2;
+        e.plate.setAttribute("x", String(nAt(lx - w / 2)));
+        e.plate.setAttribute("y", String(nAt(ly - h / 2)));
+        e.plate.setAttribute("width", String(nAt(w)));
+        e.plate.setAttribute("height", String(nAt(h)));
+        e.text.setAttribute("x", String(nAt(lx)));
+        e.text.setAttribute("y", String(nAt(ly)));
+      }
+    });
+    if (capOverlay) {
+      let caps = "";
+      edgeEls.forEach((e, i) => {
+        caps += svgEdgeArrowCap(e, routed[i].points);
+      });
+      capOverlay.innerHTML = caps;
+    }
+    positionEdgeHandles(ports);
+  }
+  function applyTransform() {
+    world.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
+    drawMinimap();
+  }
+  function renderAll() {
+    renderNodes();
+    renderSubgraphs();
+    renderEdges();
+    positionHandles();
+    applyTransform();
+  }
+  function drawMinimap() {
+    if (!minimap) return;
+    const ctx = minimap.getContext("2d");
+    if (!ctx) return;
+    const mw = minimap.width;
+    const mh = minimap.height;
+    ctx.clearRect(0, 0, mw, mh);
+    const s = Math.min(mw / Math.max(contentW, 1), mh / Math.max(contentH, 1));
+    ctx.save();
+    ctx.scale(s, s);
+    ctx.fillStyle = tokens.colors.accent;
+    for (const nd of model.nodes) {
+      const p = positions[nd.id];
+      const sz = sizes[nd.id];
+      ctx.globalAlpha = 0.75;
+      ctx.fillRect(p.x - sz.w / 2, p.y - sz.h / 2, sz.w, sz.h);
+    }
+    ctx.restore();
+    const vw = viewport.clientWidth;
+    const vh = viewport.clientHeight;
+    const vx = -tx / scale * s;
+    const vy = -ty / scale * s;
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = tokens.colors.accent;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(vx, vy, vw / scale * s, vh / scale * s);
+    ctx.fillStyle = tokens.colors.minimapViewport;
+    ctx.fillRect(vx, vy, vw / scale * s, vh / scale * s);
+  }
+  function clampScale(v) {
+    return Math.max(opt.minScale, Math.min(opt.maxScale, v));
+  }
+  function fit() {
+    const vw = viewport.clientWidth || 800;
+    const vh = viewport.clientHeight || 600;
+    const pad = opt.fitPadding;
+    const s = clampScale(Math.min((vw - pad * 2) / Math.max(contentW, 1), (vh - pad * 2) / Math.max(contentH, 1)));
+    scale = s;
+    tx = (vw - contentW * s) / 2;
+    ty = (vh - contentH * s) / 2;
+    applyTransform();
+  }
+  function zoomBy(factor) {
+    zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, clampScale(scale * factor));
+  }
+  function zoomAt(cx, cy, next) {
+    const wx = (cx - tx) / scale;
+    const wy = (cy - ty) / scale;
+    scale = next;
+    tx = cx - wx * scale;
+    ty = cy - wy * scale;
+    applyTransform();
+  }
+  function resetView() {
+    scale = 1;
+    tx = 0;
+    ty = 0;
+    applyTransform();
+  }
+  const SLOP = 4;
+  let mode = "none";
+  let dragId = null;
+  let startX = 0;
+  let startY = 0;
+  let startTx = 0;
+  let startTy = 0;
+  let startPos = { x: 0, y: 0 };
+  let moved = false;
+  let resizeId = null;
+  let rsx = 0;
+  let rsy = 0;
+  let rFixedX = 0;
+  let rFixedY = 0;
+  let rMovableX = 0;
+  let rMovableY = 0;
+  let anchorEi = -1;
+  let anchorEnd = "source";
+  let anchorNode = "";
+  let groupMembers = [];
+  let groupStart = {};
+  function pointerWorld(ev) {
+    const rect = viewport.getBoundingClientRect();
+    return { x: (ev.clientX - rect.left - tx) / scale, y: (ev.clientY - rect.top - ty) / scale };
+  }
+  const GRAB = 10;
+  function subgraphHit(wx, wy) {
+    let best = null;
+    let bestArea = Infinity;
+    for (const sg of model.subgraphs) {
+      if (!(subgraphMembers[sg.id] || []).length) continue;
+      const b = subgraphWorldBox(sg);
+      const left = b.x - b.w / 2;
+      const right = b.x + b.w / 2;
+      const top = b.y - b.h / 2;
+      const bottom = b.y + b.h / 2;
+      if (wx < left || wx > right || wy < top || wy > bottom) continue;
+      const nearBorder = wx <= left + GRAB || wx >= right - GRAB || wy <= top + GRAB || wy >= bottom - GRAB;
+      const inTitle = !!sg.title && wy <= top + SG_PAD + SG_TITLE;
+      if (!nearBorder && !inTitle) continue;
+      const area = b.w * b.h;
+      if (area < bestArea) {
+        bestArea = area;
+        best = sg.id;
+      }
+    }
+    return best;
+  }
+  function onPointerDown(ev) {
+    const target = ev.target;
+    if (target.closest && target.closest(".vnm-toolbar")) return;
+    const epHandle = target.closest ? target.closest(".vnm-edge-handle") : null;
+    if (epHandle && epHandle.dataset.ei !== void 0) {
+      mode = "anchor";
+      anchorEi = Number(epHandle.dataset.ei);
+      anchorEnd = epHandle.dataset.end === "target" ? "target" : "source";
+      const e = edgeEls[anchorEi];
+      anchorNode = anchorEnd === "source" ? e.from : e.to;
+      moved = false;
+      startX = ev.clientX;
+      startY = ev.clientY;
+      viewport.setPointerCapture(ev.pointerId);
+      return;
+    }
+    const handle = target.closest ? target.closest(".vnm-resize-handle") : null;
+    if (handle && selected && positions[selected]) {
+      mode = "resize";
+      resizeId = selected;
+      rsx = Number(handle.dataset.sx);
+      rsy = Number(handle.dataset.sy);
+      const c = positions[resizeId];
+      const s = sizes[resizeId];
+      rFixedX = c.x - rsx * s.w / 2;
+      rFixedY = c.y - rsy * s.h / 2;
+      rMovableX = c.x + rsx * s.w / 2;
+      rMovableY = c.y + rsy * s.h / 2;
+      moved = false;
+      startX = ev.clientX;
+      startY = ev.clientY;
+      viewport.setPointerCapture(ev.pointerId);
+      return;
+    }
+    const card = target.closest ? target.closest(".vnm-node") : null;
+    moved = false;
+    startX = ev.clientX;
+    startY = ev.clientY;
+    if (card && card.dataset.id) {
+      mode = "drag";
+      dragId = card.dataset.id;
+      startPos = { x: positions[dragId].x, y: positions[dragId].y };
+      card.style.cursor = "grabbing";
+    } else {
+      const w = pointerWorld(ev);
+      const sgId = subgraphHit(w.x, w.y);
+      if (sgId) {
+        mode = "group";
+        deselect();
+        groupMembers = subgraphMembers[sgId] || [];
+        groupStart = {};
+        for (const id of groupMembers) groupStart[id] = { x: positions[id].x, y: positions[id].y };
+      } else {
+        mode = "pan";
+        deselect();
+        startTx = tx;
+        startTy = ty;
+        viewport.style.cursor = "grabbing";
+      }
+    }
+    viewport.setPointerCapture(ev.pointerId);
+  }
+  function onPointerMove(ev) {
+    if (mode === "none") return;
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    if (Math.abs(dx) > SLOP || Math.abs(dy) > SLOP) moved = true;
+    if (mode === "pan") {
+      tx = startTx + dx;
+      ty = startTy + dy;
+      applyTransform();
+    } else if (mode === "drag" && dragId) {
+      positions[dragId] = { x: startPos.x + dx / scale, y: startPos.y + dy / scale };
+      positionCard(dragId);
+      renderSubgraphs();
+      renderEdges();
+      if (dragId === selected) positionHandles();
+      drawMinimap();
+    } else if (mode === "resize" && resizeId) {
+      const movX = rMovableX + dx / scale;
+      const movY = rMovableY + dy / scale;
+      const newW = Math.max(MIN_SIZE, rsx * (movX - rFixedX));
+      const newH = Math.max(MIN_SIZE, rsy * (movY - rFixedY));
+      sizes[resizeId] = { w: newW, h: newH };
+      positions[resizeId] = { x: rFixedX + rsx * newW / 2, y: rFixedY + rsy * newH / 2 };
+      applyCardSize(resizeId);
+      positionCard(resizeId);
+      renderSubgraphs();
+      renderEdges();
+      positionHandles();
+      drawMinimap();
+    } else if (mode === "group") {
+      for (const id of groupMembers) {
+        const s0 = groupStart[id];
+        positions[id] = { x: s0.x + dx / scale, y: s0.y + dy / scale };
+        positionCard(id);
+      }
+      renderSubgraphs();
+      renderEdges();
+      positionHandles();
+      drawMinimap();
+    } else if (mode === "anchor" && anchorEi >= 0) {
+      const w = pointerWorld(ev);
+      const p = positions[anchorNode];
+      const s = sizes[anchorNode];
+      const pin = anchorFromPointer({ x: p.x, y: p.y, w: s.w, h: s.h }, w.x, w.y);
+      const cur = anchorsOv[anchorEi] || (anchorsOv[anchorEi] = {});
+      cur[anchorEnd] = pin;
+      renderEdges();
+      drawMinimap();
+    }
+  }
+  function onPointerUp(ev) {
+    if (mode === "drag" && dragId) {
+      cards[dragId].style.cursor = "grab";
+      if (moved) schedulePersist();
+      else selectNode(dragId);
+    } else if (mode === "resize" && resizeId) {
+      if (moved) schedulePersist();
+    } else if (mode === "group") {
+      if (moved) schedulePersist();
+    } else if (mode === "anchor") {
+      if (moved) schedulePersist();
+    }
+    viewport.style.cursor = "grab";
+    try {
+      viewport.releasePointerCapture(ev.pointerId);
+    } catch {
+    }
+    mode = "none";
+    dragId = null;
+    resizeId = null;
+    anchorEi = -1;
+    groupMembers = [];
+  }
+  function onWheel(ev) {
+    ev.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const cx = ev.clientX - rect.left;
+    const cy = ev.clientY - rect.top;
+    const factor = ev.deltaY < 0 ? 1.1 : 1 / 1.1;
+    zoomAt(cx, cy, clampScale(scale * factor));
+  }
+  function onMinimapDown(ev) {
+    ev.stopPropagation();
+    mode = "minimap";
+    recenterFromMinimap(ev);
+    minimap.setPointerCapture(ev.pointerId);
+  }
+  function onMinimapMove(ev) {
+    if (mode === "minimap") recenterFromMinimap(ev);
+  }
+  function onMinimapUp(ev) {
+    mode = "none";
+    try {
+      minimap.releasePointerCapture(ev.pointerId);
+    } catch {
+    }
+  }
+  function recenterFromMinimap(ev) {
+    const rect = minimap.getBoundingClientRect();
+    const s = Math.min(minimap.width / Math.max(contentW, 1), minimap.height / Math.max(contentH, 1));
+    const worldX = (ev.clientX - rect.left) / s;
+    const worldY = (ev.clientY - rect.top) / s;
+    tx = viewport.clientWidth / 2 - worldX * scale;
+    ty = viewport.clientHeight / 2 - worldY * scale;
+    applyTransform();
+  }
+  let selected = null;
+  function selectNode(id) {
+    if (selected && cards[selected]) cards[selected].style.outline = "";
+    selected = id;
+    cards[id].style.outline = "2px solid var(--vnm-accent)";
+    cards[id].style.outlineOffset = "2px";
+    positionHandles();
+    positionEdgeHandles(computePorts());
+  }
+  function deselect() {
+    if (selected && cards[selected]) cards[selected].style.outline = "";
+    selected = null;
+    hideHandles();
+    positionEdgeHandles(computePorts());
+  }
+  for (const id in cards) {
+    const card = cards[id];
+    card.addEventListener("pointerenter", () => {
+      if (mode === "none") card.style.transform = "translateY(calc(-1 * var(--vnm-hover-lift)))";
+    });
+    card.addEventListener("pointerleave", () => {
+      card.style.transform = "";
+    });
+  }
+  viewport.addEventListener("pointerdown", onPointerDown);
+  viewport.addEventListener("pointermove", onPointerMove);
+  viewport.addEventListener("pointerup", onPointerUp);
+  viewport.addEventListener("wheel", onWheel, { passive: false });
+  if (minimap) {
+    minimap.addEventListener("pointerdown", onMinimapDown);
+    minimap.addEventListener("pointermove", onMinimapMove);
+    minimap.addEventListener("pointerup", onMinimapUp);
+  }
+  let persistTimer = null;
+  function schedulePersist() {
+    if (!opt.persistKey) return;
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(persistNow, 400);
+  }
+  function persistNow() {
+    if (!opt.persistKey) return;
+    try {
+      win.localStorage.setItem(opt.persistKey, JSON.stringify(exportLayout()));
+    } catch {
+    }
+  }
+  function loadPersisted() {
+    if (!opt.persistKey) return;
+    try {
+      const raw = win.localStorage.getItem(opt.persistKey);
+      if (raw) importLayout(JSON.parse(raw));
+    } catch {
+    }
+  }
+  function resetLayout() {
+    for (const nd of model.nodes) {
+      positions[nd.id] = { x: nd.x - offsetX, y: nd.y - offsetY };
+      sizes[nd.id] = { w: baseSizes[nd.id].w, h: baseSizes[nd.id].h };
+    }
+    for (const k in anchorsOv) delete anchorsOv[Number(k)];
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+    if (opt.persistKey) {
+      try {
+        win.localStorage.removeItem(opt.persistKey);
+      } catch {
+      }
+    }
+    renderAll();
+  }
+  function exportLayout() {
+    const pos = {};
+    for (const id in positions) pos[id] = { x: positions[id].x + offsetX, y: positions[id].y + offsetY };
+    const sz = {};
+    for (const id in sizes) {
+      const base = baseSizes[id];
+      if (!base || sizes[id].w !== base.w || sizes[id].h !== base.h) {
+        sz[id] = { w: sizes[id].w, h: sizes[id].h };
+      }
+    }
+    const an = {};
+    for (const k in anchorsOv) {
+      const ov = anchorsOv[Number(k)];
+      if (ov.source || ov.target) {
+        const entry = {};
+        if (ov.source) entry.source = { side: ov.source.side, offset: ov.source.offset };
+        if (ov.target) entry.target = { side: ov.target.side, offset: ov.target.offset };
+        const e = edgeEls[Number(k)];
+        if (e) {
+          entry.from = e.from;
+          entry.to = e.to;
+        }
+        an[k] = entry;
+      }
+    }
+    const out = { version: 1, positions: pos, transform: { x: tx, y: ty, scale } };
+    if (Object.keys(sz).length) out.sizes = sz;
+    if (Object.keys(an).length) out.anchors = an;
+    return out;
+  }
+  function importLayout(data) {
+    if (data && data.positions) {
+      for (const id in data.positions) {
+        if (positions[id]) positions[id] = { x: data.positions[id].x - offsetX, y: data.positions[id].y - offsetY };
+      }
+    }
+    if (data && data.sizes) {
+      for (const id in data.sizes) {
+        if (sizes[id]) sizes[id] = { w: data.sizes[id].w, h: data.sizes[id].h };
+      }
+    }
+    if (data && data.anchors) {
+      const claimed = {};
+      for (const k in data.anchors) {
+        const src = data.anchors[k];
+        const entry = {};
+        if (src.source) entry.source = { side: src.source.side, offset: src.source.offset };
+        if (src.target) entry.target = { side: src.target.side, offset: src.target.offset };
+        if (!entry.source && !entry.target) continue;
+        const idx = Number(k);
+        const inRange = idx >= 0 && idx < edgeEls.length && Math.floor(idx) === idx;
+        const hasId = src.from !== void 0 && src.to !== void 0;
+        let ti = -1;
+        if (inRange && (!hasId || edgeEls[idx].from === src.from && edgeEls[idx].to === src.to)) {
+          ti = idx;
+        } else if (hasId) {
+          ti = edgeEls.findIndex((e, i) => !claimed[i] && e.from === src.from && e.to === src.to);
+        }
+        if (ti < 0 || claimed[ti]) continue;
+        claimed[ti] = true;
+        anchorsOv[ti] = entry;
+      }
+    }
+    if (data && data.transform) {
+      tx = data.transform.x;
+      ty = data.transform.y;
+      scale = data.transform.scale;
+    }
+    renderAll();
+  }
+  function setTheme(theme, cssVars) {
+    tokens = theme.tokens;
+    edgeStyle = theme.edgeStyle;
+    viewport.setAttribute(
+      "style",
+      "position:absolute;inset:0;overflow:hidden;background:var(--vnm-bg);cursor:grab;touch-action:none;user-select:none;font-family:var(--vnm-font);" + cssVars
+    );
+    defs5.querySelector("marker path")?.setAttribute("fill", tokens.colors.edge);
+    for (const nd of model.nodes) {
+      const st = styleForNode(nd.id, nd.classes, nd.style);
+      cards[nd.id].setAttribute("style", cardStyle(nd.id, st));
+      const els = nodeShapeEls[nd.id];
+      if (els) {
+        els.fill.setAttribute("fill", st.fill);
+        const sw = st.strokeWidth ?? "1.5";
+        for (const p of els.strokes) {
+          p.setAttribute("stroke", st.stroke);
+          p.setAttribute("stroke-width", sw);
+        }
+      }
+      const markers = stateMarkerEls[nd.id];
+      if (markers) {
+        for (const c of markers) {
+          if (c.getAttribute("fill") === "none") c.setAttribute("stroke", tokens.colors.text);
+          else c.setAttribute("fill", tokens.colors.text);
+        }
+      }
+    }
+    renderAll();
+  }
+  function destroy() {
+    viewport.removeEventListener("pointerdown", onPointerDown);
+    viewport.removeEventListener("pointermove", onPointerMove);
+    viewport.removeEventListener("pointerup", onPointerUp);
+    viewport.removeEventListener("wheel", onWheel);
+    if (persistTimer) clearTimeout(persistTimer);
+    root.removeChild(viewport);
+  }
+  function xmlEsc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function xmlAttr(s) {
+    return xmlEsc(s).replace(/"/g, "&quot;");
+  }
+  function absBox(id) {
+    const p = positions[id];
+    const s = sizes[id];
+    return { x: p.x + offsetX, y: p.y + offsetY, w: s.w, h: s.h, shape: shapeById[id] };
+  }
+  function svgDefs() {
+    const a = tokens.edge.arrowSize;
+    const shadow = tokens.effects.gradient ? '<filter id="vnm-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter>' : "";
+    const font = sketch && payload.sketch ? "<style>" + payload.sketch.fontFace + "</style>" : "";
+    return '<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="' + tokens.colors.edge + '"/></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="' + tokens.colors.edge + '"/></marker>' + shadow + font + "</defs>";
+  }
+  function subgraphAbsBox(sg) {
+    const ids = subgraphMembers[sg.id] || [];
+    const boxes = ids.map(absBox);
+    const b = sgBoxFrom(boxes, !!sg.title);
+    return b ?? { x: sg.x, y: sg.y, w: sg.width, h: sg.height };
+  }
+  function svgSubgraphBox(sg) {
+    const b = subgraphAbsBox(sg);
+    const x = nAt(b.x - b.w / 2);
+    const y = nAt(b.y - b.h / 2);
+    return '<rect x="' + x + '" y="' + y + '" width="' + nAt(b.w) + '" height="' + nAt(b.h) + '" rx="' + tokens.radii.card + '" fill="' + tokens.colors.subgraphFill + '" stroke="' + tokens.colors.subgraphStroke + '" stroke-dasharray="4 4"/>';
+  }
+  function svgSubgraphTitle(sg) {
+    if (!sg.title) return "";
+    const b = subgraphAbsBox(sg);
+    const x = nAt(b.x - b.w / 2);
+    const y = nAt(b.y - b.h / 2);
+    const fs = tokens.font.size - 1;
+    const pad = 5;
+    const pw = sg.title.length * fs * 0.6 + pad * 2;
+    return '<rect x="' + nAt(x + 12 - pad) + '" y="' + nAt(y + 18 - fs + 1) + '" width="' + nAt(pw) + '" height="' + (fs + 4) + '" rx="' + tokens.radii.label + '" fill="' + tokens.colors.subgraphFill + '"/><text x="' + nAt(x + 12) + '" y="' + nAt(y + 18) + '" fill="' + tokens.colors.subgraphText + '" font-size="' + fs + '" font-weight="600">' + xmlEsc(sg.title) + "</text>";
+  }
+  function svgEdgeLabel(label, cx, cy) {
+    const lines = label.split("\n");
+    const maxChars = lines.reduce((m, l) => Math.max(m, l.length), 0);
+    const w = maxChars * tokens.font.size * 0.6 + 6;
+    const h = lines.length * tokens.font.lineHeight + 2;
+    const x = nAt(cx - w / 2);
+    const y = nAt(cy - h / 2);
+    let out = '<rect x="' + x + '" y="' + y + '" width="' + nAt(w) + '" height="' + nAt(h) + '" rx="' + tokens.radii.label + '" fill="' + tokens.colors.edgeLabelBg + '"/>';
+    const startY2 = cy - (lines.length - 1) * tokens.font.lineHeight / 2;
+    lines.forEach((line, i) => {
+      out += '<text x="' + nAt(cx) + '" y="' + nAt(startY2 + i * tokens.font.lineHeight) + '" fill="' + tokens.colors.edgeLabelText + '" font-size="' + (tokens.font.size - 1) + '" text-anchor="middle" dominant-baseline="central">' + xmlEsc(line) + "</text>";
+    });
+    return out;
+  }
+  function svgEdge(e, path, points) {
+    const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
+    const dash = e.kind === "dotted" ? ' stroke-dasharray="2 5"' : "";
+    let out;
+    if (sketch) {
+      const key = e.from + "->" + e.to;
+      const arr = points.map((p) => [p.x, p.y]);
+      const base = ' fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"';
+      const lineStroke = base + dash;
+      let s = "";
+      for (const d of roughPolyline2(arr, key)) s += '<path d="' + d + '"' + lineStroke + "/>";
+      const m = arr.length;
+      if (e.arrows.end && m >= 2)
+        s += '<path d="' + openArrowhead2(arr[m - 1], arr[m - 2], tokens.edge.arrowSize, key + "@end") + '"' + base + "/>";
+      if (e.arrows.start && m >= 2)
+        s += '<path d="' + openArrowhead2(arr[0], arr[1], tokens.edge.arrowSize, key + "@start") + '"' + base + "/>";
+      out = s;
+    } else {
+      const mEnd = e.arrows.end ? ' marker-end="url(#vnm-arrow)"' : "";
+      const mStart = e.arrows.start ? ' marker-start="url(#vnm-arrow-start)"' : "";
+      out = '<path d="' + path + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"' + dash + mStart + mEnd + "/>";
+    }
+    return out;
+  }
+  function svgEdgeArrowCap(e, points) {
+    const m = points.length;
+    if (m < 2 || !e.arrows.end && !e.arrows.start) return "";
+    const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
+    if (sketch) {
+      const key = e.from + "->" + e.to;
+      const arr = points.map((p) => [p.x, p.y]);
+      const base = ' fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"';
+      let s2 = "";
+      if (e.arrows.end) s2 += '<path class="vnm-arrow-cap" d="' + openArrowhead2(arr[m - 1], arr[m - 2], tokens.edge.arrowSize, key + "@end") + '"' + base + "/>";
+      if (e.arrows.start) s2 += '<path class="vnm-arrow-cap" d="' + openArrowhead2(arr[0], arr[1], tokens.edge.arrowSize, key + "@start") + '"' + base + "/>";
+      return s2;
+    }
+    let s = "";
+    if (e.arrows.end) s += svgCapEnd(points[m - 2], points[m - 1], width);
+    if (e.arrows.start) s += svgCapStart(points[0], points[1], width);
+    return s;
+  }
+  function svgCapEnd(prev, tip, width) {
+    const dx = tip.x - prev.x;
+    const dy = tip.y - prev.y;
+    const mag = Math.hypot(dx, dy) || 1;
+    const len = Math.min(tokens.edge.arrowSize + 4, mag);
+    const bx = tip.x - dx / mag * len;
+    const by = tip.y - dy / mag * len;
+    return '<path class="vnm-arrow-cap" d="M ' + nAt(bx) + " " + nAt(by) + " L " + nAt(tip.x) + " " + nAt(tip.y) + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>';
+  }
+  function svgCapStart(head, next, width) {
+    const dx = next.x - head.x;
+    const dy = next.y - head.y;
+    const mag = Math.hypot(dx, dy) || 1;
+    const len = Math.min(tokens.edge.arrowSize + 4, mag);
+    const bx = head.x + dx / mag * len;
+    const by = head.y + dy / mag * len;
+    return '<path class="vnm-arrow-cap" d="M ' + nAt(head.x) + " " + nAt(head.y) + " L " + nAt(bx) + " " + nAt(by) + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linecap="round" marker-start="url(#vnm-arrow-start)"/>';
+  }
+  function svgPolygon(pts, common) {
+    return '<polygon points="' + pts.map((p) => nAt(p[0]) + "," + nAt(p[1])).join(" ") + '" ' + common + "/>";
+  }
+  function svgShape(shape, box, fill, stroke, sw, dash, key) {
+    const x = box.x - box.w / 2;
+    const y = box.y - box.h / 2;
+    const w = box.w;
+    const h = box.h;
+    const cx = box.x;
+    const cy = box.y;
+    if (sketch) {
+      const sp = sketchShapePoints2(shape, x, y, w, h);
+      const rs = roughShape2(sp.pts, key);
+      const strokeAttr = ' fill="none" stroke="' + stroke + '" stroke-width="' + sw + '" stroke-linejoin="round" stroke-linecap="round"' + dash;
+      let out = '<path d="' + rs.fill + '" fill="' + fill + '" stroke="none"/>';
+      for (const d of rs.outline) out += '<path d="' + d + '"' + strokeAttr + "/>";
+      sp.extras.forEach((seg, i) => {
+        for (const d of roughPolyline2(seg, key + "#x" + i)) out += '<path d="' + d + '"' + strokeAttr + "/>";
+      });
+      return out;
+    }
+    const common = 'fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + sw + '"' + dash;
+    const rect = (rx) => '<rect x="' + nAt(x) + '" y="' + nAt(y) + '" width="' + nAt(w) + '" height="' + nAt(h) + '" rx="' + rx + '" ' + common + "/>";
+    if (shape === "rounded") return rect(14);
+    if (shape === "stadium") return rect(nAt(h / 2));
+    if (shape === "subroutine") {
+      const inset = 6;
+      return rect(4) + '<line x1="' + nAt(x + inset) + '" y1="' + nAt(y) + '" x2="' + nAt(x + inset) + '" y2="' + nAt(y + h) + '" stroke="' + stroke + '" stroke-width="' + sw + '"/><line x1="' + nAt(x + w - inset) + '" y1="' + nAt(y) + '" x2="' + nAt(x + w - inset) + '" y2="' + nAt(y + h) + '" stroke="' + stroke + '" stroke-width="' + sw + '"/>';
+    }
+    if (shape === "circle")
+      return '<ellipse cx="' + nAt(cx) + '" cy="' + nAt(cy) + '" rx="' + nAt(w / 2) + '" ry="' + nAt(h / 2) + '" ' + common + "/>";
+    if (shape === "diamond")
+      return svgPolygon([[cx, y], [x + w, cy], [cx, y + h], [x, cy]], common);
+    if (shape === "hexagon") {
+      const k = Math.min(w * 0.22, h * 0.5);
+      return svgPolygon([[x + k, y], [x + w - k, y], [x + w, cy], [x + w - k, y + h], [x + k, y + h], [x, cy]], common);
+    }
+    if (shape === "parallelogram") {
+      const k = Math.min(w * 0.22, h);
+      return svgPolygon([[x + k, y], [x + w, y], [x + w - k, y + h], [x, y + h]], common);
+    }
+    if (shape === "parallelogram-alt") {
+      const k = Math.min(w * 0.22, h);
+      return svgPolygon([[x, y], [x + w - k, y], [x + w, y + h], [x + k, y + h]], common);
+    }
+    if (shape === "cylinder") {
+      const ry = Math.min(10, h * 0.18);
+      const top = y + ry;
+      const bottom = y + h - ry;
+      const d = "M " + nAt(x) + " " + nAt(top) + " C " + nAt(x) + " " + nAt(top - ry * 1.3) + " " + nAt(x + w) + " " + nAt(top - ry * 1.3) + " " + nAt(x + w) + " " + nAt(top) + " L " + nAt(x + w) + " " + nAt(bottom) + " C " + nAt(x + w) + " " + nAt(bottom + ry * 1.3) + " " + nAt(x) + " " + nAt(bottom + ry * 1.3) + " " + nAt(x) + " " + nAt(bottom) + " Z";
+      const lid = "M " + nAt(x) + " " + nAt(top) + " C " + nAt(x) + " " + nAt(top + ry * 1.3) + " " + nAt(x + w) + " " + nAt(top + ry * 1.3) + " " + nAt(x + w) + " " + nAt(top);
+      return '<path d="' + d + '" ' + common + '/><path d="' + lid + '" fill="none" stroke="' + stroke + '" stroke-width="' + sw + '"/>';
+    }
+    return rect(6);
+  }
+  function svgNodeText(node, box, color) {
+    const lines = node.label.length ? node.label.split("\n") : [""];
+    const startY2 = box.y - (lines.length - 1) * tokens.font.lineHeight / 2;
+    return lines.map(
+      (line, i) => '<text x="' + nAt(box.x) + '" y="' + nAt(startY2 + i * tokens.font.lineHeight) + '" fill="' + color + '" font-size="' + tokens.font.size + '" font-weight="' + tokens.font.weight + '" text-anchor="middle" dominant-baseline="central">' + xmlEsc(line) + "</text>"
+    ).join("");
+  }
+  function svgNode(node) {
+    if (sketch && node.stateMarker) {
+      const b = absBox(node.id);
+      const r = Math.min(9, b.w / 2);
+      const cx = nAt(b.x);
+      const cy = nAt(b.y);
+      const col = tokens.colors.text;
+      if (node.stateMarker === "start") {
+        return '<circle cx="' + cx + '" cy="' + cy + '" r="' + nAt(r) + '" fill="' + col + '"/>';
+      }
+      return '<circle cx="' + cx + '" cy="' + cy + '" r="' + nAt(r) + '" fill="none" stroke="' + col + '" stroke-width="1.5"/><circle cx="' + cx + '" cy="' + cy + '" r="' + nAt(r - 4) + '" fill="' + col + '"/>';
+    }
+    const box = absBox(node.id);
+    const st = styleForNode(node.id, node.classes, node.style);
+    const shadow = tokens.effects.gradient && !sketch ? ' filter="url(#vnm-shadow)"' : "";
+    const sw = xmlAttr(st.strokeWidth ?? "1.5");
+    const dash = st.strokeDasharray ? ' stroke-dasharray="' + xmlAttr(st.strokeDasharray) + '"' : "";
+    const shape = svgShape(node.shape, box, xmlAttr(st.fill), xmlAttr(st.stroke), sw, dash, node.id);
+    const text = svgNodeText(node, box, xmlAttr(st.text));
+    return "<g" + shadow + ">" + shape + text + "</g>";
+  }
+  function boundsAbs(boxes, pts) {
+    const pad = 20;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const b of boxes) {
+      minX = Math.min(minX, b.x - b.w / 2);
+      minY = Math.min(minY, b.y - b.h / 2);
+      maxX = Math.max(maxX, b.x + b.w / 2);
+      maxY = Math.max(maxY, b.y + b.h / 2);
+    }
+    for (const p of pts) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    if (!isFinite(minX)) return { x: 0, y: 0, width: 0, height: 0 };
+    return {
+      x: nAt(minX - pad),
+      y: nAt(minY - pad),
+      width: nAt(maxX - minX + pad * 2),
+      height: nAt(maxY - minY + pad * 2)
+    };
+  }
+  function buildSvg() {
+    const ports = computePorts();
+    const boxes = [];
+    for (const sg of model.subgraphs) boxes.push(subgraphAbsBox(sg));
+    for (const nd of model.nodes) boxes.push(absBox(nd.id));
+    const edgePathParts = [];
+    const edgeLabelParts = [];
+    const edgeArrowCapParts = [];
+    const allPts = [];
+    const routesB = edgeEls.map((e, i) => {
+      const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : void 0;
+      return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
+    });
+    avoidSubgraphs2(routesB, edgeEls, avoidContainersFrom(subgraphAbsBox));
+    const nabB = avoidNodeBoxes((id) => {
+      const b2 = absBox(id);
+      return { x: b2.x, y: b2.y, w: b2.w, h: b2.h };
+    });
+    trimEndpointReentry2(routesB, edgeEls, nabB);
+    for (let k = 0; k < NODE_AVOID_PASSES2; k++) {
+      avoidNodes2(routesB, edgeEls, nabB);
+      detourApproaches2(routesB, edgeEls, nabB);
+    }
+    foldLabelShifts(routesB, resolveLabelLineOffsets2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
+    separateLanes2(routesB);
+    separateAntiParallelJogs2(routesB, edgeEls);
+    separateConvergentJogs2(routesB, edgeEls);
+    foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
+    foldLabelShifts(routesB, resolveLabelEdgeCollisions2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
+    const nodeBoxesB = model.nodes.map((nd) => {
+      const b2 = absBox(nd.id);
+      return { x: b2.x, y: b2.y, w: b2.w, h: b2.h };
+    });
+    foldLabelShifts(routesB, resolveLabelNodeCollisions2(labelPlatesOf(routesB), nodeBoxesB));
+    foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
+    const bridgedB = applyEdgeBridges2(routesB.map((r) => r.points), bridgesEnabled());
+    edgeEls.forEach((e, i) => {
+      const r = routesB[i];
+      for (const p of r.points) allPts.push(p);
+      edgePathParts.push(svgEdge(e, bridgedB[i] ?? r.path, r.points));
+      if (arrowCaps) edgeArrowCapParts.push(svgEdgeArrowCap(e, r.points));
+      if (e.label) {
+        edgeLabelParts.push(svgEdgeLabel(e.label, r.labelPos.x, r.labelPos.y));
+      }
+    });
+    for (const pl of labelPlatesOf(routesB)) {
+      if (pl) allPts.push({ x: pl.x - pl.w / 2, y: pl.y - pl.h / 2 }, { x: pl.x + pl.w / 2, y: pl.y + pl.h / 2 });
+    }
+    const b = boundsAbs(boxes, allPts);
+    const parts = [];
+    parts.push(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="' + nAt(b.width) + '" height="' + nAt(b.height) + '" viewBox="' + nAt(b.x) + " " + nAt(b.y) + " " + nAt(b.width) + " " + nAt(b.height) + '" font-family="' + xmlAttr(sketch && payload.sketch ? payload.sketch.fontFamily : tokens.font.family) + '">'
+    );
+    parts.push(svgDefs());
+    parts.push(
+      '<rect x="' + nAt(b.x) + '" y="' + nAt(b.y) + '" width="' + nAt(b.width) + '" height="' + nAt(b.height) + '" fill="' + tokens.colors.background + '"/>'
+    );
+    for (const sg of model.subgraphs) parts.push(svgSubgraphBox(sg));
+    for (const ep of edgePathParts) parts.push(ep);
+    for (const lp of edgeLabelParts) parts.push(lp);
+    for (const sg of model.subgraphs) parts.push(svgSubgraphTitle(sg));
+    for (const nd of model.nodes) parts.push(svgNode(nd));
+    for (const cap of edgeArrowCapParts) parts.push(cap);
+    parts.push("</svg>");
+    return { svg: parts.join("\n"), width: b.width, height: b.height };
+  }
+  function toSvgString() {
+    return buildSvg().svg;
+  }
+  function exportFileBase() {
+    const t = (doc.title || "").trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+    return t || "diagram";
+  }
+  function triggerDownload(href, filename) {
+    const a = doc.createElement("a");
+    a.setAttribute("href", href);
+    a.setAttribute("download", filename);
+    a.style.display = "none";
+    if (doc.body) doc.body.appendChild(a);
+    a.click();
+    if (doc.body && a.parentNode) doc.body.removeChild(a);
+  }
+  function saveSvg() {
+    const href = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(toSvgString());
+    triggerDownload(href, exportFileBase() + ".svg");
+  }
+  function savePng() {
+    const built = buildSvg();
+    const dpr = win.devicePixelRatio || 1;
+    const scale2 = Math.max(1, Math.min(3, dpr * 1.5));
+    const w = Math.max(1, Math.round(built.width * scale2));
+    const h = Math.max(1, Math.round(built.height * scale2));
+    const fail = (msg) => {
+      const c = win.console;
+      if (c && c.error) c.error("[very-nice-mermaid] " + msg);
+    };
+    const img = doc.createElement("img");
+    img.onload = () => {
+      const canvas = doc.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        fail("PNG export failed: 2D canvas context is unavailable");
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      let dataUrl;
+      try {
+        dataUrl = canvas.toDataURL("image/png");
+      } catch (err) {
+        fail("PNG export failed while encoding the canvas: " + err);
+        return;
+      }
+      triggerDownload(dataUrl, exportFileBase() + ".png");
+    };
+    img.onerror = () => fail("PNG export failed: the diagram SVG could not be loaded for rasterizing");
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(built.svg);
+  }
+  loadPersisted();
+  renderAll();
+  if (viewport.clientWidth === 0) {
+    win.requestAnimationFrame(() => fit());
+  } else {
+    fit();
+  }
+  const ROCtor = win.ResizeObserver;
+  if (ROCtor) new ROCtor(() => drawMinimap()).observe(viewport);
+  return {
+    root,
+    destroy,
+    fit,
+    zoomIn: () => zoomBy(1.2),
+    zoomOut: () => zoomBy(1 / 1.2),
+    resetView,
+    resetLayout,
+    exportLayout,
+    importLayout,
+    setTheme,
+    getPositions: () => exportLayout().positions,
+    toSvgString
+  };
+};
+var __vnm_payload = {"model":{"direction":"LR","nodes":[{"id":"user","label":"User Browser","shape":"rect","classes":["external"],"x":78.5,"y":151.75,"width":141,"height":47},{"id":"cdn","label":"CDN / WAF","shape":"rect","classes":["cloud"],"x":422.5,"y":151.75,"width":115,"height":47},{"id":"web","label":"Web App","shape":"rect","classes":["frontend"],"x":744.5,"y":151.75,"width":97,"height":47},{"id":"api","label":"API Gateway","shape":"rect","classes":["backend"],"x":1075,"y":151.75,"width":132,"height":47},{"id":"auth","label":"Auth Service","shape":"rect","classes":["security"],"x":1427.5,"y":65.5,"width":141,"height":47},{"id":"worker","label":"Worker","shape":"rect","classes":["backend"],"x":1758.5,"y":180.5,"width":89,"height":47},{"id":"db","label":"PostgreSQL","shape":"cylinder","classes":["database"],"x":2080.5,"y":369,"width":123,"height":59},{"id":"cache","label":"Redis","shape":"cylinder","classes":["database"],"x":1427.5,"y":321.5,"width":80,"height":59},{"id":"bus","label":"Kafka","shape":"rect","classes":["messagebus"],"x":1427.5,"y":422.5,"width":80,"height":47}],"edges":[{"from":"user","to":"cdn","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":149,"y":151.75},{"x":365,"y":151.75}],"path":"M 149 151.75 L 365 151.75","waypoints":[{"x":185,"y":151.75},{"x":221,"y":151.75},{"x":257,"y":151.75},{"x":293,"y":151.75},{"x":329,"y":151.75}]},{"from":"cdn","to":"web","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":480,"y":151.75},{"x":696,"y":151.75}],"path":"M 480 151.75 L 696 151.75","waypoints":[{"x":516,"y":151.75},{"x":552,"y":151.75},{"x":588,"y":151.75},{"x":624,"y":151.75},{"x":660,"y":151.75}]},{"from":"web","to":"api","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":793,"y":151.75},{"x":1009,"y":151.75}],"path":"M 793 151.75 L 1009 151.75","waypoints":[{"x":829,"y":151.75},{"x":865,"y":151.75},{"x":901,"y":151.75},{"x":937,"y":151.75},{"x":973,"y":151.75}]},{"from":"api","to":"auth","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"verify JWT","points":[{"x":1141,"y":136.75},{"x":1177,"y":136.75},{"x":1177,"y":65.5},{"x":1357,"y":65.5}],"path":"M 1141 136.75 L 1165 136.75 Q 1177 136.75 1177 124.75 L 1177 77.5 Q 1177 65.5 1189 65.5 L 1357 65.5","waypoints":[{"x":1177,"y":65.5},{"x":1213,"y":65.5},{"x":1249,"y":65.5},{"x":1285,"y":65.5},{"x":1321,"y":65.5}],"ports":{"source":{"side":"right","offset":-15},"target":{"side":"left","offset":0}},"labelPos":{"x":1225,"y":101.13}},{"from":"api","to":"db","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":1141,"y":166.75},{"x":1177,"y":166.75},{"x":1177,"y":123},{"x":1862,"y":123},{"x":1862,"y":347.25},{"x":1983,"y":347.25},{"x":1983,"y":369},{"x":2019,"y":369}],"path":"M 1141 166.75 L 1165 166.75 Q 1177 166.75 1177 154.75 L 1177 135 Q 1177 123 1189 123 L 1850 123 Q 1862 123 1862 135 L 1862 335.25 Q 1862 347.25 1874 347.25 L 1972.13 347.25 Q 1983 347.25 1983 358.13 L 1983 358.13 Q 1983 369 1993.88 369 L 2019 369","waypoints":[{"x":1177,"y":123},{"x":1213,"y":123},{"x":1249,"y":123},{"x":1285,"y":123},{"x":1321,"y":123},{"x":1427.5,"y":123},{"x":1534,"y":123},{"x":1570,"y":123},{"x":1606,"y":123},{"x":1642,"y":123},{"x":1678,"y":123},{"x":1758.5,"y":123},{"x":1839,"y":123},{"x":1875,"y":347.25},{"x":1911,"y":347.25},{"x":1947,"y":347.25},{"x":1983,"y":347.25}],"ports":{"source":{"side":"right","offset":15},"target":{"side":"left","offset":0}}},{"from":"api","to":"cache","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":1060,"y":175.25},{"x":1060,"y":186.25},{"x":1321,"y":186.25},{"x":1321,"y":321.5},{"x":1387.5,"y":321.5}],"path":"M 1060 175.25 L 1060 180.75 Q 1060 186.25 1065.5 186.25 L 1309 186.25 Q 1321 186.25 1321 198.25 L 1321 309.5 Q 1321 321.5 1333 321.5 L 1387.5 321.5","waypoints":[{"x":1177,"y":189.25},{"x":1213,"y":189.25},{"x":1249,"y":189.25},{"x":1285,"y":189.25},{"x":1321,"y":189.25}],"ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"left","offset":0}}},{"from":"api","to":"bus","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":1090,"y":175.25},{"x":1090,"y":212.25},{"x":1373.5,"y":212.25},{"x":1373.5,"y":365},{"x":1412.5,"y":365},{"x":1412.5,"y":399}],"path":"M 1090 175.25 L 1090 200.25 Q 1090 212.25 1102 212.25 L 1361.5 212.25 Q 1373.5 212.25 1373.5 224.25 L 1373.5 353 Q 1373.5 365 1385.5 365 L 1400.5 365 Q 1412.5 365 1412.5 377 L 1412.5 399","waypoints":[{"x":1177,"y":209.25},{"x":1213,"y":209.25},{"x":1249,"y":209.25},{"x":1285,"y":209.25},{"x":1321,"y":209.25}],"ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":-15}}},{"from":"bus","to":"worker","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":1467.5,"y":422.5},{"x":1743.5,"y":422.5},{"x":1743.5,"y":204}],"path":"M 1467.5 422.5 L 1731.5 422.5 Q 1743.5 422.5 1743.5 410.5 L 1743.5 204","waypoints":[{"x":1534,"y":422.5},{"x":1570,"y":422.5},{"x":1606,"y":422.5},{"x":1642,"y":422.5},{"x":1678,"y":422.5}],"ports":{"source":{"side":"top","offset":15},"target":{"side":"bottom","offset":-15}}},{"from":"worker","to":"db","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":1803,"y":180.5},{"x":1888,"y":180.5},{"x":1888,"y":390.75},{"x":2019,"y":390.75}],"path":"M 1803 180.5 L 1876 180.5 Q 1888 180.5 1888 192.5 L 1888 378.75 Q 1888 390.75 1900 390.75 L 2019 390.75","waypoints":[{"x":1839,"y":180.5},{"x":1875,"y":390.75},{"x":1911,"y":390.75},{"x":1947,"y":390.75},{"x":1983,"y":390.75}],"ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}}}],"subgraphs":[{"id":"edge","title":"Edge","children":["cdn","web"],"x":579,"y":140.75,"width":456,"height":97},{"id":"services","title":"Services","children":["api","auth","worker"],"x":1406,"y":112,"width":822,"height":212},{"id":"data","title":"Data","children":["db","cache","bus"],"x":1764.75,"y":358,"width":782.5,"height":204}],"classDefs":{},"bounds":{"x":-12,"y":-14,"width":2188,"height":494}},"theme":{"name":"fancy","edgeStyle":"curved","tokens":{"colors":{"background":"#0b1020","surface":"#151b34","surfaceStroke":"#3b4a7a","text":"#eef1ff","textMuted":"#9fa9d6","edge":"#7d88c4","edgeLabelBg":"#0b1020","edgeLabelText":"#c8cffb","subgraphFill":"#111834","subgraphStroke":"#3b4a7a","subgraphText":"#9fa9d6","accent":"#8b6cff","minimapBg":"rgba(12,16,34,0.9)","minimapViewport":"rgba(139,108,255,0.35)","roles":{"frontend":{"fill":"rgba(8,51,68,0.55)","stroke":"#22d3ee","text":"#e6feff"},"backend":{"fill":"rgba(6,78,59,0.55)","stroke":"#34d399","text":"#e7fff4"},"database":{"fill":"rgba(76,29,149,0.5)","stroke":"#a78bfa","text":"#f1ebff"},"cloud":{"fill":"rgba(120,53,15,0.55)","stroke":"#fbbf24","text":"#fff6e0"},"security":{"fill":"rgba(136,19,55,0.5)","stroke":"#fb7185","text":"#ffe4ec"},"messagebus":{"fill":"rgba(124,45,18,0.55)","stroke":"#fb923c","text":"#ffedd5"},"external":{"fill":"rgba(30,41,59,0.7)","stroke":"#94a3b8","text":"#e2e8f0"},"accent":{"fill":"#2a2160","stroke":"#8b6cff","text":"#eef1ff"},"success":{"fill":"#123a2e","stroke":"#3fd39b","text":"#d6ffef"},"warn":{"fill":"#3a2f0f","stroke":"#e6c04d","text":"#fff4cf"},"danger":{"fill":"#3f1830","stroke":"#ff6bb0","text":"#ffd9ec"}}},"radii":{"node":14,"card":14,"label":6},"spacing":{"nodePadX":18,"nodePadY":14,"nodesep":48,"ranksep":72,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":19,"weight":600},"edge":{"style":"curved","width":1.75,"thickWidth":3.5,"arrowSize":9},"effects":{"nodeShadow":"0 6px 22px rgba(80,60,180,0.35)","gradient":true,"hoverLift":3}}},"cssVars":"--vnm-bg: #0b1020; --vnm-surface: #151b34; --vnm-surface-stroke: #3b4a7a; --vnm-text: #eef1ff; --vnm-text-muted: #9fa9d6; --vnm-edge: #7d88c4; --vnm-edge-label-bg: #0b1020; --vnm-edge-label-text: #c8cffb; --vnm-subgraph-fill: #111834; --vnm-subgraph-stroke: #3b4a7a; --vnm-subgraph-text: #9fa9d6; --vnm-accent: #8b6cff; --vnm-minimap-bg: rgba(12,16,34,0.9); --vnm-minimap-viewport: rgba(139,108,255,0.35); --vnm-radius: 14px; --vnm-label-radius: 6px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 600; --vnm-node-shadow: 0 6px 22px rgba(80,60,180,0.35); --vnm-hover-lift: 3px; --vnm-edge-width: 1.75px;--vnm-font: 'Kalam', 'Comic Sans MS', 'Segoe Print', 'Bradley Hand', cursive;","options":{"fitPadding":60,"persistKey":"vnm-layout:1mf1h17","minimap":true,"minScale":0.2,"maxScale":4,"style":"sketch","bridges":true,"arrowCaps":true},"sketch":{"fontFace":"@font-face{font-family:'Kalam';font-style:normal;font-weight:400;src:url(data:font/woff2;base64,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) format('woff2');}","fontFamily":"'Kalam', 'Comic Sans MS', 'Segoe Print', 'Bradley Hand', cursive"}};
+vnmRuntime(document.getElementById("vnm-root"), __vnm_payload);
+</script>
+</body>
+</html>

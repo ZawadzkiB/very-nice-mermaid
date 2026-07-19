@@ -1,0 +1,2632 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flowchart — clean / arch</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: #020617; font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; }
+  #vnm-root { position: absolute; inset: 0; }
+  .vnm-node { box-sizing: border-box; }
+  button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="vnm-root"></div>
+<script>
+"use strict";
+var vnmRuntime = function vnmRuntime(root, payload) {
+  const doc = root.ownerDocument;
+  const win = doc.defaultView;
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const model = payload.model;
+  const opt = payload.options;
+  let tokens = payload.theme.tokens;
+  let edgeStyle = payload.theme.edgeStyle;
+  const sketch = opt.style === "sketch";
+  const arrowCaps = opt.arrowCaps !== false;
+  const SK_ROUGHNESS = 2.4;
+  const SK_BOWING = 2.2;
+  const SK_OUTLINE_STROKES = 2;
+  const SK_ELLIPSE_STEPS = 22;
+  const SK_FILL_ROUGHNESS = 1.2;
+  const offsetX = model.bounds.x;
+  const offsetY = model.bounds.y;
+  const contentW = model.bounds.width;
+  const contentH = model.bounds.height;
+  const positions = {};
+  const sizes = {};
+  const baseSizes = {};
+  const shapeById = {};
+  for (const nd of model.nodes) {
+    positions[nd.id] = { x: nd.x - offsetX, y: nd.y - offsetY };
+    sizes[nd.id] = { w: nd.width, h: nd.height };
+    baseSizes[nd.id] = { w: nd.width, h: nd.height };
+    shapeById[nd.id] = nd.shape;
+  }
+  const anchorsOv = {};
+  let tx = 0;
+  let ty = 0;
+  let scale = 1;
+  root.classList.add("vnm-root");
+  const viewport = doc.createElement("div");
+  viewport.className = "vnm-viewport";
+  viewport.setAttribute(
+    "style",
+    "position:absolute;inset:0;overflow:hidden;background:var(--vnm-bg);cursor:grab;touch-action:none;user-select:none;font-family:var(--vnm-font);" + payload.cssVars
+  );
+  if (getComputedStyle(root).position === "static") root.style.position = "relative";
+  root.appendChild(viewport);
+  if (sketch && payload.sketch) {
+    const fontStyle = doc.createElement("style");
+    fontStyle.textContent = payload.sketch.fontFace;
+    viewport.appendChild(fontStyle);
+  }
+  const world = doc.createElement("div");
+  world.className = "vnm-world";
+  world.setAttribute("style", "position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform;");
+  viewport.appendChild(world);
+  const svg = doc.createElementNS(SVGNS, "svg");
+  svg.setAttribute("class", "vnm-edges");
+  svg.setAttribute("width", String(contentW));
+  svg.setAttribute("height", String(contentH));
+  svg.setAttribute("style", "position:absolute;left:0;top:0;overflow:visible;pointer-events:none;");
+  const defs5 = doc.createElementNS(SVGNS, "defs");
+  defs5.innerHTML = '<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M0 0 L10 5 L0 10 z"></path></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M10 0 L0 5 L10 10 z"></path></marker>';
+  svg.appendChild(defs5);
+  const gBoxes = doc.createElementNS(SVGNS, "g");
+  const gEdges = doc.createElementNS(SVGNS, "g");
+  const gLabels = doc.createElementNS(SVGNS, "g");
+  const gTitles = doc.createElementNS(SVGNS, "g");
+  const gNodes = doc.createElementNS(SVGNS, "g");
+  gBoxes.setAttribute("class", "vnm-subgraph-layer");
+  gEdges.setAttribute("class", "vnm-edge-layer");
+  gLabels.setAttribute("class", "vnm-label-layer");
+  gTitles.setAttribute("class", "vnm-title-layer");
+  gNodes.setAttribute("class", "vnm-node-layer");
+  svg.appendChild(gBoxes);
+  svg.appendChild(gEdges);
+  svg.appendChild(gLabels);
+  svg.appendChild(gTitles);
+  svg.appendChild(gNodes);
+  world.appendChild(svg);
+  const SG_PAD = 14;
+  const SG_TITLE = 22;
+  const subgraphMembers = {};
+  {
+    const childrenById = {};
+    for (const sg of model.subgraphs) childrenById[sg.id] = sg.children;
+    const isNode = (id) => !!positions[id];
+    const resolve = (id, seen) => {
+      const out = [];
+      for (const child of childrenById[id] || []) {
+        if (isNode(child)) out.push(child);
+        else if (childrenById[child] && !seen[child]) {
+          seen[child] = true;
+          out.push(...resolve(child, seen));
+        }
+      }
+      return out;
+    };
+    for (const sg of model.subgraphs) subgraphMembers[sg.id] = resolve(sg.id, { [sg.id]: true });
+  }
+  function sgBoxFrom(boxes, hasTitle) {
+    if (!boxes.length) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const b of boxes) {
+      minX = Math.min(minX, b.x - b.w / 2);
+      minY = Math.min(minY, b.y - b.h / 2);
+      maxX = Math.max(maxX, b.x + b.w / 2);
+      maxY = Math.max(maxY, b.y + b.h / 2);
+    }
+    const top = SG_PAD + (hasTitle ? SG_TITLE : 0);
+    const x0 = minX - SG_PAD;
+    const y0 = minY - top;
+    const x1 = maxX + SG_PAD;
+    const y1 = maxY + SG_PAD;
+    return { x: nAt((x0 + x1) / 2), y: nAt((y0 + y1) / 2), w: nAt(x1 - x0), h: nAt(y1 - y0) };
+  }
+  function subgraphWorldBox(sg) {
+    const ids = subgraphMembers[sg.id] || [];
+    const boxes = ids.map((id) => ({ x: positions[id].x, y: positions[id].y, w: sizes[id].w, h: sizes[id].h }));
+    return sgBoxFrom(boxes, !!sg.title) ?? { x: sg.x - offsetX, y: sg.y - offsetY, w: sg.width, h: sg.height };
+  }
+  const subgraphEls = [];
+  for (const sg of model.subgraphs) {
+    const r = doc.createElementNS(SVGNS, "rect");
+    r.setAttribute("class", "vnm-subgraph");
+    r.setAttribute("rx", String(tokens.radii.card));
+    r.setAttribute("fill", "var(--vnm-subgraph-fill)");
+    r.setAttribute("stroke", "var(--vnm-subgraph-stroke)");
+    r.setAttribute("stroke-dasharray", "4 4");
+    gBoxes.appendChild(r);
+    const rec = { sg, rect: r };
+    if (sg.title) {
+      const plate = doc.createElementNS(SVGNS, "rect");
+      plate.setAttribute("class", "vnm-subgraph-title-plate");
+      plate.setAttribute("fill", "var(--vnm-subgraph-fill)");
+      plate.setAttribute("rx", String(tokens.radii.label));
+      gTitles.appendChild(plate);
+      const tnode = doc.createElementNS(SVGNS, "text");
+      tnode.setAttribute("class", "vnm-subgraph-title");
+      tnode.setAttribute("fill", "var(--vnm-subgraph-text)");
+      tnode.setAttribute("font-size", String(tokens.font.size - 1));
+      tnode.setAttribute("font-weight", "600");
+      tnode.textContent = sg.title;
+      gTitles.appendChild(tnode);
+      rec.plate = plate;
+      rec.text = tnode;
+    }
+    subgraphEls.push(rec);
+  }
+  function renderSubgraphs() {
+    for (const rec of subgraphEls) {
+      const b = subgraphWorldBox(rec.sg);
+      rec.rect.setAttribute("x", String(b.x - b.w / 2));
+      rec.rect.setAttribute("y", String(b.y - b.h / 2));
+      rec.rect.setAttribute("width", String(b.w));
+      rec.rect.setAttribute("height", String(b.h));
+      if (rec.text) {
+        const tx2 = b.x - b.w / 2 + 12;
+        const ty2 = b.y - b.h / 2 + 18;
+        rec.text.setAttribute("x", String(tx2));
+        rec.text.setAttribute("y", String(ty2));
+        if (rec.plate) {
+          const fs = tokens.font.size - 1;
+          const pad = 5;
+          const pw = rec.sg.title.length * fs * 0.6 + pad * 2;
+          rec.plate.setAttribute("x", String(nAt(tx2 - pad)));
+          rec.plate.setAttribute("y", String(nAt(ty2 - fs + 1)));
+          rec.plate.setAttribute("width", String(nAt(pw)));
+          rec.plate.setAttribute("height", String(fs + 4));
+        }
+      }
+    }
+  }
+  const edgeEls = [];
+  for (const e of model.edges) {
+    const path = doc.createElementNS(SVGNS, "path");
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "var(--vnm-edge)");
+    path.setAttribute("stroke-width", String(e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width));
+    path.setAttribute("stroke-linejoin", "round");
+    path.setAttribute("stroke-linecap", "round");
+    if (e.kind === "dotted") path.setAttribute("stroke-dasharray", "2 5");
+    if (!sketch && e.arrows.end) path.setAttribute("marker-end", "url(#vnm-arrow)");
+    if (!sketch && e.arrows.start) path.setAttribute("marker-start", "url(#vnm-arrow-start)");
+    gEdges.appendChild(path);
+    const rec = { from: e.from, to: e.to, kind: e.kind, arrows: e.arrows, path };
+    if (sketch && (e.arrows.end || e.arrows.start)) {
+      const head = doc.createElementNS(SVGNS, "path");
+      head.setAttribute("fill", "none");
+      head.setAttribute("stroke", "var(--vnm-edge)");
+      head.setAttribute("stroke-width", String(e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width));
+      head.setAttribute("stroke-linejoin", "round");
+      head.setAttribute("stroke-linecap", "round");
+      gEdges.appendChild(head);
+      rec.headPath = head;
+    }
+    if (e.waypoints && e.waypoints.length) {
+      rec.waypoints = e.waypoints.map((p) => ({ x: p.x - offsetX, y: p.y - offsetY }));
+    }
+    if (e.label) {
+      rec.label = e.label;
+      const plate = doc.createElementNS(SVGNS, "rect");
+      plate.setAttribute("fill", "var(--vnm-edge-label-bg)");
+      plate.setAttribute("rx", String(tokens.radii.label));
+      gLabels.appendChild(plate);
+      const text = doc.createElementNS(SVGNS, "text");
+      text.setAttribute("fill", "var(--vnm-edge-label-text)");
+      text.setAttribute("font-size", String(tokens.font.size - 1));
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("dominant-baseline", "central");
+      text.textContent = e.label;
+      gLabels.appendChild(text);
+      rec.plate = plate;
+      rec.text = text;
+    }
+    edgeEls.push(rec);
+  }
+  defs5.querySelector("marker path")?.setAttribute("fill", tokens.colors.edge);
+  const classDefs = model.classDefs;
+  const cards = {};
+  for (const nd of model.nodes) {
+    const card = doc.createElement("div");
+    card.className = "vnm-node";
+    card.dataset.id = nd.id;
+    card.dataset.shape = nd.shape;
+    const st = styleForNode(nd.id, nd.classes, nd.style);
+    card.setAttribute("style", cardStyle(nd.id, st));
+    const inner = doc.createElement("div");
+    inner.setAttribute("style", "white-space:pre-line;text-align:center;pointer-events:none;");
+    inner.textContent = nd.label;
+    card.appendChild(inner);
+    world.appendChild(card);
+    cards[nd.id] = card;
+  }
+  const capOverlay = arrowCaps ? doc.createElementNS(SVGNS, "svg") : null;
+  if (capOverlay) {
+    capOverlay.setAttribute("class", "vnm-arrow-caps");
+    capOverlay.setAttribute("width", String(contentW));
+    capOverlay.setAttribute("height", String(contentH));
+    capOverlay.setAttribute("style", "position:absolute;left:0;top:0;overflow:visible;pointer-events:none;");
+    world.appendChild(capOverlay);
+  }
+  const nodeShapeEls = {};
+  const stateMarkerEls = {};
+  if (sketch) {
+    for (const nd of model.nodes) {
+      if (nd.stateMarker) {
+        const circles = [];
+        const mk = () => {
+          const c = doc.createElementNS(SVGNS, "circle");
+          gNodes.appendChild(c);
+          circles.push(c);
+          return c;
+        };
+        if (nd.stateMarker === "start") {
+          mk().setAttribute("fill", tokens.colors.text);
+        } else {
+          const ring = mk();
+          ring.setAttribute("fill", "none");
+          ring.setAttribute("stroke", tokens.colors.text);
+          ring.setAttribute("stroke-width", "1.5");
+          mk().setAttribute("fill", tokens.colors.text);
+        }
+        stateMarkerEls[nd.id] = circles;
+        continue;
+      }
+      const st = styleForNode(nd.id, nd.classes, nd.style);
+      const sw = st.strokeWidth ?? "1.5";
+      const fillEl = doc.createElementNS(SVGNS, "path");
+      fillEl.setAttribute("fill", st.fill);
+      fillEl.setAttribute("stroke", "none");
+      gNodes.appendChild(fillEl);
+      const probe = sketchShapePoints2(nd.shape, 0, 0, 100, 100);
+      const strokeCount = SK_OUTLINE_STROKES + probe.extras.length * SK_OUTLINE_STROKES;
+      const strokes = [];
+      for (let i = 0; i < strokeCount; i++) {
+        const p = doc.createElementNS(SVGNS, "path");
+        p.setAttribute("fill", "none");
+        p.setAttribute("stroke", st.stroke);
+        p.setAttribute("stroke-width", sw);
+        p.setAttribute("stroke-linejoin", "round");
+        p.setAttribute("stroke-linecap", "round");
+        if (st.strokeDasharray) p.setAttribute("stroke-dasharray", st.strokeDasharray);
+        gNodes.appendChild(p);
+        strokes.push(p);
+      }
+      nodeShapeEls[nd.id] = { fill: fillEl, strokes };
+    }
+  }
+  function renderNodeShape(id) {
+    const markers = stateMarkerEls[id];
+    if (markers) {
+      const mp = positions[id];
+      const ms = sizes[id];
+      const r = Math.min(9, ms.w / 2);
+      for (const c of markers) {
+        c.setAttribute("cx", String(nAt(mp.x)));
+        c.setAttribute("cy", String(nAt(mp.y)));
+      }
+      markers[0].setAttribute("r", String(nAt(r)));
+      if (markers[1]) markers[1].setAttribute("r", String(nAt(r - 4)));
+      return;
+    }
+    const els = nodeShapeEls[id];
+    if (!els) return;
+    const p = positions[id];
+    const s = sizes[id];
+    const { pts, extras } = sketchShapePoints2(shapeById[id], p.x - s.w / 2, p.y - s.h / 2, s.w, s.h);
+    const rs = roughShape2(pts, id);
+    els.fill.setAttribute("d", rs.fill);
+    const ds = rs.outline.slice();
+    extras.forEach((seg, i) => {
+      for (const d of roughPolyline2(seg, id + "#x" + i)) ds.push(d);
+    });
+    els.strokes.forEach((el, i) => el.setAttribute("d", ds[i] ?? ""));
+  }
+  const HANDLE = 10;
+  const MIN_SIZE = 24;
+  const handleEls = [];
+  for (const [sx, sy] of [
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1]
+  ]) {
+    const h = doc.createElement("div");
+    h.className = "vnm-resize-handle";
+    h.dataset.sx = String(sx);
+    h.dataset.sy = String(sy);
+    h.setAttribute(
+      "style",
+      "position:absolute;width:" + HANDLE + "px;height:" + HANDLE + "px;box-sizing:border-box;background:var(--vnm-surface);border:1.5px solid var(--vnm-accent);border-radius:2px;display:none;touch-action:none;z-index:6;cursor:" + (sx * sy > 0 ? "nwse-resize" : "nesw-resize") + ";"
+    );
+    world.appendChild(h);
+    handleEls.push(h);
+  }
+  function hideHandles() {
+    for (const h of handleEls) h.style.display = "none";
+  }
+  function positionHandles() {
+    if (!selected || !cards[selected]) {
+      hideHandles();
+      return;
+    }
+    const p = positions[selected];
+    const s = sizes[selected];
+    for (const h of handleEls) {
+      const sx = Number(h.dataset.sx);
+      const sy = Number(h.dataset.sy);
+      h.style.left = p.x + sx * s.w / 2 - HANDLE / 2 + "px";
+      h.style.top = p.y + sy * s.h / 2 - HANDLE / 2 + "px";
+      h.style.display = "block";
+    }
+  }
+  function applyCardSize(id) {
+    const s = sizes[id];
+    cards[id].style.width = s.w + "px";
+    cards[id].style.height = s.h + "px";
+  }
+  const EP = 9;
+  const edgeHandles = [];
+  edgeEls.forEach((_e, i) => {
+    for (const end of ["source", "target"]) {
+      const h = doc.createElement("div");
+      h.className = "vnm-edge-handle";
+      h.dataset.ei = String(i);
+      h.dataset.end = end;
+      h.setAttribute(
+        "style",
+        "position:absolute;width:" + EP + "px;height:" + EP + "px;box-sizing:border-box;background:var(--vnm-accent);border:1.5px solid var(--vnm-surface);border-radius:50%;display:none;touch-action:none;z-index:7;cursor:grab;"
+      );
+      world.appendChild(h);
+      edgeHandles.push({ el: h, ei: i, end });
+    }
+  });
+  function positionEdgeHandles(ports) {
+    for (const eh of edgeHandles) {
+      const e = edgeEls[eh.ei];
+      const nodeId = eh.end === "source" ? e.from : e.to;
+      const isSelf = e.from === e.to;
+      if (nodeId !== selected || isSelf) {
+        eh.el.style.display = "none";
+        continue;
+      }
+      const p = positions[nodeId];
+      const s = sizes[nodeId];
+      const a = ports[eh.ei][eh.end];
+      const pt = anchor({ x: p.x, y: p.y, w: s.w, h: s.h, shape: shapeById[nodeId] }, a.side, a.offset);
+      eh.el.style.left = pt.x - EP / 2 + "px";
+      eh.el.style.top = pt.y - EP / 2 + "px";
+      eh.el.style.display = "block";
+    }
+  }
+  function anchorFromPointer(box, wx, wy) {
+    const dx = wx - box.x;
+    const dy = wy - box.y;
+    const nx = box.w ? dx / (box.w / 2) : 0;
+    const ny = box.h ? dy / (box.h / 2) : 0;
+    if (Math.abs(nx) >= Math.abs(ny)) {
+      return { side: dx >= 0 ? "right" : "left", offset: clampOff(dy, box.h / 2) };
+    }
+    return { side: dy >= 0 ? "bottom" : "top", offset: clampOff(dx, box.w / 2) };
+  }
+  let minimap = null;
+  if (opt.minimap) {
+    minimap = doc.createElement("canvas");
+    minimap.className = "vnm-minimap";
+    minimap.width = 180;
+    minimap.height = Math.max(80, Math.round(180 * contentH / Math.max(contentW, 1)));
+    minimap.setAttribute(
+      "style",
+      "position:absolute;right:12px;bottom:12px;border:1px solid var(--vnm-surface-stroke);border-radius:8px;background:var(--vnm-minimap-bg);cursor:pointer;box-shadow:var(--vnm-node-shadow);"
+    );
+    viewport.appendChild(minimap);
+  }
+  const toolbar = doc.createElement("div");
+  toolbar.className = "vnm-toolbar";
+  toolbar.setAttribute(
+    "style",
+    "position:absolute;left:12px;top:12px;display:flex;gap:6px;"
+  );
+  const mkBtn = (label, title, on) => {
+    const btn = doc.createElement("button");
+    btn.type = "button";
+    btn.textContent = label;
+    btn.title = title;
+    btn.setAttribute(
+      "style",
+      "width:28px;height:28px;border:1px solid var(--vnm-surface-stroke);border-radius:6px;background:var(--vnm-surface);color:var(--vnm-text);cursor:pointer;font-size:15px;line-height:1;"
+    );
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      on();
+    });
+    toolbar.appendChild(btn);
+    return btn;
+  };
+  mkBtn("\u2922", "Fit to view", () => fit());
+  mkBtn("+", "Zoom in", () => zoomBy(1.2));
+  mkBtn("\u2212", "Zoom out", () => zoomBy(1 / 1.2));
+  mkBtn("\u27F2", "Reset layout", () => resetLayout());
+  const mkTextBtn = (label, title, on) => {
+    const btn = doc.createElement("button");
+    btn.type = "button";
+    btn.textContent = label;
+    btn.title = title;
+    btn.className = "vnm-export-btn";
+    btn.setAttribute(
+      "style",
+      "height:28px;padding:0 9px;border:1px solid var(--vnm-surface-stroke);border-radius:6px;background:var(--vnm-surface);color:var(--vnm-text);cursor:pointer;font-size:12px;font-weight:600;line-height:1;"
+    );
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      on();
+    });
+    toolbar.appendChild(btn);
+    return btn;
+  };
+  mkTextBtn("SVG", "Save as SVG", () => saveSvg());
+  mkTextBtn("PNG", "Save as PNG", () => savePng());
+  viewport.appendChild(toolbar);
+  function nAt(v) {
+    return Math.round(v * 100) / 100;
+  }
+  function roughSeed2(key) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < key.length; i++) {
+      h ^= key.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h >>> 0;
+  }
+  function mulberry322(seed) {
+    let a = seed >>> 0;
+    return function() {
+      a = a + 1831565813 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function roughStroke(pts, closed, rand, rough, bow) {
+    if (pts.length === 0) return "";
+    const jv = pts.map((p) => [p[0] + (rand() * 2 - 1) * rough, p[1] + (rand() * 2 - 1) * rough]);
+    const seq = closed ? [...jv, jv[0]] : jv;
+    let d = "M " + nAt(seq[0][0]) + " " + nAt(seq[0][1]);
+    for (let i = 1; i < seq.length; i++) {
+      const ax = seq[i - 1][0];
+      const ay = seq[i - 1][1];
+      const bx = seq[i][0];
+      const by = seq[i][1];
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const px = -(by - ay) / len;
+      const py = (bx - ax) / len;
+      const k = (rand() * 2 - 1) * bow;
+      const cx = (ax + bx) / 2 + px * k;
+      const cy = (ay + by) / 2 + py * k;
+      d += " Q " + nAt(cx) + " " + nAt(cy) + " " + nAt(bx) + " " + nAt(by);
+    }
+    if (closed) d += " Z";
+    return d;
+  }
+  function roughShape2(pts, key) {
+    const fill = roughStroke(pts, true, mulberry322(roughSeed2(key + "#f")), SK_FILL_ROUGHNESS, SK_BOWING);
+    const outline = [];
+    for (let s = 0; s < SK_OUTLINE_STROKES; s++) {
+      outline.push(roughStroke(pts, true, mulberry322(roughSeed2(key + "#o" + s)), SK_ROUGHNESS, SK_BOWING));
+    }
+    return { fill, outline };
+  }
+  function sketchEllipsePoints(cx, cy, rx, ry) {
+    const pts = [];
+    for (let i = 0; i < SK_ELLIPSE_STEPS; i++) {
+      const a = i / SK_ELLIPSE_STEPS * Math.PI * 2;
+      pts.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]);
+    }
+    return pts;
+  }
+  function roughPolyline2(pts, key) {
+    const out = [];
+    for (let s = 0; s < SK_OUTLINE_STROKES; s++) {
+      out.push(roughStroke(pts, false, mulberry322(roughSeed2(key + "#e" + s)), SK_ROUGHNESS * 0.8, SK_BOWING * 0.8));
+    }
+    return out;
+  }
+  function openArrowhead2(tip, from, size, key) {
+    const ang = Math.atan2(tip[1] - from[1], tip[0] - from[0]);
+    const r = mulberry322(roughSeed2(key + "#a"));
+    const spread = 0.52;
+    const len = size * 2.1;
+    const a1 = ang + Math.PI - spread + (r() * 2 - 1) * 0.12;
+    const a2 = ang + Math.PI + spread + (r() * 2 - 1) * 0.12;
+    const l1 = len * (1 + (r() * 2 - 1) * 0.14);
+    const l2 = len * (1 + (r() * 2 - 1) * 0.14);
+    const b1x = tip[0] + Math.cos(a1) * l1;
+    const b1y = tip[1] + Math.sin(a1) * l1;
+    const b2x = tip[0] + Math.cos(a2) * l2;
+    const b2y = tip[1] + Math.sin(a2) * l2;
+    return "M " + nAt(b1x) + " " + nAt(b1y) + " L " + nAt(tip[0]) + " " + nAt(tip[1]) + " L " + nAt(b2x) + " " + nAt(b2y);
+  }
+  function sketchShapePoints2(shape, x, y, w, h) {
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    if (shape === "circle") return { pts: sketchEllipsePoints(cx, cy, w / 2, h / 2), extras: [] };
+    if (shape === "diamond") return { pts: [[cx, y], [x + w, cy], [cx, y + h], [x, cy]], extras: [] };
+    if (shape === "hexagon") {
+      const k = Math.min(w * 0.22, h * 0.5);
+      return { pts: [[x + k, y], [x + w - k, y], [x + w, cy], [x + w - k, y + h], [x + k, y + h], [x, cy]], extras: [] };
+    }
+    if (shape === "parallelogram") {
+      const k = Math.min(w * 0.22, h);
+      return { pts: [[x + k, y], [x + w, y], [x + w - k, y + h], [x, y + h]], extras: [] };
+    }
+    if (shape === "parallelogram-alt") {
+      const k = Math.min(w * 0.22, h);
+      return { pts: [[x, y], [x + w - k, y], [x + w, y + h], [x + k, y + h]], extras: [] };
+    }
+    if (shape === "subroutine") {
+      const inset = 6;
+      return {
+        pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]],
+        extras: [[[x + inset, y], [x + inset, y + h]], [[x + w - inset, y], [x + w - inset, y + h]]]
+      };
+    }
+    return { pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]], extras: [] };
+  }
+  function sketchEdgeParts(pts, key, arrows, size) {
+    const arr = pts.map((p) => [p.x, p.y]);
+    const line = roughPolyline2(arr, key).join(" ");
+    const m = arr.length;
+    let head = "";
+    if (arrows.end && m >= 2) head += openArrowhead2(arr[m - 1], arr[m - 2], size, key + "@end");
+    if (arrows.start && m >= 2) head += (head ? " " : "") + openArrowhead2(arr[0], arr[1], size, key + "@start");
+    return { line, head };
+  }
+  function simplify2(points) {
+    const out = [];
+    for (const p of points) {
+      const last = out[out.length - 1];
+      if (last && nAt(last.x) === nAt(p.x) && nAt(last.y) === nAt(p.y)) continue;
+      out.push(p);
+    }
+    for (let i = out.length - 2; i >= 1; i--) {
+      const a = out[i - 1];
+      const b = out[i];
+      const c = out[i + 1];
+      const collinear = nAt(a.x) === nAt(b.x) && nAt(b.x) === nAt(c.x) || nAt(a.y) === nAt(b.y) && nAt(b.y) === nAt(c.y);
+      if (collinear) out.splice(i, 1);
+    }
+    return out;
+  }
+  function raySide2(b, dx, dy) {
+    const sx = dx !== 0 ? b.w / 2 / Math.abs(dx) : Infinity;
+    const sy = dy !== 0 ? b.h / 2 / Math.abs(dy) : Infinity;
+    if (sx < sy) return dx > 0 ? "right" : "left";
+    return dy > 0 ? "bottom" : "top";
+  }
+  function clampOff(off, half) {
+    const max = Math.max(0, half - 6);
+    return Math.max(-max, Math.min(max, off));
+  }
+  function anchorBound2(shape, horiz, hw, hh) {
+    const half = horiz ? hw : hh;
+    const cap = half - 6;
+    if (shape === "rounded") return Math.min(cap, half - 14);
+    if (shape === "stadium") return Math.min(cap, half - hh);
+    if (shape === "hexagon") return horiz ? Math.min(cap, half - Math.min(hw * 0.44, hh)) : cap;
+    if (shape === "parallelogram" || shape === "parallelogram-alt")
+      return horiz ? Math.min(cap, half - Math.min(hw * 0.44, 2 * hh)) : cap;
+    if (shape === "cylinder") return horiz ? cap : Math.min(cap, half - Math.min(10, hh * 0.36));
+    return cap;
+  }
+  function anchor(b, side, off = 0) {
+    const hw = b.w / 2;
+    const hh = b.h / 2;
+    const cx = b.x;
+    const cy = b.y;
+    const shape = b.shape || "rect";
+    const horiz = side === "top" || side === "bottom";
+    const bound = Math.max(0, anchorBound2(shape, horiz, hw, hh));
+    const t = Math.max(-bound, Math.min(bound, off));
+    if (horiz) {
+      const sgn2 = side === "top" ? -1 : 1;
+      let y = cy + sgn2 * hh;
+      if (shape === "diamond") y = cy + sgn2 * hh * (1 - Math.abs(t) / hw);
+      else if (shape === "circle") y = cy + sgn2 * hh * Math.sqrt(1 - t / hw * (t / hw));
+      else if (shape === "cylinder") {
+        const ry = Math.min(10, hh * 0.36);
+        y = cy + sgn2 * (hh - ry + ry * Math.sqrt(1 - t / hw * (t / hw)));
+      }
+      return { x: cx + t, y };
+    }
+    const sgn = side === "left" ? -1 : 1;
+    let x = cx + sgn * hw;
+    if (shape === "diamond") x = cx + sgn * hw * (1 - Math.abs(t) / hh);
+    else if (shape === "circle") x = cx + sgn * hw * Math.sqrt(1 - t / hh * (t / hh));
+    else if (shape === "hexagon") {
+      const k = Math.min(hw * 0.44, hh);
+      x = cx + sgn * (hw - k * Math.abs(t) / hh);
+    } else if (shape === "parallelogram") {
+      const k = Math.min(hw * 0.44, 2 * hh);
+      x = side === "left" ? cx - hw + k * (hh - t) / (2 * hh) : cx + hw - k * (t + hh) / (2 * hh);
+    } else if (shape === "parallelogram-alt") {
+      const k = Math.min(hw * 0.44, 2 * hh);
+      x = side === "left" ? cx - hw + k * (t + hh) / (2 * hh) : cx + hw - k * (hh - t) / (2 * hh);
+    }
+    return { x, y: cy + t };
+  }
+  function offAlong(p, side, k) {
+    if (side === "top") return { x: p.x, y: p.y - k };
+    if (side === "bottom") return { x: p.x, y: p.y + k };
+    if (side === "left") return { x: p.x - k, y: p.y };
+    return { x: p.x + k, y: p.y };
+  }
+  function snapWaypoints2(interior, start, end) {
+    const xs = [start.x, end.x];
+    const ys = [start.y, end.y];
+    return interior.map((p) => {
+      let x = p.x;
+      let y = p.y;
+      for (const ax of xs) {
+        if (Math.abs(x - ax) <= 2) {
+          x = ax;
+          break;
+        }
+      }
+      for (const ay of ys) {
+        if (Math.abs(y - ay) <= 2) {
+          y = ay;
+          break;
+        }
+      }
+      return { x, y };
+    });
+  }
+  function elbowThrough2(start, end, interior, exitVertical, entryVertical, primaryVertical) {
+    const guide = [start, ...snapWaypoints2(interior, start, end), end];
+    const out = [guide[0]];
+    for (let i = 1; i < guide.length; i++) {
+      const prev = out[out.length - 1];
+      const cur = guide[i];
+      if (nAt(prev.x) !== nAt(cur.x) && nAt(prev.y) !== nAt(cur.y)) {
+        let verticalFirst;
+        if (i === 1) verticalFirst = exitVertical;
+        else if (i === guide.length - 1) verticalFirst = !entryVertical;
+        else verticalFirst = primaryVertical;
+        out.push(verticalFirst ? { x: prev.x, y: cur.y } : { x: cur.x, y: prev.y });
+      }
+      out.push(cur);
+    }
+    perpendicularizeEntry2(out, entryVertical);
+    return simplify2(out);
+  }
+  function perpendicularizeEntry2(out, entryVertical) {
+    if (out.length < 3) return;
+    const end = out[out.length - 1];
+    const a = out[out.length - 3];
+    const b = out[out.length - 2];
+    const finalPerp = entryVertical ? nAt(b.x) === nAt(end.x) : nAt(b.y) === nAt(end.y);
+    const swappable = entryVertical ? nAt(a.y) !== nAt(end.y) : nAt(a.x) !== nAt(end.x);
+    if (!finalPerp && swappable) {
+      out[out.length - 2] = entryVertical ? { x: end.x, y: a.y } : { x: a.x, y: end.y };
+    }
+  }
+  function dist2(a, b) {
+    return Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
+  }
+  function along2(from, toward, r) {
+    const d = dist2(from, toward) || 1;
+    return { x: from.x + (toward.x - from.x) * r / d, y: from.y + (toward.y - from.y) * r / d };
+  }
+  function pathRounded(points) {
+    if (points.length <= 2) return pathPoly(points);
+    let d = "M " + nAt(points[0].x) + " " + nAt(points[0].y);
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = points[i - 1];
+      const cur = points[i];
+      const next = points[i + 1];
+      const r = Math.min(12, dist2(prev, cur) / 2, dist2(cur, next) / 2);
+      const a = along2(cur, prev, r);
+      const b = along2(cur, next, r);
+      d += " L " + nAt(a.x) + " " + nAt(a.y) + " Q " + nAt(cur.x) + " " + nAt(cur.y) + " " + nAt(b.x) + " " + nAt(b.y);
+    }
+    const last = points[points.length - 1];
+    d += " L " + nAt(last.x) + " " + nAt(last.y);
+    return d;
+  }
+  function pathPoly(points) {
+    if (points.length === 0) return "";
+    let d = "M " + nAt(points[0].x) + " " + nAt(points[0].y);
+    for (let i = 1; i < points.length; i++) d += " L " + nAt(points[i].x) + " " + nAt(points[i].y);
+    return d;
+  }
+  function pathBezier(p) {
+    return "M " + nAt(p[0].x) + " " + nAt(p[0].y) + " C " + nAt(p[1].x) + " " + nAt(p[1].y) + " " + nAt(p[2].x) + " " + nAt(p[2].y) + " " + nAt(p[3].x) + " " + nAt(p[3].y);
+  }
+  function labelPoly(points) {
+    if (points.length === 2) return { x: nAt((points[0].x + points[1].x) / 2), y: nAt((points[0].y + points[1].y) / 2) };
+    const mid = Math.floor(points.length / 2);
+    return { x: nAt((points[mid - 1].x + points[mid].x) / 2), y: nAt((points[mid - 1].y + points[mid].y) / 2) };
+  }
+  function labelBezier(p) {
+    return {
+      x: nAt(0.125 * p[0].x + 0.375 * p[1].x + 0.375 * p[2].x + 0.125 * p[3].x),
+      y: nAt(0.125 * p[0].y + 0.375 * p[1].y + 0.375 * p[2].y + 0.125 * p[3].y)
+    };
+  }
+  function computePorts() {
+    const res = edgeEls.map(() => ({
+      source: { side: "bottom", offset: 0 },
+      target: { side: "top", offset: 0 }
+    }));
+    const boxOf = (id) => {
+      const p = positions[id];
+      const sz = sizes[id];
+      return { x: p.x, y: p.y, w: sz.w, h: sz.h, shape: shapeById[id] };
+    };
+    const axisX = (side) => side === "top" || side === "bottom";
+    const groups = {};
+    edgeEls.forEach((e, i) => {
+      const from = boxOf(e.from);
+      const to = boxOf(e.to);
+      if (from.x === to.x && from.y === to.y) return;
+      const exit = raySide2(from, to.x - from.x, to.y - from.y);
+      const entry = raySide2(to, from.x - to.x, from.y - to.y);
+      const wp = e.waypoints;
+      const srcHead = wp && wp.length ? wp[0] : to;
+      const tgtHead = wp && wp.length ? wp[wp.length - 1] : from;
+      const ov = anchorsOv[i];
+      if (ov && ov.source) {
+        res[i].source = { side: ov.source.side, offset: ov.source.offset };
+      } else {
+        res[i].source = { side: exit, offset: 0 };
+        const gs = e.from + "|" + exit;
+        (groups[gs] || (groups[gs] = [])).push({ i, role: "source", along: axisX(exit) ? srcHead.x : srcHead.y });
+      }
+      if (ov && ov.target) {
+        res[i].target = { side: ov.target.side, offset: ov.target.offset };
+      } else {
+        res[i].target = { side: entry, offset: 0 };
+        const gt = e.to + "|" + entry;
+        (groups[gt] || (groups[gt] = [])).push({ i, role: "target", along: axisX(entry) ? tgtHead.x : tgtHead.y });
+      }
+    });
+    for (const key in groups) {
+      const recs = groups[key];
+      if (recs.length < 2) continue;
+      const side = key.slice(key.lastIndexOf("|") + 1);
+      const b = boxOf(key.slice(0, key.lastIndexOf("|")));
+      const borderLen = side === "top" || side === "bottom" ? b.w : b.h;
+      recs.sort((a, c) => a.along - c.along || a.i - c.i || a.role.localeCompare(c.role));
+      const k = recs.length;
+      const step = Math.min(30, (borderLen - 2 * 6) / (k - 1));
+      recs.forEach((r, slot) => {
+        res[r.i][r.role].offset = (slot - (k - 1) / 2) * step;
+      });
+    }
+    const deskewer = (nodeId, sideA, sideB) => {
+      const ra = groups[nodeId + "|" + sideA];
+      const rb = groups[nodeId + "|" + sideB];
+      if (!ra || !rb || ra.length !== 1 || rb.length !== 1) return;
+      const box = boxOf(nodeId);
+      const axisIsX = sideA === "top" || sideA === "bottom";
+      const c = axisIsX ? box.x : box.y;
+      const farOff = (rec2) => {
+        const e = edgeEls[rec2.i];
+        const fb = boxOf(rec2.role === "target" ? e.from : e.to);
+        return fb ? (axisIsX ? fb.x : fb.y) - c : void 0;
+      };
+      const dA = farOff(ra[0]);
+      const dB = farOff(rb[0]);
+      if (dA === void 0 || dB === void 0) return;
+      const tol = 30 / 2;
+      if (Math.sign(dA) === Math.sign(dB) || Math.abs(dA) < tol || Math.abs(dB) < tol) return;
+      if ((axisIsX ? box.w : box.h) / 2 - 6 < tol) return;
+      const rec = ra[0];
+      res[rec.i][rec.role].offset = Math.sign(dA) * tol;
+    };
+    const skNodes = {};
+    for (const key in groups) skNodes[key.slice(0, key.lastIndexOf("|"))] = true;
+    for (const nodeId in skNodes) {
+      deskewer(nodeId, "top", "bottom");
+      deskewer(nodeId, "left", "right");
+    }
+    const pairs = {};
+    edgeEls.forEach((e, i) => {
+      if (!e.label) return;
+      const from = boxOf(e.from);
+      const to = boxOf(e.to);
+      if (from.x === to.x && from.y === to.y) return;
+      const key = e.from < e.to ? e.from + "|" + e.to : e.to + "|" + e.from;
+      (pairs[key] || (pairs[key] = [])).push(i);
+    });
+    for (const key in pairs) {
+      const idxs = pairs[key];
+      if (idxs.length < 2) continue;
+      idxs.sort((a2, c) => a2 - c);
+      const first = edgeEls[idxs[0]];
+      const a = boxOf(first.from);
+      const b = boxOf(first.to);
+      const runX = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+      const extent = (i) => {
+        const lns = edgeEls[i].label.split("\n");
+        const maxChars = lns.reduce((m, l) => Math.max(m, l.length), 0);
+        return runX ? maxChars * (tokens.font.size * 0.6) + 6 : lns.length * tokens.font.lineHeight + 2;
+      };
+      const pos = [0];
+      for (let s = 1; s < idxs.length; s++) {
+        pos.push(pos[s - 1] + (extent(idxs[s - 1]) + extent(idxs[s])) / 2 + 6);
+      }
+      const center2 = (pos[0] + pos[pos.length - 1]) / 2;
+      idxs.forEach((i, s) => {
+        const d = pos[s] - center2;
+        res[i].labelShift = runX ? { x: d, y: 0 } : { x: 0, y: d };
+      });
+    }
+    return res;
+  }
+  function plateSizeOf(label) {
+    const lns = label.split("\n");
+    const maxChars = lns.reduce((m, l) => Math.max(m, l.length), 0);
+    return { w: maxChars * tokens.font.size * 0.6 + 6, h: lns.length * tokens.font.lineHeight + 2 };
+  }
+  function resolveLabelCollisions2(plates) {
+    const shifts = plates.map(() => ({ x: 0, y: 0 }));
+    const idxs = [];
+    plates.forEach((p, i) => {
+      if (p) idxs.push(i);
+    });
+    if (idxs.length < 2) return shifts;
+    const cx = plates.map((p) => p ? p.x : 0);
+    const cy = plates.map((p) => p ? p.y : 0);
+    for (let pass = 0; pass < 8; pass++) {
+      let moved2 = false;
+      for (let a = 0; a < idxs.length; a++) {
+        for (let b = a + 1; b < idxs.length; b++) {
+          const i = idxs[a];
+          const j = idxs[b];
+          const pi = plates[i];
+          const pj = plates[j];
+          const dx = cx[j] - cx[i];
+          const dy = cy[j] - cy[i];
+          const ox = (pi.w + pj.w) / 2 + 6 - Math.abs(dx);
+          const oy = (pi.h + pj.h) / 2 + 6 - Math.abs(dy);
+          if (ox <= 0 || oy <= 0) continue;
+          moved2 = true;
+          if (ox <= oy) {
+            const push = ox / 2;
+            const dir = dx === 0 ? 1 : Math.sign(dx);
+            cx[i] = cx[i] - push * dir;
+            cx[j] = cx[j] + push * dir;
+          } else {
+            const push = oy / 2;
+            const dir = dy === 0 ? 1 : Math.sign(dy);
+            cy[i] = cy[i] - push * dir;
+            cy[j] = cy[j] + push * dir;
+          }
+        }
+      }
+      if (!moved2) break;
+    }
+    for (const i of idxs) shifts[i] = { x: nAt(cx[i] - plates[i].x), y: nAt(cy[i] - plates[i].y) };
+    return shifts;
+  }
+  function segmentsCross2(a1, a2, b1, b2) {
+    const rx = a2.x - a1.x;
+    const ry = a2.y - a1.y;
+    const sx = b2.x - b1.x;
+    const sy = b2.y - b1.y;
+    const denom = rx * sy - ry * sx;
+    if (denom === 0) return null;
+    const qpx = b1.x - a1.x;
+    const qpy = b1.y - a1.y;
+    const t = (qpx * sy - qpy * sx) / denom;
+    const u = (qpx * ry - qpy * rx) / denom;
+    if (t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6) return { x: a1.x + t * rx, y: a1.y + t * ry };
+    return null;
+  }
+  function gappedPath2(points, gaps) {
+    const bySeg = {};
+    for (const g of gaps) (bySeg[g.seg] || (bySeg[g.seg] = [])).push({ at: g.at, dist: g.dist });
+    for (const k in bySeg) bySeg[k].sort((p, q) => p.dist - q.dist);
+    let d = "M " + nAt(points[0].x) + " " + nAt(points[0].y);
+    for (let s = 0; s + 1 < points.length; s++) {
+      const p = points[s];
+      const q = points[s + 1];
+      const segGaps = bySeg[s];
+      if (!segGaps || !segGaps.length) {
+        d += " L " + nAt(q.x) + " " + nAt(q.y);
+        continue;
+      }
+      const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+      const ux = (q.x - p.x) / len;
+      const uy = (q.y - p.y) / len;
+      let lastGapDist = -Infinity;
+      for (const g of segGaps) {
+        if (g.dist - lastGapDist < 8) continue;
+        lastGapDist = g.dist;
+        const ex = g.at.x - ux * 4;
+        const ey = g.at.y - uy * 4;
+        const xx = g.at.x + ux * 4;
+        const xy = g.at.y + uy * 4;
+        d += " L " + nAt(ex) + " " + nAt(ey) + " M " + nAt(xx) + " " + nAt(xy);
+      }
+      d += " L " + nAt(q.x) + " " + nAt(q.y);
+    }
+    return d;
+  }
+  function applyEdgeBridges2(polys, enabled) {
+    const out = polys.map(() => null);
+    if (!enabled) return out;
+    const rp = polys.map((pts) => pts.map((p) => ({ x: nAt(p.x), y: nAt(p.y) })));
+    const gaps = polys.map(() => []);
+    for (let i = 0; i < rp.length; i++) {
+      const pi = rp[i];
+      if (pi.length < 2) continue;
+      for (let j = i + 1; j < rp.length; j++) {
+        const pj = rp[j];
+        if (pj.length < 2) continue;
+        for (let si = 0; si + 1 < pi.length; si++) {
+          const a1 = pi[si];
+          const a2 = pi[si + 1];
+          for (let sj = 0; sj + 1 < pj.length; sj++) {
+            const b1 = pj[sj];
+            const b2 = pj[sj + 1];
+            const x = segmentsCross2(a1, a2, b1, b2);
+            if (!x) continue;
+            const horizI = Math.abs(a2.x - a1.x) >= Math.abs(a2.y - a1.y);
+            const horizJ = Math.abs(b2.x - b1.x) >= Math.abs(b2.y - b1.y);
+            const iGaps = horizI === horizJ ? true : !horizI;
+            const ge = iGaps ? i : j;
+            const gs = iGaps ? si : sj;
+            const s1 = iGaps ? a1 : b1;
+            const s2 = iGaps ? a2 : b2;
+            const dEntry = Math.hypot(x.x - s1.x, x.y - s1.y);
+            const dExit = Math.hypot(x.x - s2.x, x.y - s2.y);
+            if (dEntry < 4 || dExit < 4) continue;
+            gaps[ge].push({ seg: gs, at: x, dist: dEntry });
+          }
+        }
+      }
+    }
+    for (let e = 0; e < rp.length; e++) if (gaps[e].length) out[e] = gappedPath2(rp[e], gaps[e]);
+    return out;
+  }
+  function shiftLabelOnSeg2(e, vertical, seg, target) {
+    const lp = e.labelPos;
+    if (!lp) return;
+    if (vertical) {
+      if (Math.abs(lp.x - seg.along) < 26 && lp.y >= seg.lo - 1 && lp.y <= seg.hi + 1) {
+        e.labelPos = { x: nAt(lp.x + (target - seg.along)), y: lp.y };
+      }
+    } else if (Math.abs(lp.y - seg.along) < 26 && lp.x >= seg.lo - 1 && lp.x <= seg.hi + 1) {
+      e.labelPos = { x: lp.x, y: nAt(lp.y + (target - seg.along)) };
+    }
+  }
+  function avoidSubgraphs2(edges, pairs, containers) {
+    if (edgeStyle !== "elbow" || !containers.length) return;
+    const MARGIN2 = 28;
+    const MIN_CROSS = 120;
+    const APPROACH = 30;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const lowerReentry2 = (p, trunkEndIdx, cornerIdx, anchor2, vertical) => {
+      if (cornerIdx < 0 || cornerIdx >= p.length || trunkEndIdx < 0 || trunkEndIdx >= p.length) return;
+      const anchorPar = vertical ? anchor2.y : anchor2.x;
+      const cornerOld = vertical ? p[cornerIdx].y : p[cornerIdx].x;
+      const dir = Math.sign(cornerOld - anchorPar);
+      if (dir === 0) return;
+      const target = nAt(anchorPar + dir * APPROACH);
+      if (Math.abs(target - anchorPar) >= Math.abs(cornerOld - anchorPar)) return;
+      if (vertical) {
+        p[cornerIdx] = { x: p[cornerIdx].x, y: target };
+        p[trunkEndIdx] = { x: p[trunkEndIdx].x, y: target };
+      } else {
+        p[cornerIdx] = { x: target, y: p[cornerIdx].y };
+        p[trunkEndIdx] = { x: target, y: p[trunkEndIdx].y };
+      }
+    };
+    const moved2 = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      const len = p.length;
+      if (len < 4) return;
+      const ep = pairs[ei];
+      let best;
+      for (let i = 1; i + 2 < len; i++) {
+        const a = p[i];
+        const b = p[i + 1];
+        const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+        const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+        if (!isVert && !isHorz) continue;
+        const along3 = isVert ? a.x : a.y;
+        const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+        const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+        const runLen = hi - lo;
+        for (const c of containers) {
+          if (c.members[ep.from] && c.members[ep.to]) continue;
+          if (i === 1 && c.members[ep.from] || i === len - 3 && c.members[ep.to]) continue;
+          const cx0 = c.box.x - c.box.w / 2;
+          const cx1 = c.box.x + c.box.w / 2;
+          const cy0 = c.box.y - c.box.h / 2;
+          const cy1 = c.box.y + c.box.h / 2;
+          const perpLo = isVert ? cx0 : cy0;
+          const perpHi = isVert ? cx1 : cy1;
+          const parLo = isVert ? cy0 : cx0;
+          const parHi = isVert ? cy1 : cx1;
+          if (along3 <= perpLo || along3 >= perpHi) continue;
+          if (Math.min(hi, parHi) - Math.max(lo, parLo) < MIN_CROSS) continue;
+          const side = along3 - perpLo <= perpHi - along3 ? nAt(perpLo - MARGIN2) : nAt(perpHi + MARGIN2);
+          if (!best || runLen > best.runLen) best = { i, vertical: isVert, along: along3, lo, hi, side, container: c, runLen };
+        }
+      }
+      if (!best) return;
+      moveLane2(edges[ei], best.vertical, { i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+      moved2[ei] = true;
+      if (best.container.members[ep.from]) lowerReentry2(p, best.i, best.i - 1, p[0], best.vertical);
+      if (best.container.members[ep.to]) lowerReentry2(p, best.i + 1, best.i + 2, p[len - 1], best.vertical);
+    });
+    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+  }
+  function avoidContainersFrom(boxOf) {
+    const out = [];
+    for (const sg of model.subgraphs) {
+      const ids = subgraphMembers[sg.id] || [];
+      if (!ids.length) continue;
+      const members = {};
+      for (const id of ids) members[id] = true;
+      out.push({ box: boxOf(sg), members });
+    }
+    return out;
+  }
+  const NODE_AVOID_MARGIN2 = 14;
+  const NODE_AVOID_MIN_CROSS2 = 14;
+  const NODE_AVOID_PASSES2 = 4;
+  const isOrthoT = (pts) => {
+    for (let i = 0; i + 1 < pts.length; i++) if (Math.abs(pts[i].x - pts[i + 1].x) >= 0.5 && Math.abs(pts[i].y - pts[i + 1].y) >= 0.5) return false;
+    return true;
+  };
+  const orthoPathT = (pts) => edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts);
+  function avoidNodes2(edges, pairs, nodeBoxes) {
+    if (!nodeBoxes.length) return;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const moved2 = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      const len = p.length;
+      if (len < 4 || edgeStyle === "curved" && !isOrthoT(p)) return;
+      const ep = pairs[ei];
+      let best;
+      for (let i = 1; i + 2 < len; i++) {
+        const a = p[i];
+        const b = p[i + 1];
+        const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+        const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+        if (!isVert && !isHorz) continue;
+        const along3 = isVert ? a.x : a.y;
+        const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+        const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+        const runLen = hi - lo;
+        for (const nb of nodeBoxes) {
+          if (nb.id === ep.from || nb.id === ep.to) continue;
+          const cx0 = nb.x - nb.w / 2;
+          const cx1 = nb.x + nb.w / 2;
+          const cy0 = nb.y - nb.h / 2;
+          const cy1 = nb.y + nb.h / 2;
+          const perpLo = isVert ? cx0 : cy0;
+          const perpHi = isVert ? cx1 : cy1;
+          const parLo = isVert ? cy0 : cx0;
+          const parHi = isVert ? cy1 : cx1;
+          if (along3 <= perpLo || along3 >= perpHi) continue;
+          if (Math.min(hi, parHi) - Math.max(lo, parLo) < NODE_AVOID_MIN_CROSS2) continue;
+          const side = along3 - perpLo <= perpHi - along3 ? nAt(perpLo - NODE_AVOID_MARGIN2) : nAt(perpHi + NODE_AVOID_MARGIN2);
+          if (!best || runLen > best.runLen) best = { i, vertical: isVert, along: along3, lo, hi, side, runLen };
+        }
+      }
+      if (!best) return;
+      moveLane2(edges[ei], best.vertical, { i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+      moved2[ei] = true;
+    });
+    for (const kk in moved2) edges[Number(kk)].path = orthoPathT(edges[Number(kk)].points);
+  }
+  function detourApproaches2(edges, pairs, nodeBoxes) {
+    if (!nodeBoxes.length) return;
+    const spans = (nb) => ({ l: nb.x - nb.w / 2, r: nb.x + nb.w / 2, t: nb.y - nb.h / 2, b: nb.y + nb.h / 2 });
+    const detour = (a, pp, nb) => {
+      const s = spans(nb);
+      if (Math.abs(a.x - pp.x) < 0.5) {
+        const sideX = a.x - s.l <= s.r - a.x ? nAt(s.l - NODE_AVOID_MARGIN2) : nAt(s.r + NODE_AVOID_MARGIN2);
+        const gapY = pp.y > a.y ? nAt(s.b + NODE_AVOID_MARGIN2) : nAt(s.t - NODE_AVOID_MARGIN2);
+        return [{ x: sideX, y: a.y }, { x: sideX, y: gapY }, { x: nAt(a.x), y: gapY }];
+      }
+      const sideY = a.y - s.t <= s.b - a.y ? nAt(s.t - NODE_AVOID_MARGIN2) : nAt(s.b + NODE_AVOID_MARGIN2);
+      const gapX = pp.x > a.x ? nAt(s.r + NODE_AVOID_MARGIN2) : nAt(s.l - NODE_AVOID_MARGIN2);
+      return [{ x: a.x, y: sideY }, { x: gapX, y: sideY }, { x: gapX, y: nAt(a.y) }];
+    };
+    const pierces = (a, pp, nb) => {
+      const s = spans(nb);
+      const vert = Math.abs(a.x - pp.x) < 0.5;
+      if (!vert && Math.abs(a.y - pp.y) >= 0.5) return false;
+      const along3 = vert ? a.x : a.y;
+      const lo = vert ? Math.min(a.y, pp.y) : Math.min(a.x, pp.x);
+      const hi = vert ? Math.max(a.y, pp.y) : Math.max(a.x, pp.x);
+      const perpLo = vert ? s.l : s.t;
+      const perpHi = vert ? s.r : s.b;
+      const parLo = vert ? s.t : s.l;
+      const parHi = vert ? s.b : s.r;
+      if (along3 <= perpLo || along3 >= perpHi) return false;
+      return Math.min(hi, parHi) - Math.max(lo, parLo) >= NODE_AVOID_MIN_CROSS2;
+    };
+    const changed = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      if (p.length < 2 || edgeStyle === "curved" && !isOrthoT(p)) return;
+      const ep = pairs[ei];
+      const a = p[p.length - 2];
+      const port = p[p.length - 1];
+      for (const nb of nodeBoxes) {
+        if (nb.id === ep.from || nb.id === ep.to) continue;
+        if (pierces(a, port, nb)) {
+          p.splice(p.length - 1, 0, ...detour(a, port, nb));
+          changed[ei] = true;
+          break;
+        }
+      }
+    });
+    for (const kk in changed) {
+      const e = edges[Number(kk)];
+      const sp = simplify2(e.points);
+      e.points.splice(0, e.points.length, ...sp);
+      e.path = orthoPathT(e.points);
+    }
+  }
+  function trimEndpointReentry2(edges, pairs, nodeBoxes) {
+    const boxById = {};
+    for (const b of nodeBoxes) if (b.id) boxById[b.id] = b;
+    const inside = (pt, b) => pt.x > b.x - b.w / 2 + 0.5 && pt.x < b.x + b.w / 2 - 0.5 && pt.y > b.y - b.h / 2 + 0.5 && pt.y < b.y + b.h / 2 - 0.5;
+    const cross = (inPt, outPt, b) => Math.abs(inPt.x - outPt.x) < 0.5 ? { x: nAt(inPt.x), y: nAt(outPt.y > inPt.y ? b.y + b.h / 2 : b.y - b.h / 2) } : { x: nAt(outPt.x > inPt.x ? b.x + b.w / 2 : b.x - b.w / 2), y: nAt(inPt.y) };
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      if (p.length < 3 || edgeStyle === "curved" && !isOrthoT(p)) return;
+      const ep = pairs[ei];
+      const src = boxById[ep.from];
+      const tgt = boxById[ep.to];
+      let did = false;
+      if (src && inside(p[1], src)) {
+        let k = 1;
+        while (k < p.length && inside(p[k], src)) k++;
+        if (k < p.length) {
+          p.splice(0, k, cross(p[k - 1], p[k], src));
+          did = true;
+        }
+      }
+      if (tgt && p.length >= 3 && inside(p[p.length - 2], tgt)) {
+        let j = p.length - 2;
+        while (j >= 0 && inside(p[j], tgt)) j--;
+        if (j >= 0) {
+          p.splice(j + 1, p.length - 1 - j, cross(p[j + 1], p[j], tgt));
+          did = true;
+        }
+      }
+      if (did) {
+        const sp = simplify2(p);
+        p.splice(0, p.length, ...sp);
+        e.path = orthoPathT(p);
+      }
+    });
+  }
+  const avoidNodeBoxes = (boxOf) => model.nodes.map((nd) => {
+    const b = boxOf(nd.id);
+    return { id: nd.id, x: b.x, y: b.y, w: b.w, h: b.h };
+  });
+  function separateLanes2(edges) {
+    if (edgeStyle !== "elbow" && edgeStyle !== "curved") return;
+    const LANE_GAP2 = 26;
+    const LANE_MIN_OVERLAP2 = 40;
+    const LANE_PASSES2 = 8;
+    const moved2 = {};
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    for (let pass = 0; pass < LANE_PASSES2; pass++) {
+      let changed = false;
+      for (const vertical of [true, false]) {
+        const segs = [];
+        edges.forEach((e, ei) => {
+          const p = e.points;
+          for (let i = 1; i + 2 < p.length; i++) {
+            const a = p[i];
+            const b = p[i + 1];
+            const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+            const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+            if (vertical ? !isVert : !isHorz) continue;
+            const along3 = vertical ? a.x : a.y;
+            const lo = vertical ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+            const hi = vertical ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+            segs.push({ edge: ei, i, along: along3, lo, hi });
+          }
+        });
+        segs.sort((s, t) => s.along - t.along || s.edge - t.edge || s.i - t.i);
+        for (let a = 0; a < segs.length; a++) {
+          for (let b = a + 1; b < segs.length; b++) {
+            const sa = segs[a];
+            const sb = segs[b];
+            if (sa.edge === sb.edge) continue;
+            if (Math.min(sa.hi, sb.hi) - Math.max(sa.lo, sb.lo) < LANE_MIN_OVERLAP2) continue;
+            const d = LANE_GAP2 - Math.abs(sb.along - sa.along);
+            if (d <= 1e-6) continue;
+            const dir = sb.along >= sa.along ? 1 : -1;
+            const push = d / 2;
+            moveLane2(edges[sa.edge], vertical, sa, nAt(sa.along - push * dir));
+            moveLane2(edges[sb.edge], vertical, sb, nAt(sb.along + push * dir));
+            moved2[sa.edge] = true;
+            moved2[sb.edge] = true;
+            changed = true;
+          }
+        }
+      }
+      if (!changed) break;
+    }
+    for (const kk in moved2) edges[Number(kk)].path = orthoPathT(edges[Number(kk)].points);
+  }
+  function separateAntiParallelJogs2(edges, pairs) {
+    if (edgeStyle !== "elbow") return;
+    const JOG_GAP2 = 26;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const groups = {};
+    pairs.forEach((e, i) => {
+      const key = e.from < e.to ? e.from + "|" + e.to : e.to + "|" + e.from;
+      (groups[key] = groups[key] || []).push(i);
+    });
+    const moved2 = {};
+    for (const key in groups) {
+      const idxs = groups[key];
+      if (idxs.length < 2) continue;
+      idxs.sort((a, b) => a - b);
+      const jogs = [];
+      let orient;
+      for (const ei of idxs) {
+        const p = edges[ei].points;
+        let jog;
+        for (let i = 1; i + 2 < p.length; i++) {
+          const a = p[i];
+          const b = p[i + 1];
+          const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+          const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+          if (!isVert && !isHorz) continue;
+          const along3 = isVert ? a.x : a.y;
+          const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+          const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+          const end = p[p.length - 1];
+          const target = isVert ? end.x : end.y;
+          jog = { edge: ei, seg: { edge: ei, i, along: along3, lo, hi }, vertical: isVert, target };
+          break;
+        }
+        if (!jog) break;
+        if (orient === void 0) orient = jog.vertical;
+        else if (orient !== jog.vertical) {
+          jogs.length = 0;
+          break;
+        }
+        jogs.push(jog);
+      }
+      if (jogs.length < 2) continue;
+      const a0 = jogs[0].seg.along;
+      let collinear = true;
+      for (const j of jogs) if (Math.abs(j.seg.along - a0) >= 1) collinear = false;
+      if (!collinear) continue;
+      jogs.sort((x, y) => x.target - y.target || x.edge - y.edge);
+      let sum = 0;
+      for (const j of jogs) sum += j.seg.along;
+      const mean = sum / jogs.length;
+      const k = jogs.length;
+      jogs.forEach((j, s) => {
+        const lane = nAt(mean + (s - (k - 1) / 2) * JOG_GAP2);
+        if (Math.abs(lane - j.seg.along) < 1e-6) return;
+        moveLane2(edges[j.edge], j.vertical, j.seg, lane);
+        moved2[j.edge] = true;
+      });
+    }
+    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+  }
+  function separateConvergentJogs2(edges, pairs) {
+    if (edgeStyle !== "elbow") return;
+    const JOG_GAP2 = 26;
+    const CONVERGE_MIN2 = 3;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const jogOf = (p, role) => {
+      const len = p.length;
+      if (len < 4) return null;
+      const i = role === "target" ? len - 3 : 1;
+      if (i < 1 || i + 2 > len) return null;
+      const a = p[i];
+      const b = p[i + 1];
+      const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+      const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+      if (!isVert && !isHorz) return null;
+      const along3 = isVert ? a.x : a.y;
+      const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+      const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+      const appFrom = role === "target" ? p[i + 1] : p[1];
+      const appTo = role === "target" ? p[len - 1] : p[0];
+      const toward = isVert ? Math.sign(appTo.x - appFrom.x) : Math.sign(appTo.y - appFrom.y);
+      const end = role === "target" ? p[0] : p[len - 1];
+      const far = isVert ? end.x : end.y;
+      return { seg: { edge: 0, i, along: along3, lo, hi }, vertical: isVert, toward, far };
+    };
+    const buckets = {};
+    edges.forEach((e, idx) => {
+      const ep = pairs[idx];
+      const roles = [["source", ep.from], ["target", ep.to]];
+      for (const [role, node] of roles) {
+        const j = jogOf(e.points, role);
+        if (!j) continue;
+        const key = node + "|" + (j.vertical ? "V" : "H") + "|" + j.toward + "|" + nAt(j.seg.along);
+        const rec = { edge: idx, seg: { edge: idx, i: j.seg.i, along: j.seg.along, lo: j.seg.lo, hi: j.seg.hi }, vertical: j.vertical, toward: j.toward, far: j.far };
+        (buckets[key] || (buckets[key] = [])).push(rec);
+      }
+    });
+    const moved2 = {};
+    for (const key in buckets) {
+      const recs = buckets[key];
+      if (recs.length < CONVERGE_MIN2) continue;
+      recs.sort((x, y) => x.far - y.far || x.edge - y.edge);
+      let sum = 0;
+      for (const r of recs) sum += r.seg.along;
+      const mean = sum / recs.length;
+      const k = recs.length;
+      const toward = recs[0].toward;
+      recs.forEach((r, s) => {
+        const lane = nAt(mean + (s - (k - 1) / 2 - toward * (k - 1) / 2) * JOG_GAP2);
+        if (Math.abs(lane - r.seg.along) < 1e-6) return;
+        moveLane2(edges[r.edge], r.vertical, r.seg, lane);
+        moved2[r.edge] = true;
+      });
+    }
+    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+  }
+  function resolveLabelNodeCollisions2(plates, nodeBoxes) {
+    const shifts = plates.map(() => ({ x: 0, y: 0 }));
+    if (!nodeBoxes.length) return shifts;
+    const cx = plates.map((p) => p ? p.x : 0);
+    const cy = plates.map((p) => p ? p.y : 0);
+    for (let pass = 0; pass < 4; pass++) {
+      let moved2 = false;
+      for (let i = 0; i < plates.length; i++) {
+        const p = plates[i];
+        if (!p) continue;
+        for (const nb of nodeBoxes) {
+          const dx = cx[i] - nb.x;
+          const dy = cy[i] - nb.y;
+          const ox = (p.w + nb.w) / 2 + 10 - Math.abs(dx);
+          const oy = (p.h + nb.h) / 2 + 10 - Math.abs(dy);
+          if (ox <= 0 || oy <= 0) continue;
+          moved2 = true;
+          if (oy <= ox) cy[i] = cy[i] + oy * (dy < 0 ? -1 : 1);
+          else cx[i] = cx[i] + ox * (dx < 0 ? -1 : 1);
+        }
+      }
+      if (!moved2) break;
+    }
+    for (let i = 0; i < plates.length; i++) if (plates[i]) shifts[i] = { x: nAt(cx[i] - plates[i].x), y: nAt(cy[i] - plates[i].y) };
+    return shifts;
+  }
+  function nearestRunAxis2(points, cx, cy) {
+    let best = Infinity;
+    let axis = null;
+    for (let s = 0; s + 1 < points.length; s++) {
+      const a = points[s];
+      const b = points[s + 1];
+      const horiz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 0.5;
+      const vert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 0.5;
+      if (!horiz && !vert) continue;
+      let dx;
+      let dy;
+      if (horiz) {
+        const lo = Math.min(a.x, b.x);
+        const hi = Math.max(a.x, b.x);
+        dx = cx < lo ? cx - lo : cx > hi ? cx - hi : 0;
+        dy = cy - a.y;
+      } else {
+        const lo = Math.min(a.y, b.y);
+        const hi = Math.max(a.y, b.y);
+        dx = cx - a.x;
+        dy = cy < lo ? cy - lo : cy > hi ? cy - hi : 0;
+      }
+      const dd = dx * dx + dy * dy;
+      if (dd < best) {
+        best = dd;
+        axis = horiz ? "x" : "y";
+      }
+    }
+    return axis;
+  }
+  function resolveLabelEdgeCollisions2(plates, polylines) {
+    const shifts = plates.map(() => ({ x: 0, y: 0 }));
+    const cx = plates.map((p) => p ? p.x : 0);
+    const cy = plates.map((p) => p ? p.y : 0);
+    for (let pass = 0; pass < 4; pass++) {
+      let moved2 = false;
+      for (let i = 0; i < plates.length; i++) {
+        const p = plates[i];
+        if (!p) continue;
+        const axis = nearestRunAxis2(polylines[i] ?? [], cx[i], cy[i]);
+        if (!axis) continue;
+        const hw = p.w / 2;
+        const hh = p.h / 2;
+        let hasHit = false;
+        let hiTarget = -Infinity;
+        let loTarget = Infinity;
+        for (let j = 0; j < polylines.length; j++) {
+          if (j === i) continue;
+          const pts = polylines[j] ?? [];
+          for (let s = 0; s + 1 < pts.length; s++) {
+            const a = pts[s];
+            const b = pts[s + 1];
+            if (axis === "x") {
+              if (Math.abs(a.x - b.x) < 0.5) {
+                const gx = a.x;
+                if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
+                if (cy[i] + hh <= Math.min(a.y, b.y) || cy[i] - hh >= Math.max(a.y, b.y)) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, gx + hw + 6);
+                loTarget = Math.min(loTarget, gx - hw - 6);
+              } else if (Math.abs(a.y - b.y) < 0.5) {
+                const gy = a.y;
+                if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
+                const lo = Math.min(a.x, b.x);
+                const hi = Math.max(a.x, b.x);
+                if (cx[i] + hw <= lo || cx[i] - hw >= hi) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, hi + hw + 6);
+                loTarget = Math.min(loTarget, lo - hw - 6);
+              }
+            } else {
+              if (Math.abs(a.y - b.y) < 0.5) {
+                const gy = a.y;
+                if (gy <= cy[i] - hh || gy >= cy[i] + hh) continue;
+                if (cx[i] + hw <= Math.min(a.x, b.x) || cx[i] - hw >= Math.max(a.x, b.x)) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, gy + hh + 6);
+                loTarget = Math.min(loTarget, gy - hh - 6);
+              } else if (Math.abs(a.x - b.x) < 0.5) {
+                const gx = a.x;
+                if (gx <= cx[i] - hw || gx >= cx[i] + hw) continue;
+                const lo = Math.min(a.y, b.y);
+                const hi = Math.max(a.y, b.y);
+                if (cy[i] + hh <= lo || cy[i] - hh >= hi) continue;
+                hasHit = true;
+                hiTarget = Math.max(hiTarget, hi + hh + 6);
+                loTarget = Math.min(loTarget, lo - hh - 6);
+              }
+            }
+          }
+        }
+        if (!hasHit) continue;
+        const cur = axis === "x" ? cx[i] : cy[i];
+        const target = hiTarget - cur <= cur - loTarget ? hiTarget : loTarget;
+        if (axis === "x") cx[i] = target;
+        else cy[i] = target;
+        moved2 = true;
+      }
+      if (!moved2) break;
+    }
+    for (let i = 0; i < plates.length; i++) if (plates[i]) shifts[i] = { x: nAt(cx[i] - plates[i].x), y: nAt(cy[i] - plates[i].y) };
+    return shifts;
+  }
+  function labelPlatesOf(routed) {
+    return edgeEls.map((e, i) => {
+      if (!e.label) return void 0;
+      const s = plateSizeOf(e.label);
+      return { x: nAt(routed[i].labelPos.x), y: nAt(routed[i].labelPos.y), w: s.w, h: s.h };
+    });
+  }
+  function foldLabelShifts(routed, shifts) {
+    routed.forEach((r, i) => {
+      const sh = shifts[i];
+      if (edgeEls[i].label && (sh.x !== 0 || sh.y !== 0)) {
+        r.labelPos = { x: nAt(r.labelPos.x) + sh.x, y: nAt(r.labelPos.y) + sh.y };
+      }
+    });
+  }
+  function resolveLabelLineOffsets2(plates, polylines) {
+    return plates.map((p, i) => {
+      if (!p) return { x: 0, y: 0 };
+      const pts = polylines[i] ?? [];
+      if (pts.length < 2) return { x: 0, y: 0 };
+      const el = edgeEls[i];
+      const cubic = edgeStyle === "curved" && !(el && el.waypoints && el.waypoints.length);
+      let a;
+      let b;
+      if (cubic && pts.length === 4) {
+        a = { x: pts[0].x + pts[1].x, y: pts[0].y + pts[1].y };
+        b = { x: pts[2].x + pts[3].x, y: pts[2].y + pts[3].y };
+      } else if (pts.length === 2) {
+        a = pts[0];
+        b = pts[1];
+      } else {
+        const mid = Math.floor(pts.length / 2);
+        a = pts[mid - 1];
+        b = pts[mid];
+      }
+      const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+      const dist3 = (horizontal ? p.h : p.w) / 2 + 3;
+      return horizontal ? { x: 0, y: -dist3 } : { x: dist3, y: 0 };
+    });
+  }
+  const bridgesEnabled = () => edgeStyle === "elbow" && (opt.bridges ?? true);
+  function routeBoxes(from, to, waypoints, ports, isSelf) {
+    const shift = ports && ports.labelShift;
+    const withShift = (p) => shift ? { x: p.x + shift.x, y: p.y + shift.y } : p;
+    if (isSelf) {
+      const r = anchor(from, "right");
+      const t = anchor(from, "top");
+      const off = Math.max(24, from.h * 0.6);
+      const pts2 = [r, { x: r.x + off, y: r.y }, { x: r.x + off, y: t.y - off }, { x: t.x, y: t.y - off }, t];
+      return { path: pathPoly(pts2), labelPos: labelPoly(pts2), points: pts2 };
+    }
+    const exit = ports ? ports.source.side : raySide2(from, to.x - from.x, to.y - from.y);
+    const entry = ports ? ports.target.side : raySide2(to, from.x - to.x, from.y - to.y);
+    const start = anchor(from, exit, ports ? ports.source.offset : 0);
+    const end = anchor(to, entry, ports ? ports.target.offset : 0);
+    const horizontal = exit === "left" || exit === "right";
+    const hasWps = !!(waypoints && waypoints.length > 0);
+    if (edgeStyle === "curved" && !hasWps) {
+      const k = horizontal ? Math.max(24, Math.abs(end.x - start.x) * 0.5) : Math.max(24, Math.abs(end.y - start.y) * 0.5);
+      const c1 = offAlong(start, exit, k);
+      const c2 = offAlong(end, entry, k);
+      const pts2 = [start, c1, c2, end];
+      return { path: pathBezier(pts2), labelPos: withShift(labelBezier(pts2)), points: pts2 };
+    }
+    const entryVertical = entry === "top" || entry === "bottom";
+    let pts;
+    if (hasWps) {
+      pts = elbowThrough2(
+        start,
+        end,
+        waypoints,
+        !horizontal,
+        entryVertical,
+        !(model.direction === "LR" || model.direction === "RL")
+      );
+    } else if (horizontal) {
+      const midX = (start.x + end.x) / 2;
+      pts = [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end];
+      perpendicularizeEntry2(pts, entryVertical);
+      pts = simplify2(pts);
+    } else {
+      const midY = (start.y + end.y) / 2;
+      pts = [start, { x: start.x, y: midY }, { x: end.x, y: midY }, end];
+      perpendicularizeEntry2(pts, entryVertical);
+      pts = simplify2(pts);
+    }
+    const path = edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts);
+    return { path, labelPos: withShift(labelPoly(pts)), points: pts };
+  }
+  function routeEdgePath(fromId, toId, waypoints, ports) {
+    const fp = positions[fromId];
+    const tp = positions[toId];
+    const fs = sizes[fromId];
+    const ts = sizes[toId];
+    return routeBoxes(
+      { x: fp.x, y: fp.y, w: fs.w, h: fs.h, shape: shapeById[fromId] },
+      { x: tp.x, y: tp.y, w: ts.w, h: ts.h, shape: shapeById[toId] },
+      waypoints,
+      ports,
+      fromId === toId
+    );
+  }
+  function styleForNode(_id, classes, inline) {
+    const c = tokens.colors;
+    let fill = c.surface;
+    let stroke = c.surfaceStroke;
+    let text = c.text;
+    let strokeWidth;
+    let strokeDasharray;
+    for (const cls of classes) {
+      const role = c.roles[cls];
+      if (role) {
+        fill = role.fill;
+        stroke = role.stroke;
+        text = role.text;
+      }
+      const def = classDefs[cls];
+      if (def) {
+        if (def.fill) fill = def.fill;
+        if (def.stroke) stroke = def.stroke;
+        if (def.color) text = def.color;
+        if (def.strokeWidth) strokeWidth = def.strokeWidth;
+        if (def.strokeDasharray) strokeDasharray = def.strokeDasharray;
+      }
+    }
+    if (inline) {
+      if (inline.fill) fill = inline.fill;
+      if (inline.stroke) stroke = inline.stroke;
+      if (inline.color) text = inline.color;
+      if (inline.strokeWidth) strokeWidth = inline.strokeWidth;
+      if (inline.strokeDasharray) strokeDasharray = inline.strokeDasharray;
+    }
+    const out = { fill, stroke, text };
+    if (strokeWidth !== void 0) out.strokeWidth = strokeWidth;
+    if (strokeDasharray !== void 0) out.strokeDasharray = strokeDasharray;
+    return out;
+  }
+  function cardStyle(id, st) {
+    const s = sizes[id];
+    let radius = tokens.radii.node + "px";
+    const shapeEl = model.nodes.find((x) => x.id === id);
+    const shape = shapeEl ? shapeEl.shape : "rect";
+    if (shape === "stadium" || shape === "circle") radius = "999px";
+    else if (shape === "rounded") radius = tokens.radii.card + 4 + "px";
+    const borderWidth = st.strokeWidth ? /^[0-9.]+$/.test(st.strokeWidth) ? st.strokeWidth + "px" : st.strokeWidth : "1.5px";
+    const borderStyle = st.strokeDasharray ? "dashed" : "solid";
+    if (sketch) {
+      return "position:absolute;box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:" + s.w + "px;height:" + s.h + "px;padding:0 " + tokens.spacing.nodePadX + "px;cursor:grab;transition:transform .12s ease;font-size:var(--vnm-font-size);font-weight:var(--vnm-font-weight);background:transparent;border:0;color:" + st.text + ";";
+    }
+    return "position:absolute;box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:" + s.w + "px;height:" + s.h + "px;padding:0 " + tokens.spacing.nodePadX + "px;border-radius:" + radius + ";cursor:grab;transition:box-shadow .12s ease, transform .12s ease;font-size:var(--vnm-font-size);font-weight:var(--vnm-font-weight);box-shadow:var(--vnm-node-shadow);background:" + st.fill + ";border:" + borderWidth + " " + borderStyle + " " + st.stroke + ";color:" + st.text + ";";
+  }
+  function positionCard(id) {
+    const card = cards[id];
+    const p = positions[id];
+    const s = sizes[id];
+    card.style.left = p.x - s.w / 2 + "px";
+    card.style.top = p.y - s.h / 2 + "px";
+    if (sketch) renderNodeShape(id);
+  }
+  function renderNodes() {
+    for (const id in cards) {
+      applyCardSize(id);
+      positionCard(id);
+    }
+  }
+  function renderEdges() {
+    const ports = computePorts();
+    const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
+    avoidSubgraphs2(routed, edgeEls, avoidContainersFrom(subgraphWorldBox));
+    const nabL = avoidNodeBoxes((id) => ({ x: positions[id].x, y: positions[id].y, w: sizes[id].w, h: sizes[id].h }));
+    trimEndpointReentry2(routed, edgeEls, nabL);
+    for (let k = 0; k < NODE_AVOID_PASSES2; k++) {
+      avoidNodes2(routed, edgeEls, nabL);
+      detourApproaches2(routed, edgeEls, nabL);
+    }
+    foldLabelShifts(routed, resolveLabelLineOffsets2(labelPlatesOf(routed), routed.map((r) => r.points)));
+    separateLanes2(routed);
+    separateAntiParallelJogs2(routed, edgeEls);
+    separateConvergentJogs2(routed, edgeEls);
+    foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
+    foldLabelShifts(routed, resolveLabelEdgeCollisions2(labelPlatesOf(routed), routed.map((r) => r.points)));
+    const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id].x, y: positions[nd.id].y, w: sizes[nd.id].w, h: sizes[nd.id].h }));
+    foldLabelShifts(routed, resolveLabelNodeCollisions2(labelPlatesOf(routed), nodeBoxesL));
+    foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
+    const bridgedL = applyEdgeBridges2(routed.map((r) => r.points), bridgesEnabled());
+    edgeEls.forEach((e, i) => {
+      const r = routed[i];
+      if (sketch) {
+        const sk = sketchEdgeParts(r.points, e.from + "->" + e.to, e.arrows, tokens.edge.arrowSize);
+        e.path.setAttribute("d", sk.line);
+        if (e.headPath) e.headPath.setAttribute("d", sk.head);
+      } else {
+        e.path.setAttribute("d", bridgedL[i] ?? r.path);
+      }
+      if (e.plate && e.text && e.label) {
+        const lx = r.labelPos.x;
+        const ly = r.labelPos.y;
+        const w = e.label.length * (tokens.font.size * 0.6) + 6;
+        const h = tokens.font.lineHeight + 2;
+        e.plate.setAttribute("x", String(nAt(lx - w / 2)));
+        e.plate.setAttribute("y", String(nAt(ly - h / 2)));
+        e.plate.setAttribute("width", String(nAt(w)));
+        e.plate.setAttribute("height", String(nAt(h)));
+        e.text.setAttribute("x", String(nAt(lx)));
+        e.text.setAttribute("y", String(nAt(ly)));
+      }
+    });
+    if (capOverlay) {
+      let caps = "";
+      edgeEls.forEach((e, i) => {
+        caps += svgEdgeArrowCap(e, routed[i].points);
+      });
+      capOverlay.innerHTML = caps;
+    }
+    positionEdgeHandles(ports);
+  }
+  function applyTransform() {
+    world.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
+    drawMinimap();
+  }
+  function renderAll() {
+    renderNodes();
+    renderSubgraphs();
+    renderEdges();
+    positionHandles();
+    applyTransform();
+  }
+  function drawMinimap() {
+    if (!minimap) return;
+    const ctx = minimap.getContext("2d");
+    if (!ctx) return;
+    const mw = minimap.width;
+    const mh = minimap.height;
+    ctx.clearRect(0, 0, mw, mh);
+    const s = Math.min(mw / Math.max(contentW, 1), mh / Math.max(contentH, 1));
+    ctx.save();
+    ctx.scale(s, s);
+    ctx.fillStyle = tokens.colors.accent;
+    for (const nd of model.nodes) {
+      const p = positions[nd.id];
+      const sz = sizes[nd.id];
+      ctx.globalAlpha = 0.75;
+      ctx.fillRect(p.x - sz.w / 2, p.y - sz.h / 2, sz.w, sz.h);
+    }
+    ctx.restore();
+    const vw = viewport.clientWidth;
+    const vh = viewport.clientHeight;
+    const vx = -tx / scale * s;
+    const vy = -ty / scale * s;
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = tokens.colors.accent;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(vx, vy, vw / scale * s, vh / scale * s);
+    ctx.fillStyle = tokens.colors.minimapViewport;
+    ctx.fillRect(vx, vy, vw / scale * s, vh / scale * s);
+  }
+  function clampScale(v) {
+    return Math.max(opt.minScale, Math.min(opt.maxScale, v));
+  }
+  function fit() {
+    const vw = viewport.clientWidth || 800;
+    const vh = viewport.clientHeight || 600;
+    const pad = opt.fitPadding;
+    const s = clampScale(Math.min((vw - pad * 2) / Math.max(contentW, 1), (vh - pad * 2) / Math.max(contentH, 1)));
+    scale = s;
+    tx = (vw - contentW * s) / 2;
+    ty = (vh - contentH * s) / 2;
+    applyTransform();
+  }
+  function zoomBy(factor) {
+    zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, clampScale(scale * factor));
+  }
+  function zoomAt(cx, cy, next) {
+    const wx = (cx - tx) / scale;
+    const wy = (cy - ty) / scale;
+    scale = next;
+    tx = cx - wx * scale;
+    ty = cy - wy * scale;
+    applyTransform();
+  }
+  function resetView() {
+    scale = 1;
+    tx = 0;
+    ty = 0;
+    applyTransform();
+  }
+  const SLOP = 4;
+  let mode = "none";
+  let dragId = null;
+  let startX = 0;
+  let startY = 0;
+  let startTx = 0;
+  let startTy = 0;
+  let startPos = { x: 0, y: 0 };
+  let moved = false;
+  let resizeId = null;
+  let rsx = 0;
+  let rsy = 0;
+  let rFixedX = 0;
+  let rFixedY = 0;
+  let rMovableX = 0;
+  let rMovableY = 0;
+  let anchorEi = -1;
+  let anchorEnd = "source";
+  let anchorNode = "";
+  let groupMembers = [];
+  let groupStart = {};
+  function pointerWorld(ev) {
+    const rect = viewport.getBoundingClientRect();
+    return { x: (ev.clientX - rect.left - tx) / scale, y: (ev.clientY - rect.top - ty) / scale };
+  }
+  const GRAB = 10;
+  function subgraphHit(wx, wy) {
+    let best = null;
+    let bestArea = Infinity;
+    for (const sg of model.subgraphs) {
+      if (!(subgraphMembers[sg.id] || []).length) continue;
+      const b = subgraphWorldBox(sg);
+      const left = b.x - b.w / 2;
+      const right = b.x + b.w / 2;
+      const top = b.y - b.h / 2;
+      const bottom = b.y + b.h / 2;
+      if (wx < left || wx > right || wy < top || wy > bottom) continue;
+      const nearBorder = wx <= left + GRAB || wx >= right - GRAB || wy <= top + GRAB || wy >= bottom - GRAB;
+      const inTitle = !!sg.title && wy <= top + SG_PAD + SG_TITLE;
+      if (!nearBorder && !inTitle) continue;
+      const area = b.w * b.h;
+      if (area < bestArea) {
+        bestArea = area;
+        best = sg.id;
+      }
+    }
+    return best;
+  }
+  function onPointerDown(ev) {
+    const target = ev.target;
+    if (target.closest && target.closest(".vnm-toolbar")) return;
+    const epHandle = target.closest ? target.closest(".vnm-edge-handle") : null;
+    if (epHandle && epHandle.dataset.ei !== void 0) {
+      mode = "anchor";
+      anchorEi = Number(epHandle.dataset.ei);
+      anchorEnd = epHandle.dataset.end === "target" ? "target" : "source";
+      const e = edgeEls[anchorEi];
+      anchorNode = anchorEnd === "source" ? e.from : e.to;
+      moved = false;
+      startX = ev.clientX;
+      startY = ev.clientY;
+      viewport.setPointerCapture(ev.pointerId);
+      return;
+    }
+    const handle = target.closest ? target.closest(".vnm-resize-handle") : null;
+    if (handle && selected && positions[selected]) {
+      mode = "resize";
+      resizeId = selected;
+      rsx = Number(handle.dataset.sx);
+      rsy = Number(handle.dataset.sy);
+      const c = positions[resizeId];
+      const s = sizes[resizeId];
+      rFixedX = c.x - rsx * s.w / 2;
+      rFixedY = c.y - rsy * s.h / 2;
+      rMovableX = c.x + rsx * s.w / 2;
+      rMovableY = c.y + rsy * s.h / 2;
+      moved = false;
+      startX = ev.clientX;
+      startY = ev.clientY;
+      viewport.setPointerCapture(ev.pointerId);
+      return;
+    }
+    const card = target.closest ? target.closest(".vnm-node") : null;
+    moved = false;
+    startX = ev.clientX;
+    startY = ev.clientY;
+    if (card && card.dataset.id) {
+      mode = "drag";
+      dragId = card.dataset.id;
+      startPos = { x: positions[dragId].x, y: positions[dragId].y };
+      card.style.cursor = "grabbing";
+    } else {
+      const w = pointerWorld(ev);
+      const sgId = subgraphHit(w.x, w.y);
+      if (sgId) {
+        mode = "group";
+        deselect();
+        groupMembers = subgraphMembers[sgId] || [];
+        groupStart = {};
+        for (const id of groupMembers) groupStart[id] = { x: positions[id].x, y: positions[id].y };
+      } else {
+        mode = "pan";
+        deselect();
+        startTx = tx;
+        startTy = ty;
+        viewport.style.cursor = "grabbing";
+      }
+    }
+    viewport.setPointerCapture(ev.pointerId);
+  }
+  function onPointerMove(ev) {
+    if (mode === "none") return;
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    if (Math.abs(dx) > SLOP || Math.abs(dy) > SLOP) moved = true;
+    if (mode === "pan") {
+      tx = startTx + dx;
+      ty = startTy + dy;
+      applyTransform();
+    } else if (mode === "drag" && dragId) {
+      positions[dragId] = { x: startPos.x + dx / scale, y: startPos.y + dy / scale };
+      positionCard(dragId);
+      renderSubgraphs();
+      renderEdges();
+      if (dragId === selected) positionHandles();
+      drawMinimap();
+    } else if (mode === "resize" && resizeId) {
+      const movX = rMovableX + dx / scale;
+      const movY = rMovableY + dy / scale;
+      const newW = Math.max(MIN_SIZE, rsx * (movX - rFixedX));
+      const newH = Math.max(MIN_SIZE, rsy * (movY - rFixedY));
+      sizes[resizeId] = { w: newW, h: newH };
+      positions[resizeId] = { x: rFixedX + rsx * newW / 2, y: rFixedY + rsy * newH / 2 };
+      applyCardSize(resizeId);
+      positionCard(resizeId);
+      renderSubgraphs();
+      renderEdges();
+      positionHandles();
+      drawMinimap();
+    } else if (mode === "group") {
+      for (const id of groupMembers) {
+        const s0 = groupStart[id];
+        positions[id] = { x: s0.x + dx / scale, y: s0.y + dy / scale };
+        positionCard(id);
+      }
+      renderSubgraphs();
+      renderEdges();
+      positionHandles();
+      drawMinimap();
+    } else if (mode === "anchor" && anchorEi >= 0) {
+      const w = pointerWorld(ev);
+      const p = positions[anchorNode];
+      const s = sizes[anchorNode];
+      const pin = anchorFromPointer({ x: p.x, y: p.y, w: s.w, h: s.h }, w.x, w.y);
+      const cur = anchorsOv[anchorEi] || (anchorsOv[anchorEi] = {});
+      cur[anchorEnd] = pin;
+      renderEdges();
+      drawMinimap();
+    }
+  }
+  function onPointerUp(ev) {
+    if (mode === "drag" && dragId) {
+      cards[dragId].style.cursor = "grab";
+      if (moved) schedulePersist();
+      else selectNode(dragId);
+    } else if (mode === "resize" && resizeId) {
+      if (moved) schedulePersist();
+    } else if (mode === "group") {
+      if (moved) schedulePersist();
+    } else if (mode === "anchor") {
+      if (moved) schedulePersist();
+    }
+    viewport.style.cursor = "grab";
+    try {
+      viewport.releasePointerCapture(ev.pointerId);
+    } catch {
+    }
+    mode = "none";
+    dragId = null;
+    resizeId = null;
+    anchorEi = -1;
+    groupMembers = [];
+  }
+  function onWheel(ev) {
+    ev.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const cx = ev.clientX - rect.left;
+    const cy = ev.clientY - rect.top;
+    const factor = ev.deltaY < 0 ? 1.1 : 1 / 1.1;
+    zoomAt(cx, cy, clampScale(scale * factor));
+  }
+  function onMinimapDown(ev) {
+    ev.stopPropagation();
+    mode = "minimap";
+    recenterFromMinimap(ev);
+    minimap.setPointerCapture(ev.pointerId);
+  }
+  function onMinimapMove(ev) {
+    if (mode === "minimap") recenterFromMinimap(ev);
+  }
+  function onMinimapUp(ev) {
+    mode = "none";
+    try {
+      minimap.releasePointerCapture(ev.pointerId);
+    } catch {
+    }
+  }
+  function recenterFromMinimap(ev) {
+    const rect = minimap.getBoundingClientRect();
+    const s = Math.min(minimap.width / Math.max(contentW, 1), minimap.height / Math.max(contentH, 1));
+    const worldX = (ev.clientX - rect.left) / s;
+    const worldY = (ev.clientY - rect.top) / s;
+    tx = viewport.clientWidth / 2 - worldX * scale;
+    ty = viewport.clientHeight / 2 - worldY * scale;
+    applyTransform();
+  }
+  let selected = null;
+  function selectNode(id) {
+    if (selected && cards[selected]) cards[selected].style.outline = "";
+    selected = id;
+    cards[id].style.outline = "2px solid var(--vnm-accent)";
+    cards[id].style.outlineOffset = "2px";
+    positionHandles();
+    positionEdgeHandles(computePorts());
+  }
+  function deselect() {
+    if (selected && cards[selected]) cards[selected].style.outline = "";
+    selected = null;
+    hideHandles();
+    positionEdgeHandles(computePorts());
+  }
+  for (const id in cards) {
+    const card = cards[id];
+    card.addEventListener("pointerenter", () => {
+      if (mode === "none") card.style.transform = "translateY(calc(-1 * var(--vnm-hover-lift)))";
+    });
+    card.addEventListener("pointerleave", () => {
+      card.style.transform = "";
+    });
+  }
+  viewport.addEventListener("pointerdown", onPointerDown);
+  viewport.addEventListener("pointermove", onPointerMove);
+  viewport.addEventListener("pointerup", onPointerUp);
+  viewport.addEventListener("wheel", onWheel, { passive: false });
+  if (minimap) {
+    minimap.addEventListener("pointerdown", onMinimapDown);
+    minimap.addEventListener("pointermove", onMinimapMove);
+    minimap.addEventListener("pointerup", onMinimapUp);
+  }
+  let persistTimer = null;
+  function schedulePersist() {
+    if (!opt.persistKey) return;
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(persistNow, 400);
+  }
+  function persistNow() {
+    if (!opt.persistKey) return;
+    try {
+      win.localStorage.setItem(opt.persistKey, JSON.stringify(exportLayout()));
+    } catch {
+    }
+  }
+  function loadPersisted() {
+    if (!opt.persistKey) return;
+    try {
+      const raw = win.localStorage.getItem(opt.persistKey);
+      if (raw) importLayout(JSON.parse(raw));
+    } catch {
+    }
+  }
+  function resetLayout() {
+    for (const nd of model.nodes) {
+      positions[nd.id] = { x: nd.x - offsetX, y: nd.y - offsetY };
+      sizes[nd.id] = { w: baseSizes[nd.id].w, h: baseSizes[nd.id].h };
+    }
+    for (const k in anchorsOv) delete anchorsOv[Number(k)];
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+    if (opt.persistKey) {
+      try {
+        win.localStorage.removeItem(opt.persistKey);
+      } catch {
+      }
+    }
+    renderAll();
+  }
+  function exportLayout() {
+    const pos = {};
+    for (const id in positions) pos[id] = { x: positions[id].x + offsetX, y: positions[id].y + offsetY };
+    const sz = {};
+    for (const id in sizes) {
+      const base = baseSizes[id];
+      if (!base || sizes[id].w !== base.w || sizes[id].h !== base.h) {
+        sz[id] = { w: sizes[id].w, h: sizes[id].h };
+      }
+    }
+    const an = {};
+    for (const k in anchorsOv) {
+      const ov = anchorsOv[Number(k)];
+      if (ov.source || ov.target) {
+        const entry = {};
+        if (ov.source) entry.source = { side: ov.source.side, offset: ov.source.offset };
+        if (ov.target) entry.target = { side: ov.target.side, offset: ov.target.offset };
+        const e = edgeEls[Number(k)];
+        if (e) {
+          entry.from = e.from;
+          entry.to = e.to;
+        }
+        an[k] = entry;
+      }
+    }
+    const out = { version: 1, positions: pos, transform: { x: tx, y: ty, scale } };
+    if (Object.keys(sz).length) out.sizes = sz;
+    if (Object.keys(an).length) out.anchors = an;
+    return out;
+  }
+  function importLayout(data) {
+    if (data && data.positions) {
+      for (const id in data.positions) {
+        if (positions[id]) positions[id] = { x: data.positions[id].x - offsetX, y: data.positions[id].y - offsetY };
+      }
+    }
+    if (data && data.sizes) {
+      for (const id in data.sizes) {
+        if (sizes[id]) sizes[id] = { w: data.sizes[id].w, h: data.sizes[id].h };
+      }
+    }
+    if (data && data.anchors) {
+      const claimed = {};
+      for (const k in data.anchors) {
+        const src = data.anchors[k];
+        const entry = {};
+        if (src.source) entry.source = { side: src.source.side, offset: src.source.offset };
+        if (src.target) entry.target = { side: src.target.side, offset: src.target.offset };
+        if (!entry.source && !entry.target) continue;
+        const idx = Number(k);
+        const inRange = idx >= 0 && idx < edgeEls.length && Math.floor(idx) === idx;
+        const hasId = src.from !== void 0 && src.to !== void 0;
+        let ti = -1;
+        if (inRange && (!hasId || edgeEls[idx].from === src.from && edgeEls[idx].to === src.to)) {
+          ti = idx;
+        } else if (hasId) {
+          ti = edgeEls.findIndex((e, i) => !claimed[i] && e.from === src.from && e.to === src.to);
+        }
+        if (ti < 0 || claimed[ti]) continue;
+        claimed[ti] = true;
+        anchorsOv[ti] = entry;
+      }
+    }
+    if (data && data.transform) {
+      tx = data.transform.x;
+      ty = data.transform.y;
+      scale = data.transform.scale;
+    }
+    renderAll();
+  }
+  function setTheme(theme, cssVars) {
+    tokens = theme.tokens;
+    edgeStyle = theme.edgeStyle;
+    viewport.setAttribute(
+      "style",
+      "position:absolute;inset:0;overflow:hidden;background:var(--vnm-bg);cursor:grab;touch-action:none;user-select:none;font-family:var(--vnm-font);" + cssVars
+    );
+    defs5.querySelector("marker path")?.setAttribute("fill", tokens.colors.edge);
+    for (const nd of model.nodes) {
+      const st = styleForNode(nd.id, nd.classes, nd.style);
+      cards[nd.id].setAttribute("style", cardStyle(nd.id, st));
+      const els = nodeShapeEls[nd.id];
+      if (els) {
+        els.fill.setAttribute("fill", st.fill);
+        const sw = st.strokeWidth ?? "1.5";
+        for (const p of els.strokes) {
+          p.setAttribute("stroke", st.stroke);
+          p.setAttribute("stroke-width", sw);
+        }
+      }
+      const markers = stateMarkerEls[nd.id];
+      if (markers) {
+        for (const c of markers) {
+          if (c.getAttribute("fill") === "none") c.setAttribute("stroke", tokens.colors.text);
+          else c.setAttribute("fill", tokens.colors.text);
+        }
+      }
+    }
+    renderAll();
+  }
+  function destroy() {
+    viewport.removeEventListener("pointerdown", onPointerDown);
+    viewport.removeEventListener("pointermove", onPointerMove);
+    viewport.removeEventListener("pointerup", onPointerUp);
+    viewport.removeEventListener("wheel", onWheel);
+    if (persistTimer) clearTimeout(persistTimer);
+    root.removeChild(viewport);
+  }
+  function xmlEsc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function xmlAttr(s) {
+    return xmlEsc(s).replace(/"/g, "&quot;");
+  }
+  function absBox(id) {
+    const p = positions[id];
+    const s = sizes[id];
+    return { x: p.x + offsetX, y: p.y + offsetY, w: s.w, h: s.h, shape: shapeById[id] };
+  }
+  function svgDefs() {
+    const a = tokens.edge.arrowSize;
+    const shadow = tokens.effects.gradient ? '<filter id="vnm-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter>' : "";
+    const font = sketch && payload.sketch ? "<style>" + payload.sketch.fontFace + "</style>" : "";
+    return '<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="' + tokens.colors.edge + '"/></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="' + tokens.colors.edge + '"/></marker>' + shadow + font + "</defs>";
+  }
+  function subgraphAbsBox(sg) {
+    const ids = subgraphMembers[sg.id] || [];
+    const boxes = ids.map(absBox);
+    const b = sgBoxFrom(boxes, !!sg.title);
+    return b ?? { x: sg.x, y: sg.y, w: sg.width, h: sg.height };
+  }
+  function svgSubgraphBox(sg) {
+    const b = subgraphAbsBox(sg);
+    const x = nAt(b.x - b.w / 2);
+    const y = nAt(b.y - b.h / 2);
+    return '<rect x="' + x + '" y="' + y + '" width="' + nAt(b.w) + '" height="' + nAt(b.h) + '" rx="' + tokens.radii.card + '" fill="' + tokens.colors.subgraphFill + '" stroke="' + tokens.colors.subgraphStroke + '" stroke-dasharray="4 4"/>';
+  }
+  function svgSubgraphTitle(sg) {
+    if (!sg.title) return "";
+    const b = subgraphAbsBox(sg);
+    const x = nAt(b.x - b.w / 2);
+    const y = nAt(b.y - b.h / 2);
+    const fs = tokens.font.size - 1;
+    const pad = 5;
+    const pw = sg.title.length * fs * 0.6 + pad * 2;
+    return '<rect x="' + nAt(x + 12 - pad) + '" y="' + nAt(y + 18 - fs + 1) + '" width="' + nAt(pw) + '" height="' + (fs + 4) + '" rx="' + tokens.radii.label + '" fill="' + tokens.colors.subgraphFill + '"/><text x="' + nAt(x + 12) + '" y="' + nAt(y + 18) + '" fill="' + tokens.colors.subgraphText + '" font-size="' + fs + '" font-weight="600">' + xmlEsc(sg.title) + "</text>";
+  }
+  function svgEdgeLabel(label, cx, cy) {
+    const lines = label.split("\n");
+    const maxChars = lines.reduce((m, l) => Math.max(m, l.length), 0);
+    const w = maxChars * tokens.font.size * 0.6 + 6;
+    const h = lines.length * tokens.font.lineHeight + 2;
+    const x = nAt(cx - w / 2);
+    const y = nAt(cy - h / 2);
+    let out = '<rect x="' + x + '" y="' + y + '" width="' + nAt(w) + '" height="' + nAt(h) + '" rx="' + tokens.radii.label + '" fill="' + tokens.colors.edgeLabelBg + '"/>';
+    const startY2 = cy - (lines.length - 1) * tokens.font.lineHeight / 2;
+    lines.forEach((line, i) => {
+      out += '<text x="' + nAt(cx) + '" y="' + nAt(startY2 + i * tokens.font.lineHeight) + '" fill="' + tokens.colors.edgeLabelText + '" font-size="' + (tokens.font.size - 1) + '" text-anchor="middle" dominant-baseline="central">' + xmlEsc(line) + "</text>";
+    });
+    return out;
+  }
+  function svgEdge(e, path, points) {
+    const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
+    const dash = e.kind === "dotted" ? ' stroke-dasharray="2 5"' : "";
+    let out;
+    if (sketch) {
+      const key = e.from + "->" + e.to;
+      const arr = points.map((p) => [p.x, p.y]);
+      const base = ' fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"';
+      const lineStroke = base + dash;
+      let s = "";
+      for (const d of roughPolyline2(arr, key)) s += '<path d="' + d + '"' + lineStroke + "/>";
+      const m = arr.length;
+      if (e.arrows.end && m >= 2)
+        s += '<path d="' + openArrowhead2(arr[m - 1], arr[m - 2], tokens.edge.arrowSize, key + "@end") + '"' + base + "/>";
+      if (e.arrows.start && m >= 2)
+        s += '<path d="' + openArrowhead2(arr[0], arr[1], tokens.edge.arrowSize, key + "@start") + '"' + base + "/>";
+      out = s;
+    } else {
+      const mEnd = e.arrows.end ? ' marker-end="url(#vnm-arrow)"' : "";
+      const mStart = e.arrows.start ? ' marker-start="url(#vnm-arrow-start)"' : "";
+      out = '<path d="' + path + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"' + dash + mStart + mEnd + "/>";
+    }
+    return out;
+  }
+  function svgEdgeArrowCap(e, points) {
+    const m = points.length;
+    if (m < 2 || !e.arrows.end && !e.arrows.start) return "";
+    const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
+    if (sketch) {
+      const key = e.from + "->" + e.to;
+      const arr = points.map((p) => [p.x, p.y]);
+      const base = ' fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"';
+      let s2 = "";
+      if (e.arrows.end) s2 += '<path class="vnm-arrow-cap" d="' + openArrowhead2(arr[m - 1], arr[m - 2], tokens.edge.arrowSize, key + "@end") + '"' + base + "/>";
+      if (e.arrows.start) s2 += '<path class="vnm-arrow-cap" d="' + openArrowhead2(arr[0], arr[1], tokens.edge.arrowSize, key + "@start") + '"' + base + "/>";
+      return s2;
+    }
+    let s = "";
+    if (e.arrows.end) s += svgCapEnd(points[m - 2], points[m - 1], width);
+    if (e.arrows.start) s += svgCapStart(points[0], points[1], width);
+    return s;
+  }
+  function svgCapEnd(prev, tip, width) {
+    const dx = tip.x - prev.x;
+    const dy = tip.y - prev.y;
+    const mag = Math.hypot(dx, dy) || 1;
+    const len = Math.min(tokens.edge.arrowSize + 4, mag);
+    const bx = tip.x - dx / mag * len;
+    const by = tip.y - dy / mag * len;
+    return '<path class="vnm-arrow-cap" d="M ' + nAt(bx) + " " + nAt(by) + " L " + nAt(tip.x) + " " + nAt(tip.y) + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>';
+  }
+  function svgCapStart(head, next, width) {
+    const dx = next.x - head.x;
+    const dy = next.y - head.y;
+    const mag = Math.hypot(dx, dy) || 1;
+    const len = Math.min(tokens.edge.arrowSize + 4, mag);
+    const bx = head.x + dx / mag * len;
+    const by = head.y + dy / mag * len;
+    return '<path class="vnm-arrow-cap" d="M ' + nAt(head.x) + " " + nAt(head.y) + " L " + nAt(bx) + " " + nAt(by) + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linecap="round" marker-start="url(#vnm-arrow-start)"/>';
+  }
+  function svgPolygon(pts, common) {
+    return '<polygon points="' + pts.map((p) => nAt(p[0]) + "," + nAt(p[1])).join(" ") + '" ' + common + "/>";
+  }
+  function svgShape(shape, box, fill, stroke, sw, dash, key) {
+    const x = box.x - box.w / 2;
+    const y = box.y - box.h / 2;
+    const w = box.w;
+    const h = box.h;
+    const cx = box.x;
+    const cy = box.y;
+    if (sketch) {
+      const sp = sketchShapePoints2(shape, x, y, w, h);
+      const rs = roughShape2(sp.pts, key);
+      const strokeAttr = ' fill="none" stroke="' + stroke + '" stroke-width="' + sw + '" stroke-linejoin="round" stroke-linecap="round"' + dash;
+      let out = '<path d="' + rs.fill + '" fill="' + fill + '" stroke="none"/>';
+      for (const d of rs.outline) out += '<path d="' + d + '"' + strokeAttr + "/>";
+      sp.extras.forEach((seg, i) => {
+        for (const d of roughPolyline2(seg, key + "#x" + i)) out += '<path d="' + d + '"' + strokeAttr + "/>";
+      });
+      return out;
+    }
+    const common = 'fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + sw + '"' + dash;
+    const rect = (rx) => '<rect x="' + nAt(x) + '" y="' + nAt(y) + '" width="' + nAt(w) + '" height="' + nAt(h) + '" rx="' + rx + '" ' + common + "/>";
+    if (shape === "rounded") return rect(14);
+    if (shape === "stadium") return rect(nAt(h / 2));
+    if (shape === "subroutine") {
+      const inset = 6;
+      return rect(4) + '<line x1="' + nAt(x + inset) + '" y1="' + nAt(y) + '" x2="' + nAt(x + inset) + '" y2="' + nAt(y + h) + '" stroke="' + stroke + '" stroke-width="' + sw + '"/><line x1="' + nAt(x + w - inset) + '" y1="' + nAt(y) + '" x2="' + nAt(x + w - inset) + '" y2="' + nAt(y + h) + '" stroke="' + stroke + '" stroke-width="' + sw + '"/>';
+    }
+    if (shape === "circle")
+      return '<ellipse cx="' + nAt(cx) + '" cy="' + nAt(cy) + '" rx="' + nAt(w / 2) + '" ry="' + nAt(h / 2) + '" ' + common + "/>";
+    if (shape === "diamond")
+      return svgPolygon([[cx, y], [x + w, cy], [cx, y + h], [x, cy]], common);
+    if (shape === "hexagon") {
+      const k = Math.min(w * 0.22, h * 0.5);
+      return svgPolygon([[x + k, y], [x + w - k, y], [x + w, cy], [x + w - k, y + h], [x + k, y + h], [x, cy]], common);
+    }
+    if (shape === "parallelogram") {
+      const k = Math.min(w * 0.22, h);
+      return svgPolygon([[x + k, y], [x + w, y], [x + w - k, y + h], [x, y + h]], common);
+    }
+    if (shape === "parallelogram-alt") {
+      const k = Math.min(w * 0.22, h);
+      return svgPolygon([[x, y], [x + w - k, y], [x + w, y + h], [x + k, y + h]], common);
+    }
+    if (shape === "cylinder") {
+      const ry = Math.min(10, h * 0.18);
+      const top = y + ry;
+      const bottom = y + h - ry;
+      const d = "M " + nAt(x) + " " + nAt(top) + " C " + nAt(x) + " " + nAt(top - ry * 1.3) + " " + nAt(x + w) + " " + nAt(top - ry * 1.3) + " " + nAt(x + w) + " " + nAt(top) + " L " + nAt(x + w) + " " + nAt(bottom) + " C " + nAt(x + w) + " " + nAt(bottom + ry * 1.3) + " " + nAt(x) + " " + nAt(bottom + ry * 1.3) + " " + nAt(x) + " " + nAt(bottom) + " Z";
+      const lid = "M " + nAt(x) + " " + nAt(top) + " C " + nAt(x) + " " + nAt(top + ry * 1.3) + " " + nAt(x + w) + " " + nAt(top + ry * 1.3) + " " + nAt(x + w) + " " + nAt(top);
+      return '<path d="' + d + '" ' + common + '/><path d="' + lid + '" fill="none" stroke="' + stroke + '" stroke-width="' + sw + '"/>';
+    }
+    return rect(6);
+  }
+  function svgNodeText(node, box, color) {
+    const lines = node.label.length ? node.label.split("\n") : [""];
+    const startY2 = box.y - (lines.length - 1) * tokens.font.lineHeight / 2;
+    return lines.map(
+      (line, i) => '<text x="' + nAt(box.x) + '" y="' + nAt(startY2 + i * tokens.font.lineHeight) + '" fill="' + color + '" font-size="' + tokens.font.size + '" font-weight="' + tokens.font.weight + '" text-anchor="middle" dominant-baseline="central">' + xmlEsc(line) + "</text>"
+    ).join("");
+  }
+  function svgNode(node) {
+    if (sketch && node.stateMarker) {
+      const b = absBox(node.id);
+      const r = Math.min(9, b.w / 2);
+      const cx = nAt(b.x);
+      const cy = nAt(b.y);
+      const col = tokens.colors.text;
+      if (node.stateMarker === "start") {
+        return '<circle cx="' + cx + '" cy="' + cy + '" r="' + nAt(r) + '" fill="' + col + '"/>';
+      }
+      return '<circle cx="' + cx + '" cy="' + cy + '" r="' + nAt(r) + '" fill="none" stroke="' + col + '" stroke-width="1.5"/><circle cx="' + cx + '" cy="' + cy + '" r="' + nAt(r - 4) + '" fill="' + col + '"/>';
+    }
+    const box = absBox(node.id);
+    const st = styleForNode(node.id, node.classes, node.style);
+    const shadow = tokens.effects.gradient && !sketch ? ' filter="url(#vnm-shadow)"' : "";
+    const sw = xmlAttr(st.strokeWidth ?? "1.5");
+    const dash = st.strokeDasharray ? ' stroke-dasharray="' + xmlAttr(st.strokeDasharray) + '"' : "";
+    const shape = svgShape(node.shape, box, xmlAttr(st.fill), xmlAttr(st.stroke), sw, dash, node.id);
+    const text = svgNodeText(node, box, xmlAttr(st.text));
+    return "<g" + shadow + ">" + shape + text + "</g>";
+  }
+  function boundsAbs(boxes, pts) {
+    const pad = 20;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const b of boxes) {
+      minX = Math.min(minX, b.x - b.w / 2);
+      minY = Math.min(minY, b.y - b.h / 2);
+      maxX = Math.max(maxX, b.x + b.w / 2);
+      maxY = Math.max(maxY, b.y + b.h / 2);
+    }
+    for (const p of pts) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    if (!isFinite(minX)) return { x: 0, y: 0, width: 0, height: 0 };
+    return {
+      x: nAt(minX - pad),
+      y: nAt(minY - pad),
+      width: nAt(maxX - minX + pad * 2),
+      height: nAt(maxY - minY + pad * 2)
+    };
+  }
+  function buildSvg() {
+    const ports = computePorts();
+    const boxes = [];
+    for (const sg of model.subgraphs) boxes.push(subgraphAbsBox(sg));
+    for (const nd of model.nodes) boxes.push(absBox(nd.id));
+    const edgePathParts = [];
+    const edgeLabelParts = [];
+    const edgeArrowCapParts = [];
+    const allPts = [];
+    const routesB = edgeEls.map((e, i) => {
+      const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : void 0;
+      return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
+    });
+    avoidSubgraphs2(routesB, edgeEls, avoidContainersFrom(subgraphAbsBox));
+    const nabB = avoidNodeBoxes((id) => {
+      const b2 = absBox(id);
+      return { x: b2.x, y: b2.y, w: b2.w, h: b2.h };
+    });
+    trimEndpointReentry2(routesB, edgeEls, nabB);
+    for (let k = 0; k < NODE_AVOID_PASSES2; k++) {
+      avoidNodes2(routesB, edgeEls, nabB);
+      detourApproaches2(routesB, edgeEls, nabB);
+    }
+    foldLabelShifts(routesB, resolveLabelLineOffsets2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
+    separateLanes2(routesB);
+    separateAntiParallelJogs2(routesB, edgeEls);
+    separateConvergentJogs2(routesB, edgeEls);
+    foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
+    foldLabelShifts(routesB, resolveLabelEdgeCollisions2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
+    const nodeBoxesB = model.nodes.map((nd) => {
+      const b2 = absBox(nd.id);
+      return { x: b2.x, y: b2.y, w: b2.w, h: b2.h };
+    });
+    foldLabelShifts(routesB, resolveLabelNodeCollisions2(labelPlatesOf(routesB), nodeBoxesB));
+    foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
+    const bridgedB = applyEdgeBridges2(routesB.map((r) => r.points), bridgesEnabled());
+    edgeEls.forEach((e, i) => {
+      const r = routesB[i];
+      for (const p of r.points) allPts.push(p);
+      edgePathParts.push(svgEdge(e, bridgedB[i] ?? r.path, r.points));
+      if (arrowCaps) edgeArrowCapParts.push(svgEdgeArrowCap(e, r.points));
+      if (e.label) {
+        edgeLabelParts.push(svgEdgeLabel(e.label, r.labelPos.x, r.labelPos.y));
+      }
+    });
+    for (const pl of labelPlatesOf(routesB)) {
+      if (pl) allPts.push({ x: pl.x - pl.w / 2, y: pl.y - pl.h / 2 }, { x: pl.x + pl.w / 2, y: pl.y + pl.h / 2 });
+    }
+    const b = boundsAbs(boxes, allPts);
+    const parts = [];
+    parts.push(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="' + nAt(b.width) + '" height="' + nAt(b.height) + '" viewBox="' + nAt(b.x) + " " + nAt(b.y) + " " + nAt(b.width) + " " + nAt(b.height) + '" font-family="' + xmlAttr(sketch && payload.sketch ? payload.sketch.fontFamily : tokens.font.family) + '">'
+    );
+    parts.push(svgDefs());
+    parts.push(
+      '<rect x="' + nAt(b.x) + '" y="' + nAt(b.y) + '" width="' + nAt(b.width) + '" height="' + nAt(b.height) + '" fill="' + tokens.colors.background + '"/>'
+    );
+    for (const sg of model.subgraphs) parts.push(svgSubgraphBox(sg));
+    for (const ep of edgePathParts) parts.push(ep);
+    for (const lp of edgeLabelParts) parts.push(lp);
+    for (const sg of model.subgraphs) parts.push(svgSubgraphTitle(sg));
+    for (const nd of model.nodes) parts.push(svgNode(nd));
+    for (const cap of edgeArrowCapParts) parts.push(cap);
+    parts.push("</svg>");
+    return { svg: parts.join("\n"), width: b.width, height: b.height };
+  }
+  function toSvgString() {
+    return buildSvg().svg;
+  }
+  function exportFileBase() {
+    const t = (doc.title || "").trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+    return t || "diagram";
+  }
+  function triggerDownload(href, filename) {
+    const a = doc.createElement("a");
+    a.setAttribute("href", href);
+    a.setAttribute("download", filename);
+    a.style.display = "none";
+    if (doc.body) doc.body.appendChild(a);
+    a.click();
+    if (doc.body && a.parentNode) doc.body.removeChild(a);
+  }
+  function saveSvg() {
+    const href = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(toSvgString());
+    triggerDownload(href, exportFileBase() + ".svg");
+  }
+  function savePng() {
+    const built = buildSvg();
+    const dpr = win.devicePixelRatio || 1;
+    const scale2 = Math.max(1, Math.min(3, dpr * 1.5));
+    const w = Math.max(1, Math.round(built.width * scale2));
+    const h = Math.max(1, Math.round(built.height * scale2));
+    const fail = (msg) => {
+      const c = win.console;
+      if (c && c.error) c.error("[very-nice-mermaid] " + msg);
+    };
+    const img = doc.createElement("img");
+    img.onload = () => {
+      const canvas = doc.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        fail("PNG export failed: 2D canvas context is unavailable");
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      let dataUrl;
+      try {
+        dataUrl = canvas.toDataURL("image/png");
+      } catch (err) {
+        fail("PNG export failed while encoding the canvas: " + err);
+        return;
+      }
+      triggerDownload(dataUrl, exportFileBase() + ".png");
+    };
+    img.onerror = () => fail("PNG export failed: the diagram SVG could not be loaded for rasterizing");
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(built.svg);
+  }
+  loadPersisted();
+  renderAll();
+  if (viewport.clientWidth === 0) {
+    win.requestAnimationFrame(() => fit());
+  } else {
+    fit();
+  }
+  const ROCtor = win.ResizeObserver;
+  if (ROCtor) new ROCtor(() => drawMinimap()).observe(viewport);
+  return {
+    root,
+    destroy,
+    fit,
+    zoomIn: () => zoomBy(1.2),
+    zoomOut: () => zoomBy(1 / 1.2),
+    resetView,
+    resetLayout,
+    exportLayout,
+    importLayout,
+    setTheme,
+    getPositions: () => exportLayout().positions,
+    toSvgString
+  };
+};
+var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"start","label":"Push to main","shape":"stadium","classes":[],"x":277.25,"y":29,"width":146,"height":42},{"id":"lint","label":"Lint passes?","shape":"diamond","classes":[],"x":277.25,"y":145.5,"width":181,"height":63},{"id":"test","label":"Run tests","shape":"rect","classes":[],"x":180.75,"y":262,"width":105,"height":42},{"id":"fail","label":"Report failure","shape":"cylinder","classes":[],"x":471.5,"y":480,"width":145,"height":54},{"id":"deploy","label":"Deploy?","shape":"hexagon","classes":[],"x":180.75,"y":368,"width":114,"height":42},{"id":"prod","label":"Ship to prod","shape":"parallelogram","classes":[],"x":83,"y":480,"width":150,"height":42},{"id":"stg","label":"Ship to staging","shape":"rect","classes":[],"x":278.5,"y":480,"width":153,"height":42},{"id":"done","label":"Done","shape":"circle","classes":[],"x":278.5,"y":608.5,"width":75,"height":75}],"edges":[{"from":"start","to":"lint","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":277.25,"y":50},{"x":277.25,"y":114}],"path":"M 277.25 50 L 277.25 114"},{"from":"lint","to":"test","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"yes","points":[{"x":262.25,"y":171.77900552486187},{"x":262.25,"y":206.38950276243094},{"x":180.75,"y":206.38950276243094},{"x":180.75,"y":241}],"path":"M 262.25 171.78 L 262.25 206.39 L 180.75 206.39 L 180.75 241","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":221.5,"y":197}},{"from":"lint","to":"fail","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"no","points":[{"x":292.25,"y":171.77900552486187},{"x":292.25,"y":209},{"x":471.5,"y":209},{"x":471.5,"y":453}],"path":"M 292.25 171.78 L 292.25 209 L 471.5 209 L 471.5 453","waypoints":[{"x":471.5,"y":209},{"x":471.5,"y":262},{"x":471.5,"y":315},{"x":471.5,"y":368},{"x":471.5,"y":421}],"ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":381.88,"y":197}},{"from":"test","to":"deploy","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":180.75,"y":283},{"x":180.75,"y":347}],"path":"M 180.75 283 L 180.75 347"},{"from":"deploy","to":"prod","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"prod","points":[{"x":165.75,"y":389},{"x":165.75,"y":424},{"x":83,"y":424},{"x":83,"y":459}],"path":"M 165.75 389 L 165.75 424 L 83 424 L 83 459","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":124.38,"y":411}},{"from":"deploy","to":"stg","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"staging","points":[{"x":195.75,"y":389},{"x":195.75,"y":424},{"x":278.5,"y":424},{"x":278.5,"y":459}],"path":"M 195.75 389 L 195.75 424 L 278.5 424 L 278.5 459","ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":237.13,"y":411}},{"from":"prod","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":83,"y":501},{"x":83,"y":608.5},{"x":241,"y":608.5}],"path":"M 83 501 L 83 608.5 L 241 608.5"},{"from":"stg","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":278.5,"y":501},{"x":278.5,"y":571}],"path":"M 278.5 501 L 278.5 571"},{"from":"fail","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":471.5,"y":507},{"x":471.5,"y":608.5},{"x":316,"y":608.5}],"path":"M 471.5 507 L 471.5 608.5 L 316 608.5"}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":-12,"width":576,"height":678}},"theme":{"name":"arch","edgeStyle":"elbow","tokens":{"colors":{"background":"#020617","surface":"#0f172a","surfaceStroke":"#334155","text":"#f1f5f9","textMuted":"#94a3b8","edge":"#64748b","edgeLabelBg":"#020617","edgeLabelText":"#cbd5e1","subgraphFill":"#0b1324","subgraphStroke":"#334155","subgraphText":"#94a3b8","accent":"#34d399","minimapBg":"rgba(2,6,23,0.9)","minimapViewport":"rgba(52,211,153,0.3)","roles":{"frontend":{"fill":"rgba(8,51,68,0.55)","stroke":"#22d3ee","text":"#e6feff"},"backend":{"fill":"rgba(6,78,59,0.55)","stroke":"#34d399","text":"#e7fff4"},"database":{"fill":"rgba(76,29,149,0.5)","stroke":"#a78bfa","text":"#f1ebff"},"cloud":{"fill":"rgba(120,53,15,0.55)","stroke":"#fbbf24","text":"#fff6e0"},"security":{"fill":"rgba(136,19,55,0.5)","stroke":"#fb7185","text":"#ffe4ec"},"messagebus":{"fill":"rgba(124,45,18,0.55)","stroke":"#fb923c","text":"#ffedd5"},"external":{"fill":"rgba(30,41,59,0.7)","stroke":"#94a3b8","text":"#e2e8f0"},"accent":{"fill":"rgba(14,165,233,0.18)","stroke":"#38bdf8","text":"#e0f2fe"},"success":{"fill":"rgba(6,78,59,0.55)","stroke":"#34d399","text":"#d1fae5"},"warn":{"fill":"rgba(120,53,15,0.55)","stroke":"#fbbf24","text":"#fef3c7"},"danger":{"fill":"rgba(136,19,55,0.5)","stroke":"#fb7185","text":"#ffe4e6"}}},"radii":{"node":8,"card":8,"label":4},"spacing":{"nodePadX":16,"nodePadY":12,"nodesep":44,"ranksep":64,"fitPadding":60},"font":{"family":"'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":13,"lineHeight":18,"weight":500},"edge":{"style":"elbow","width":1.5,"thickWidth":3,"arrowSize":8},"effects":{"nodeShadow":"0 2px 10px rgba(0,0,0,0.45)","gradient":false,"hoverLift":2}}},"cssVars":"--vnm-bg: #020617; --vnm-surface: #0f172a; --vnm-surface-stroke: #334155; --vnm-text: #f1f5f9; --vnm-text-muted: #94a3b8; --vnm-edge: #64748b; --vnm-edge-label-bg: #020617; --vnm-edge-label-text: #cbd5e1; --vnm-subgraph-fill: #0b1324; --vnm-subgraph-stroke: #334155; --vnm-subgraph-text: #94a3b8; --vnm-accent: #34d399; --vnm-minimap-bg: rgba(2,6,23,0.9); --vnm-minimap-viewport: rgba(52,211,153,0.3); --vnm-radius: 8px; --vnm-label-radius: 4px; --vnm-font: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 13px; --vnm-font-weight: 500; --vnm-node-shadow: 0 2px 10px rgba(0,0,0,0.45); --vnm-hover-lift: 2px; --vnm-edge-width: 1.5px;","options":{"fitPadding":60,"persistKey":"vnm-layout:1wui0yq","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true,"arrowCaps":true}};
+vnmRuntime(document.getElementById("vnm-root"), __vnm_payload);
+</script>
+</body>
+</html>

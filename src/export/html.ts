@@ -68,7 +68,8 @@ export function renderHtml(
   // flowchart PositionedModel, so the interactive HTML export is exactly the
   // flowchart vnmRuntime path (full draggable nodes + live edge re-routing).
   if (isClassLayout(input) || isStateLayout(input)) {
-    return renderHtml(input.model, opts);
+    // arrowCaps off: native class/state static twins draw no top-layer caps.
+    return renderHtml(input.model, { ...opts, arrowCaps: false });
   }
   ensureSyncRenderable(input, "renderHtmlAsync");
   const { model, theme } = prepare(input, { theme: opts.theme, strict: opts.strict });

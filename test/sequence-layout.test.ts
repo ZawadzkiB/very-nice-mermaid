@@ -42,6 +42,30 @@ describe("layoutSequence", () => {
     }
   });
 
+  it("positions activation bars from the activating to the deactivating message (archify)", () => {
+    const withAct: SequenceModel = {
+      ...MODEL,
+      // API is active from message 0 (POST) through message 4 (201); DB active for 1→2.
+      activations: [
+        { participant: "API", startOrder: 0, endOrder: 4, depth: 0 },
+        { participant: "DB", startOrder: 1, endOrder: 2, depth: 0 },
+      ],
+    };
+    const l = layoutSequence(withAct, { theme: themes.light! });
+    expect(l.activations).toHaveLength(2);
+    const api = l.activations.find((a) => a.participant === "API")!;
+    const db = l.activations.find((a) => a.participant === "DB")!;
+    // Each bar spans from its start message's y to its end message's y (positive height),
+    // centered on the participant's lifeline x.
+    const apiP = l.participants.find((p) => p.id === "API")!;
+    expect(api.x).toBeCloseTo(apiP.x, 5);
+    expect(api.endY).toBeGreaterThan(api.startY);
+    expect(db.startY).toBeGreaterThan(api.startY); // DB activates later
+    expect(db.endY).toBeLessThan(api.endY); // and deactivates earlier (nested inside API's span)
+    // No activations → empty (backward-compatible).
+    expect(layoutSequence(MODEL, { theme: themes.light! }).activations).toEqual([]);
+  });
+
   it("marks the self-message with a loop and keeps its endpoints on one column", () => {
     const l = layoutSequence(MODEL, { theme: themes.light! });
     const self = l.messages.find((m) => m.self)!;

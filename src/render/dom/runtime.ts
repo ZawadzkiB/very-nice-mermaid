@@ -31,6 +31,14 @@ export interface RuntimeOptions {
   style?: RenderStyle;
   /** Edge-crossing bridges (FR7 / D4); `undefined` → per-style default. */
   bridges?: boolean;
+  /**
+   * Re-draw arrowheads in a top layer so a head ending on/inside a node is never
+   * hidden by the node fill. `undefined`/`true` → on (flowchart default); the
+   * class/state native mounts set `false` because their static twins
+   * (renderClassSvg — UML markers — / renderStateSvg) emit no caps, and capping
+   * them would draw a plain arrow over a UML relation marker.
+   */
+  arrowCaps?: boolean;
 }
 
 export interface RuntimePayload {
@@ -108,6 +116,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   // via the inlined rough generator (ROUGH-PARITY below). The @font-face rides
   // the payload (the runtime can't import it) and is injected on boot.
   const sketch = opt.style === "sketch";
+  // Arrowhead caps (layer 6): on for flowcharts, off for class/state natives whose
+  // static twins emit no caps (see RuntimeOptions.arrowCaps).
+  const arrowCaps = opt.arrowCaps !== false;
   // Sketch look constants — mirror src/rough SKETCH (ROUGH-PARITY). Declared here
   // (not in the geometry block below) so the node-shape setup can read them.
   const SK_ROUGHNESS = 2.4;
@@ -416,6 +427,22 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     card.appendChild(inner);
     world.appendChild(card);
     cards[nd.id] = card;
+  }
+
+  // Layer 6 — arrowhead cap overlay. Clean-mode node bodies are HTML cards in
+  // `world` (painted OVER the edge <svg>), so a head ending on/inside a node is
+  // hidden by its card. This overlay <svg> is appended AFTER the cards, so its
+  // re-drawn heads sit on top of everything; it references the main <svg>'s
+  // markers (document-scoped url(#…)) and repaints on every renderEdges. Off for
+  // class/state natives (arrowCaps=false). pointer-events:none so it never eats
+  // a drag. Mirrors the static layer 6 (svgEdgeArrowCap) for on-screen parity.
+  const capOverlay = arrowCaps ? doc.createElementNS(SVGNS, "svg") : null;
+  if (capOverlay) {
+    capOverlay.setAttribute("class", "vnm-arrow-caps");
+    capOverlay.setAttribute("width", String(contentW));
+    capOverlay.setAttribute("height", String(contentH));
+    capOverlay.setAttribute("style", "position:absolute;left:0;top:0;overflow:visible;pointer-events:none;");
+    world.appendChild(capOverlay);
   }
 
   // ---- sketch node outlines (D2 / FR2) ----
@@ -1442,6 +1469,159 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     }
     return out;
   }
+  // R1/R2 — byte-parity twins of geometry.avoidNodes / detourApproaches / trimEndpointReentry.
+  // w/h boxes (carry `id` so an edge skips its own endpoints); nAt==n; pathPoly==toPath elbow;
+  // simplify == geometry.simplify; same constants. `pairs[i]===edgeEls[i]` carry from/to.
+  type AvoidNB = { id?: string; x: number; y: number; w: number; h: number };
+  const NODE_AVOID_MARGIN = 14;
+  const NODE_AVOID_MIN_CROSS = 14;
+  const NODE_AVOID_PASSES = 4;
+  // R1/R2 run on orthogonal routes (elbow, or curved-with-bends via pathRounded); never a cubic.
+  const isOrthoT = (pts: Pt[]): boolean => {
+    for (let i = 0; i + 1 < pts.length; i++) if (Math.abs(pts[i]!.x - pts[i + 1]!.x) >= 0.5 && Math.abs(pts[i]!.y - pts[i + 1]!.y) >= 0.5) return false;
+    return true;
+  };
+  const orthoPathT = (pts: Pt[]): string => (edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts));
+  function avoidNodes(
+    edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>,
+    pairs: Array<{ from: string; to: string }>,
+    nodeBoxes: AvoidNB[],
+  ): void {
+    if (!nodeBoxes.length) return;
+    const moveLane = (e: { points: Pt[]; labelPos: Pt }, vertical: boolean, seg: LaneSeg, target: number): void => {
+      const p = e.points;
+      if (vertical) { shiftLabelOnSeg(e, true, seg, target); p[seg.i] = { x: target, y: p[seg.i]!.y }; p[seg.i + 1] = { x: target, y: p[seg.i + 1]!.y }; }
+      else { shiftLabelOnSeg(e, false, seg, target); p[seg.i] = { x: p[seg.i]!.x, y: target }; p[seg.i + 1] = { x: p[seg.i + 1]!.x, y: target }; }
+      seg.along = target;
+    };
+    const moved: Record<number, boolean> = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      const len = p.length;
+      if (len < 4 || (edgeStyle === "curved" && !isOrthoT(p))) return;
+      const ep = pairs[ei]!;
+      let best: { i: number; vertical: boolean; along: number; lo: number; hi: number; side: number; runLen: number } | undefined;
+      for (let i = 1; i + 2 < len; i++) {
+        const a = p[i]!;
+        const b = p[i + 1]!;
+        const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+        const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+        if (!isVert && !isHorz) continue;
+        const along = isVert ? a.x : a.y;
+        const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+        const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+        const runLen = hi - lo;
+        for (const nb of nodeBoxes) {
+          if (nb.id === ep.from || nb.id === ep.to) continue;
+          const cx0 = nb.x - nb.w / 2;
+          const cx1 = nb.x + nb.w / 2;
+          const cy0 = nb.y - nb.h / 2;
+          const cy1 = nb.y + nb.h / 2;
+          const perpLo = isVert ? cx0 : cy0;
+          const perpHi = isVert ? cx1 : cy1;
+          const parLo = isVert ? cy0 : cx0;
+          const parHi = isVert ? cy1 : cx1;
+          if (along <= perpLo || along >= perpHi) continue;
+          if (Math.min(hi, parHi) - Math.max(lo, parLo) < NODE_AVOID_MIN_CROSS) continue;
+          const side = along - perpLo <= perpHi - along ? nAt(perpLo - NODE_AVOID_MARGIN) : nAt(perpHi + NODE_AVOID_MARGIN);
+          if (!best || runLen > best.runLen) best = { i, vertical: isVert, along, lo, hi, side, runLen };
+        }
+      }
+      if (!best) return;
+      moveLane(edges[ei]!, best.vertical, { edge: ei, i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+      moved[ei] = true;
+    });
+    for (const kk in moved) edges[Number(kk)]!.path = orthoPathT(edges[Number(kk)]!.points);
+  }
+  function detourApproaches(
+    edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>,
+    pairs: Array<{ from: string; to: string }>,
+    nodeBoxes: AvoidNB[],
+  ): void {
+    if (!nodeBoxes.length) return;
+    const spans = (nb: AvoidNB) => ({ l: nb.x - nb.w / 2, r: nb.x + nb.w / 2, t: nb.y - nb.h / 2, b: nb.y + nb.h / 2 });
+    const detour = (a: Pt, pp: Pt, nb: AvoidNB): Pt[] => {
+      const s = spans(nb);
+      if (Math.abs(a.x - pp.x) < 0.5) {
+        const sideX = a.x - s.l <= s.r - a.x ? nAt(s.l - NODE_AVOID_MARGIN) : nAt(s.r + NODE_AVOID_MARGIN);
+        const gapY = pp.y > a.y ? nAt(s.b + NODE_AVOID_MARGIN) : nAt(s.t - NODE_AVOID_MARGIN);
+        return [{ x: sideX, y: a.y }, { x: sideX, y: gapY }, { x: nAt(a.x), y: gapY }];
+      }
+      const sideY = a.y - s.t <= s.b - a.y ? nAt(s.t - NODE_AVOID_MARGIN) : nAt(s.b + NODE_AVOID_MARGIN);
+      const gapX = pp.x > a.x ? nAt(s.r + NODE_AVOID_MARGIN) : nAt(s.l - NODE_AVOID_MARGIN);
+      return [{ x: a.x, y: sideY }, { x: gapX, y: sideY }, { x: gapX, y: nAt(a.y) }];
+    };
+    const pierces = (a: Pt, pp: Pt, nb: AvoidNB): boolean => {
+      const s = spans(nb);
+      const vert = Math.abs(a.x - pp.x) < 0.5;
+      if (!vert && Math.abs(a.y - pp.y) >= 0.5) return false;
+      const along = vert ? a.x : a.y;
+      const lo = vert ? Math.min(a.y, pp.y) : Math.min(a.x, pp.x);
+      const hi = vert ? Math.max(a.y, pp.y) : Math.max(a.x, pp.x);
+      const perpLo = vert ? s.l : s.t;
+      const perpHi = vert ? s.r : s.b;
+      const parLo = vert ? s.t : s.l;
+      const parHi = vert ? s.b : s.r;
+      if (along <= perpLo || along >= perpHi) return false;
+      return Math.min(hi, parHi) - Math.max(lo, parLo) >= NODE_AVOID_MIN_CROSS;
+    };
+    const changed: Record<number, boolean> = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      if (p.length < 2 || (edgeStyle === "curved" && !isOrthoT(p))) return;
+      const ep = pairs[ei]!;
+      const a = p[p.length - 2]!;
+      const port = p[p.length - 1]!;
+      for (const nb of nodeBoxes) {
+        if (nb.id === ep.from || nb.id === ep.to) continue;
+        if (pierces(a, port, nb)) { p.splice(p.length - 1, 0, ...detour(a, port, nb)); changed[ei] = true; break; }
+      }
+    });
+    for (const kk in changed) {
+      const e = edges[Number(kk)]!;
+      const sp = simplify(e.points);
+      e.points.splice(0, e.points.length, ...sp);
+      e.path = orthoPathT(e.points);
+    }
+  }
+  function trimEndpointReentry(
+    edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>,
+    pairs: Array<{ from: string; to: string }>,
+    nodeBoxes: AvoidNB[],
+  ): void {
+    const boxById: Record<string, AvoidNB> = {};
+    for (const b of nodeBoxes) if (b.id) boxById[b.id] = b;
+    const inside = (pt: Pt, b: AvoidNB): boolean =>
+      pt.x > b.x - b.w / 2 + 0.5 && pt.x < b.x + b.w / 2 - 0.5 && pt.y > b.y - b.h / 2 + 0.5 && pt.y < b.y + b.h / 2 - 0.5;
+    const cross = (inPt: Pt, outPt: Pt, b: AvoidNB): Pt =>
+      Math.abs(inPt.x - outPt.x) < 0.5
+        ? { x: nAt(inPt.x), y: nAt(outPt.y > inPt.y ? b.y + b.h / 2 : b.y - b.h / 2) }
+        : { x: nAt(outPt.x > inPt.x ? b.x + b.w / 2 : b.x - b.w / 2), y: nAt(inPt.y) };
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      if (p.length < 3 || (edgeStyle === "curved" && !isOrthoT(p))) return;
+      const ep = pairs[ei]!;
+      // A user-pinned endpoint (dragged handle) is intentional — never re-anchor it (parity REV-007).
+      const ov = anchorsOv[ei];
+      const src = ov && ov.source ? undefined : boxById[ep.from];
+      const tgt = ov && ov.target ? undefined : boxById[ep.to];
+      let did = false;
+      if (src && inside(p[1]!, src)) {
+        let k = 1;
+        while (k < p.length && inside(p[k]!, src)) k++;
+        if (k < p.length) { p.splice(0, k, cross(p[k - 1]!, p[k]!, src)); did = true; }
+      }
+      if (tgt && p.length >= 3 && inside(p[p.length - 2]!, tgt)) {
+        let j = p.length - 2;
+        while (j >= 0 && inside(p[j]!, tgt)) j--;
+        if (j >= 0) { p.splice(j + 1, p.length - 1 - j, cross(p[j + 1]!, p[j]!, tgt)); did = true; }
+      }
+      if (did) { const sp = simplify(p); p.splice(0, p.length, ...sp); e.path = orthoPathT(p); }
+    });
+  }
+  // Live/Save node-obstacle box list (w/h + id), mirroring geometry's positionedNodes.map(toBox).
+  const avoidNodeBoxes = (boxOf: (id: string) => { x: number; y: number; w: number; h: number }): AvoidNB[] =>
+    model.nodes.map((nd) => { const b = boxOf(nd.id); return { id: nd.id, x: b.x, y: b.y, w: b.w, h: b.h }; });
   // mirrors geometry.separateLanes() (FR9): pull apart bundles of near-parallel,
   // near-collinear INTERIOR orthogonal runs sharing a channel into distinct lanes
   // (≥ LANE_GAP apart, centred on the bundle mean), mutating each routed edge's
@@ -1451,7 +1631,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   // on the routed results (before FR6 label de-collision + FR7 bridges) so the
   // live view + Save-SVG re-lane exactly like the static finishEdges. Elbow only.
   function separateLanes(edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>): void {
-    if (edgeStyle !== "elbow") return;
+    if (edgeStyle !== "elbow" && edgeStyle !== "curved") return;
     const LANE_GAP = 26;
     const LANE_MIN_OVERLAP = 40;
     const LANE_PASSES = 8;
@@ -1510,7 +1690,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       }
       if (!changed) break;
     }
-    for (const kk in moved) edges[Number(kk)]!.path = pathPoly(edges[Number(kk)]!.points);
+    for (const kk in moved) edges[Number(kk)]!.path = orthoPathT(edges[Number(kk)]!.points);
   }
   // mirrors geometry.separateAntiParallelJogs() (v0.6.2): de-cramp a collinear
   // anti-parallel A→B/B→A elbow pair that separateLanes' overlap gate skips. Group
@@ -2074,6 +2254,10 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // v0.6.6 (defect #3): FIRST, pull a trunk piercing a foreign container outside it and
     // re-enter near its endpoint (matching finishEdges) — live-view container boxes.
     avoidSubgraphs(routed, edgeEls, avoidContainersFrom(subgraphWorldBox));
+    // R1/R2 (mirror finishEdges): clamp endpoint re-entry, then push interior/approach node pierces out.
+    const nabL = avoidNodeBoxes((id) => ({ x: positions[id]!.x, y: positions[id]!.y, w: sizes[id]!.w, h: sizes[id]!.h }));
+    trimEndpointReentry(routed, edgeEls, nabL);
+    for (let k = 0; k < NODE_AVOID_PASSES; k++) { avoidNodes(routed, edgeEls, nabL); detourApproaches(routed, edgeEls, nabL); }
     // v0.6.4 (option d): lift each label off its line FIRST so the line stays continuous
     // and the de-collision passes below de-collide the offset (drawn) plates.
     foldLabelShifts(routed, resolveLabelLineOffsets(labelPlatesOf(routed), routed.map((r) => r.points)));
@@ -2122,6 +2306,15 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
         e.text.setAttribute("y", String(nAt(ly)));
       }
     });
+    // Layer 6: repaint the arrowhead caps above the cards from the live routes
+    // (same svgEdgeArrowCap the static/Save-SVG sinks use → on-screen parity).
+    if (capOverlay) {
+      let caps = "";
+      edgeEls.forEach((e, i) => {
+        caps += svgEdgeArrowCap(e, routed[i]!.points);
+      });
+      capOverlay.innerHTML = caps;
+    }
     positionEdgeHandles(ports);
   }
   function applyTransform(): void {
@@ -2797,6 +2990,49 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     }
     return out;
   }
+  // Layer 6 (parity with src/render/svg.ts renderEdgeArrowCaps): re-draw the
+  // arrowhead ABOVE the nodes so a head ending on/inside a node is never hidden
+  // by the node fill. Byte-identical strings to the static sink (Save-SVG parity).
+  function svgEdgeArrowCap(e: EdgeEls, points: Pt[]): string {
+    const m = points.length;
+    if (m < 2 || (!e.arrows.end && !e.arrows.start)) return "";
+    const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
+    if (sketch) {
+      const key = e.from + "->" + e.to;
+      const arr = points.map((p) => [p.x, p.y]);
+      const base =
+        ' fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width +
+        '" stroke-linejoin="round" stroke-linecap="round"';
+      let s = "";
+      if (e.arrows.end) s += '<path class="vnm-arrow-cap" d="' + openArrowhead(arr[m - 1]!, arr[m - 2]!, tokens.edge.arrowSize, key + "@end") + '"' + base + "/>";
+      if (e.arrows.start) s += '<path class="vnm-arrow-cap" d="' + openArrowhead(arr[0]!, arr[1]!, tokens.edge.arrowSize, key + "@start") + '"' + base + "/>";
+      return s;
+    }
+    let s = "";
+    if (e.arrows.end) s += svgCapEnd(points[m - 2]!, points[m - 1]!, width);
+    if (e.arrows.start) s += svgCapStart(points[0]!, points[1]!, width);
+    return s;
+  }
+  function svgCapEnd(prev: Pt, tip: Pt, width: number): string {
+    const dx = tip.x - prev.x;
+    const dy = tip.y - prev.y;
+    const mag = Math.hypot(dx, dy) || 1;
+    const len = Math.min(tokens.edge.arrowSize + 4, mag);
+    const bx = tip.x - (dx / mag) * len;
+    const by = tip.y - (dy / mag) * len;
+    return '<path class="vnm-arrow-cap" d="M ' + nAt(bx) + " " + nAt(by) + " L " + nAt(tip.x) + " " + nAt(tip.y) +
+      '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>';
+  }
+  function svgCapStart(head: Pt, next: Pt, width: number): string {
+    const dx = next.x - head.x;
+    const dy = next.y - head.y;
+    const mag = Math.hypot(dx, dy) || 1;
+    const len = Math.min(tokens.edge.arrowSize + 4, mag);
+    const bx = head.x + (dx / mag) * len;
+    const by = head.y + (dy / mag) * len;
+    return '<path class="vnm-arrow-cap" d="M ' + nAt(head.x) + " " + nAt(head.y) + " L " + nAt(bx) + " " + nAt(by) +
+      '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linecap="round" marker-start="url(#vnm-arrow-start)"/>';
+  }
   function svgPolygon(pts: number[][], common: string): string {
     return '<polygon points="' + pts.map((p) => nAt(p[0]!) + "," + nAt(p[1]!)).join(" ") + '" ' + common + "/>";
   }
@@ -2940,6 +3176,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     for (const nd of model.nodes) boxes.push(absBox(nd.id));
     const edgePathParts: string[] = [];
     const edgeLabelParts: string[] = [];
+    const edgeArrowCapParts: string[] = [];
     const allPts: Pt[] = [];
     const routesB = edgeEls.map((e, i) => {
       const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : undefined;
@@ -2949,6 +3186,10 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // re-enter near its endpoint (matching finishEdges) — absolute-coord container boxes so
     // Save-SVG byte-matches the static layout()'s re-routed trunks (parity).
     avoidSubgraphs(routesB, edgeEls, avoidContainersFrom(subgraphAbsBox));
+    // R1/R2 (mirror finishEdges): clamp endpoint re-entry, then push interior/approach node pierces out.
+    const nabB = avoidNodeBoxes((id) => { const b = absBox(id); return { x: b.x, y: b.y, w: b.w, h: b.h }; });
+    trimEndpointReentry(routesB, edgeEls, nabB);
+    for (let k = 0; k < NODE_AVOID_PASSES; k++) { avoidNodes(routesB, edgeEls, nabB); detourApproaches(routesB, edgeEls, nabB); }
     // v0.6.4 (option d): lift each label off its line FIRST so the line stays continuous
     // and the de-collision passes below de-collide the offset (drawn) plates (parity).
     foldLabelShifts(routesB, resolveLabelLineOffsets(labelPlatesOf(routesB), routesB.map((r) => r.points)));
@@ -2980,6 +3221,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const r = routesB[i]!;
       for (const p of r.points) allPts.push(p);
       edgePathParts.push(svgEdge(e, bridgedB[i] ?? r.path, r.points));
+      if (arrowCaps) edgeArrowCapParts.push(svgEdgeArrowCap(e, r.points));
       if (e.label) {
         edgeLabelParts.push(svgEdgeLabel(e.label, r.labelPos.x, r.labelPos.y));
       }
@@ -3001,13 +3243,15 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       '<rect x="' + nAt(b.x) + '" y="' + nAt(b.y) + '" width="' + nAt(b.width) + '" height="' + nAt(b.height) +
         '" fill="' + tokens.colors.background + '"/>',
     );
-    // 5-layer order (FR1) mirroring src/render/svg.ts renderSvgFromModel for
-    // byte-parity: 1 boxes → 2 edge paths → 3 edge labels → 4 titles → 5 nodes.
+    // 6-layer order (FR1) mirroring src/render/svg.ts renderSvgFromModel for
+    // byte-parity: 1 boxes → 2 edge paths → 3 edge labels → 4 titles → 5 nodes
+    // → 6 arrowhead caps (heads re-drawn above nodes so none is ever hidden).
     for (const sg of model.subgraphs) parts.push(svgSubgraphBox(sg)); // 1
     for (const ep of edgePathParts) parts.push(ep); // 2
     for (const lp of edgeLabelParts) parts.push(lp); // 3
     for (const sg of model.subgraphs) parts.push(svgSubgraphTitle(sg)); // 4
     for (const nd of model.nodes) parts.push(svgNode(nd)); // 5
+    for (const cap of edgeArrowCapParts) parts.push(cap); // 6
     parts.push("</svg>");
     return { svg: parts.join("\n"), width: b.width, height: b.height };
   }

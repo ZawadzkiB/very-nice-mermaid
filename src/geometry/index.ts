@@ -17,6 +17,8 @@ import type { EdgeStyle } from "../theme/index.js";
  * border *is* the outline and anchoring is unchanged (backward-compatible).
  */
 export interface NodeBox {
+  /** Node id — carried so obstacle passes ({@link avoidNodes}) can skip an edge's own endpoints. */
+  id?: string;
   x: number;
   y: number;
   width: number;
@@ -934,7 +936,9 @@ export function separateLanes(
   edges: Array<{ points: Point[]; path?: string; labelPos?: Point }>,
   style: EdgeStyle,
 ): void {
-  if (style !== "elbow") return;
+  // Runs on any orthogonal route (elbow, or curved-with-bends): a cubic curve's diagonal segments
+  // fail the isVert/isHorz test → contribute no lane runs → left byte-identical.
+  if (style !== "elbow" && style !== "curved") return;
   const moved = new Set<number>();
   for (let pass = 0; pass < LANE_PASSES; pass++) {
     let changed = false;
@@ -981,7 +985,7 @@ export function separateLanes(
     }
     if (!changed) break;
   }
-  for (const ei of moved) edges[ei]!.path = toPath(edges[ei]!.points, "elbow");
+  for (const ei of moved) edges[ei]!.path = orthoPath(edges[ei]!.points, style);
 }
 
 /** Slide one edge run to a new lane coord (its shared endpoints move together, so the
@@ -1349,6 +1353,225 @@ export function avoidSubgraphs(
     if (best.container.members.has(e.to)) lowerReentry(p, best.i + 1, best.i + 2, p[len - 1]!, best.vertical);
   });
   for (const ei of moved) edges[ei]!.path = toPath(edges[ei]!.points, "elbow");
+}
+
+/**
+ * R1 — reserved space around every NODE (px past the box that a piercing trunk is pushed).
+ * Smaller than {@link SUBGRAPH_AVOID_MARGIN} (nodes are far more numerous / closer together)
+ * but still a visible gap so a re-routed line reads as skirting the box, not grazing it.
+ */
+export const NODE_AVOID_MARGIN = 14;
+/**
+ * R1 — minimum overlap (px) between an edge's interior trunk and a node's *parallel* span for the
+ * run to count as a genuine pierce (a whole node crossed), not a sliver clipping a corner. Nodes
+ * are ~42–60px on their short axis, so this is far below {@link SUBGRAPH_AVOID_MIN_CROSS} (120).
+ */
+const NODE_AVOID_MIN_CROSS = 14;
+/**
+ * R1 — how many times {@link avoidNodes} repeats. Each pass clears the single longest pierce per
+ * edge; a detour around node A can newly clip node B, so repeat. The pass is idempotent once an
+ * edge is clear, so extra passes no-op (kept identical in the runtime twins for byte-parity).
+ */
+export const NODE_AVOID_PASSES = 4;
+
+/**
+ * R1/R2 run on any **orthogonal** routed polyline — elbow, or a curved edge WITH bends (rendered
+ * via {@link roundedPath}). They must NOT touch a simple 4-point cubic curved edge (diagonal
+ * control points), so each pass skips a curved edge whose points aren't axis-aligned.
+ */
+function isOrthogonalRoute(pts: Point[]): boolean {
+  for (let i = 0; i + 1 < pts.length; i++) {
+    if (Math.abs(pts[i]!.x - pts[i + 1]!.x) >= 0.5 && Math.abs(pts[i]!.y - pts[i + 1]!.y) >= 0.5) return false;
+  }
+  return true;
+}
+/** Regenerate an orthogonal route's `d` in its own style (curved → rounded L/Q; else elbow L). */
+function orthoPath(pts: Point[], style: EdgeStyle): string {
+  return style === "curved" ? roundedPath(pts) : toPath(pts, "elbow");
+}
+
+/**
+ * **R1 — reserved-space node-obstacle avoidance.** The per-NODE analogue of
+ * {@link avoidSubgraphs}: an elbow-only, gated, idempotent post-route pass (run in
+ * {@link finishEdges} immediately after `avoidSubgraphs`, before `separateLanes` re-lanes any new
+ * overlap). For each edge, find the LONGEST axis-aligned interior trunk that pierces a node box
+ * that is **not** the edge's own source/target, and push that trunk just outside the node's nearest
+ * side + {@link NODE_AVOID_MARGIN} ({@link moveLane}, keeping the elbow orthogonal + anchored and
+ * carrying the label). Skipping the edge's own endpoints means no re-entry handling is needed (an
+ * endpoint node is never an obstacle to its own edge). Node boxes carry `id` (see {@link NodeBox}).
+ * Deterministic, elbow-only; single longest-pierce per edge per pass (multi-obstacle detours run
+ * over repeated passes — see the caller). Mirrored byte-for-byte in the runtime twin.
+ */
+export function avoidNodes(
+  edges: Array<{ from: string; to: string; points: Point[]; path?: string; labelPos?: Point }>,
+  nodeBoxes: ReadonlyArray<NodeBox>,
+  style: EdgeStyle,
+): void {
+  if (nodeBoxes.length === 0) return;
+  const moved = new Set<number>();
+  edges.forEach((e, ei) => {
+    const p = e.points;
+    const len = p.length;
+    if (len < 4 || (style === "curved" && !isOrthogonalRoute(p))) return; // need an interior run (both ends are bends); skip cubic curves
+    let best:
+      | { i: number; vertical: boolean; along: number; lo: number; hi: number; side: number; runLen: number }
+      | undefined;
+    for (let i = 1; i + 2 < len; i++) {
+      const a = p[i]!;
+      const b = p[i + 1]!;
+      const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+      const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+      if (!isVert && !isHorz) continue;
+      const along = isVert ? a.x : a.y;
+      const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+      const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+      const runLen = hi - lo;
+      for (const nb of nodeBoxes) {
+        if (nb.id === e.from || nb.id === e.to) continue; // never avoid the edge's own endpoints
+        const cx0 = nb.x - nb.width / 2;
+        const cx1 = nb.x + nb.width / 2;
+        const cy0 = nb.y - nb.height / 2;
+        const cy1 = nb.y + nb.height / 2;
+        const perpLo = isVert ? cx0 : cy0; // run's `along` must sit strictly inside this cross-span
+        const perpHi = isVert ? cx1 : cy1;
+        const parLo = isVert ? cy0 : cx0; // and overlap this (parallel) span by ≥ NODE_AVOID_MIN_CROSS
+        const parHi = isVert ? cy1 : cx1;
+        if (along <= perpLo || along >= perpHi) continue;
+        if (Math.min(hi, parHi) - Math.max(lo, parLo) < NODE_AVOID_MIN_CROSS) continue;
+        const side =
+          along - perpLo <= perpHi - along ? n(perpLo - NODE_AVOID_MARGIN) : n(perpHi + NODE_AVOID_MARGIN);
+        if (!best || runLen > best.runLen) best = { i, vertical: isVert, along, lo, hi, side, runLen };
+      }
+    }
+    if (!best) return;
+    moveLane(e, best.vertical, { edge: ei, i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+    moved.add(ei);
+  });
+  for (const ei of moved) edges[ei]!.path = orthoPath(edges[ei]!.points, style);
+}
+
+/**
+ * **R1 — detour an ENDPOINT-APPROACH leg around a node it pierces.** `avoidNodes` only re-lanes
+ * *interior* trunks; when the pierce is on the first/last leg (the straight run into a port) it
+ * can't move the run without detaching the port. Instead, insert an orthogonal detour: skirt the
+ * obstacle's nearest side and re-approach the port through the gap between the obstacle and the
+ * endpoint (e.g. `api→Kafka` dropping through Redis, which sits directly above Kafka → go down
+ * Redis's left, then into Kafka's top from the gap). Elbow only; one detour per leg per pass
+ * (repeat via the caller's loop). Mirrored byte-for-byte in the runtime twin.
+ */
+export function detourApproaches(
+  edges: Array<{ from: string; to: string; points: Point[]; path?: string; labelPos?: Point }>,
+  nodeBoxes: ReadonlyArray<NodeBox>,
+  style: EdgeStyle,
+): void {
+  if (nodeBoxes.length === 0) return;
+  const spans = (nb: NodeBox) => ({
+    l: nb.x - nb.width / 2, r: nb.x + nb.width / 2, t: nb.y - nb.height / 2, b: nb.y + nb.height / 2,
+  });
+  // Detour points to insert between leg ends A (bend, outside N) and P (port), skirting N.
+  const detour = (a: Point, pp: Point, nb: NodeBox): Point[] => {
+    const s = spans(nb);
+    if (Math.abs(a.x - pp.x) < 0.5) {
+      const sideX = a.x - s.l <= s.r - a.x ? n(s.l - NODE_AVOID_MARGIN) : n(s.r + NODE_AVOID_MARGIN);
+      const gapY = pp.y > a.y ? n(s.b + NODE_AVOID_MARGIN) : n(s.t - NODE_AVOID_MARGIN);
+      return [{ x: sideX, y: a.y }, { x: sideX, y: gapY }, { x: n(a.x), y: gapY }];
+    }
+    const sideY = a.y - s.t <= s.b - a.y ? n(s.t - NODE_AVOID_MARGIN) : n(s.b + NODE_AVOID_MARGIN);
+    const gapX = pp.x > a.x ? n(s.r + NODE_AVOID_MARGIN) : n(s.l - NODE_AVOID_MARGIN);
+    return [{ x: a.x, y: sideY }, { x: gapX, y: sideY }, { x: gapX, y: n(a.y) }];
+  };
+  // Does axis-aligned leg a→pp pierce node nb (nb is neither endpoint)?
+  const pierces = (a: Point, pp: Point, nb: NodeBox): boolean => {
+    const s = spans(nb);
+    const vert = Math.abs(a.x - pp.x) < 0.5;
+    if (!vert && Math.abs(a.y - pp.y) >= 0.5) return false; // not axis-aligned
+    const along = vert ? a.x : a.y;
+    const lo = vert ? Math.min(a.y, pp.y) : Math.min(a.x, pp.x);
+    const hi = vert ? Math.max(a.y, pp.y) : Math.max(a.x, pp.x);
+    const perpLo = vert ? s.l : s.t;
+    const perpHi = vert ? s.r : s.b;
+    const parLo = vert ? s.t : s.l;
+    const parHi = vert ? s.b : s.r;
+    if (along <= perpLo || along >= perpHi) return false;
+    return Math.min(hi, parHi) - Math.max(lo, parLo) >= NODE_AVOID_MIN_CROSS;
+  };
+  const changed = new Set<number>();
+  edges.forEach((e, ei) => {
+    const p = e.points;
+    if (p.length < 2 || (style === "curved" && !isOrthogonalRoute(p))) return; // skip cubic curves
+    // TARGET leg (last): A = p[len-2] (bend, outside the obstacle), port = p[len-1].
+    const a = p[p.length - 2]!;
+    const port = p[p.length - 1]!;
+    for (const nb of nodeBoxes) {
+      if (nb.id === e.from || nb.id === e.to) continue;
+      if (pierces(a, port, nb)) { p.splice(p.length - 1, 0, ...detour(a, port, nb)); changed.add(ei); break; }
+    }
+  });
+  for (const ei of changed) {
+    const sp = simplify(edges[ei]!.points);
+    edges[ei]!.points.splice(0, edges[ei]!.points.length, ...sp);
+    edges[ei]!.path = orthoPath(edges[ei]!.points, style);
+  }
+}
+
+/**
+ * **R2 — clamp an endpoint approach to the border it actually crosses.** When an edge's first
+ * (or last) leg threads back INTO its own source (or target) box before leaving — because the
+ * routed heading disagrees with the chosen perpendicular port face — re-anchor the port to the
+ * point where the polyline genuinely crosses that node's border, dropping the interior stub. The
+ * edge then exits/enters perpendicular from the face it truly approaches (e.g. Worker's right,
+ * PostgreSQL's right), never through the shape. Purely local: an edge whose first/last leg already
+ * leaves the box cleanly is left byte-identical, so it never perturbs the mirror-heavy port
+ * assignment. Elbow only; mirrored byte-for-byte in the runtime twin.
+ */
+export function trimEndpointReentry(
+  edges: Array<{ from: string; to: string; points: Point[]; path?: string; labelPos?: Point }>,
+  nodeBoxes: ReadonlyArray<NodeBox>,
+  style: EdgeStyle,
+  /** Per-edge pins: never re-anchor an endpoint the user explicitly pinned (layout.json / drag). */
+  pinned?: ReadonlyArray<{ source: boolean; target: boolean } | undefined>,
+): void {
+  const boxById = new Map<string, NodeBox>();
+  for (const b of nodeBoxes) if (b.id) boxById.set(b.id, b);
+  const inside = (pt: Point, b: NodeBox): boolean =>
+    pt.x > b.x - b.width / 2 + 0.5 &&
+    pt.x < b.x + b.width / 2 - 0.5 &&
+    pt.y > b.y - b.height / 2 + 0.5 &&
+    pt.y < b.y + b.height / 2 - 0.5;
+  // The border point where axis-aligned segment inPt(inside)→outPt(outside) leaves box `b`.
+  const cross = (inPt: Point, outPt: Point, b: NodeBox): Point =>
+    Math.abs(inPt.x - outPt.x) < 0.5
+      ? { x: n(inPt.x), y: n(outPt.y > inPt.y ? b.y + b.height / 2 : b.y - b.height / 2) }
+      : { x: n(outPt.x > inPt.x ? b.x + b.width / 2 : b.x - b.width / 2), y: n(inPt.y) };
+  edges.forEach((e, ei) => {
+    const p = e.points;
+    if (p.length < 3 || (style === "curved" && !isOrthogonalRoute(p))) return; // skip cubic curves
+    const pin = pinned?.[ei];
+    const src = pin?.source ? undefined : boxById.get(e.from); // a pinned source port is user intent
+    const tgt = pin?.target ? undefined : boxById.get(e.to);
+    let did = false;
+    if (src && inside(p[1]!, src)) {
+      let k = 1;
+      while (k < p.length && inside(p[k]!, src)) k++;
+      if (k < p.length) {
+        p.splice(0, k, cross(p[k - 1]!, p[k]!, src));
+        did = true;
+      }
+    }
+    if (tgt && p.length >= 3 && inside(p[p.length - 2]!, tgt)) {
+      let j = p.length - 2;
+      while (j >= 0 && inside(p[j]!, tgt)) j--;
+      if (j >= 0) {
+        p.splice(j + 1, p.length - 1 - j, cross(p[j + 1]!, p[j]!, tgt));
+        did = true;
+      }
+    }
+    if (did) {
+      const sp = simplify(p);
+      p.splice(0, p.length, ...sp);
+      e.path = orthoPath(p, style);
+    }
+  });
 }
 
 /**

@@ -31,7 +31,7 @@ mkdirSync(pngDir, { recursive: true });
 copyFileSync(join(repo, "dist", "element.js"), join(pngDir, "vnm-element.js"));
 
 const STYLES = ["clean", "sketch"];
-const THEMES = ["light", "dark", "fancy"];
+const THEMES = ["light", "dark", "fancy", "arch", "arch-light"];
 const title = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const sources = readdirSync(srcDir)
   .filter((f) => f.endsWith(".mmd"))

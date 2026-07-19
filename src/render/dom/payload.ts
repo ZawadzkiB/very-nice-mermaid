@@ -21,6 +21,13 @@ export interface InteractiveOptions {
   style?: RenderStyle;
   /** Edge-crossing bridges (FR7 / D4); forwarded to the runtime. */
   bridges?: boolean;
+  /**
+   * Re-draw arrowheads above the nodes so none is hidden by a node fill. Defaults
+   * on (flowchart). The class/state native mounts pass `false` — their static
+   * twins (renderClassSvg UML markers / renderStateSvg) emit no caps, so capping
+   * in the runtime would diverge (and draw a plain arrow over a UML marker).
+   */
+  arrowCaps?: boolean;
 }
 
 /** Stable, non-cryptographic hash (djb2) for deriving a persistence key. */
@@ -60,6 +67,7 @@ export function buildPayload(
       maxScale: opts.maxScale ?? 4,
       style: sketch ? "sketch" : "clean",
       bridges: opts.bridges,
+      arrowCaps: opts.arrowCaps ?? true,
     },
   };
   if (sketch) payload.sketch = { fontFace: sketchFontFaceCss(), fontFamily: SKETCH_FONT_FAMILY };

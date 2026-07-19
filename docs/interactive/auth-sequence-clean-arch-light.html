@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auth-sequence — clean / arch-light</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: #f8fafc; font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; }
+  #vnm-root { position: absolute; inset: 0; }
+  button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="vnm-root"></div>
+<script>
+"use strict";
+var seqRuntime = function seqRuntime(root, payload) {
+  const doc = root.ownerDocument;
+  const win = doc.defaultView;
+  const opt = payload.options;
+  const contentW = payload.content.width;
+  const contentH = payload.content.height;
+  let tx = 0;
+  let ty = 0;
+  let scale = 1;
+  root.classList.add("vnm-root");
+  const viewport = doc.createElement("div");
+  viewport.className = "vnm-viewport";
+  viewport.setAttribute(
+    "style",
+    "position:absolute;inset:0;overflow:hidden;background:var(--vnm-bg);cursor:grab;touch-action:none;user-select:none;font-family:var(--vnm-font);" + payload.cssVars
+  );
+  if (getComputedStyle(root).position === "static") root.style.position = "relative";
+  root.appendChild(viewport);
+  const world = doc.createElement("div");
+  world.className = "vnm-world";
+  world.setAttribute(
+    "style",
+    "position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform;"
+  );
+  world.innerHTML = payload.svg;
+  viewport.appendChild(world);
+  let minimap = null;
+  if (opt.minimap) {
+    minimap = doc.createElement("canvas");
+    minimap.className = "vnm-minimap";
+    minimap.width = 180;
+    minimap.height = Math.max(80, Math.round(180 * contentH / Math.max(contentW, 1)));
+    minimap.setAttribute(
+      "style",
+      "position:absolute;right:12px;bottom:12px;border:1px solid var(--vnm-surface-stroke);border-radius:8px;background:var(--vnm-minimap-bg);cursor:pointer;box-shadow:var(--vnm-node-shadow);"
+    );
+    viewport.appendChild(minimap);
+  }
+  const toolbar = doc.createElement("div");
+  toolbar.className = "vnm-toolbar";
+  toolbar.setAttribute("style", "position:absolute;left:12px;top:12px;display:flex;gap:6px;");
+  const mkBtn = (label, title, on) => {
+    const btn = doc.createElement("button");
+    btn.type = "button";
+    btn.textContent = label;
+    btn.title = title;
+    btn.setAttribute(
+      "style",
+      "width:28px;height:28px;border:1px solid var(--vnm-surface-stroke);border-radius:6px;background:var(--vnm-surface);color:var(--vnm-text);cursor:pointer;font-size:15px;line-height:1;"
+    );
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      on();
+    });
+    toolbar.appendChild(btn);
+    return btn;
+  };
+  mkBtn("\u2922", "Fit to view", () => fit());
+  mkBtn("+", "Zoom in", () => zoomBy(1.2));
+  mkBtn("\u2212", "Zoom out", () => zoomBy(1 / 1.2));
+  viewport.appendChild(toolbar);
+  function clampScale(v) {
+    return Math.max(opt.minScale, Math.min(opt.maxScale, v));
+  }
+  function applyTransform() {
+    world.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
+    drawMinimap();
+  }
+  function fit() {
+    const vw = viewport.clientWidth || 800;
+    const vh = viewport.clientHeight || 600;
+    const pad = opt.fitPadding;
+    const s = clampScale(
+      Math.min((vw - pad * 2) / Math.max(contentW, 1), (vh - pad * 2) / Math.max(contentH, 1))
+    );
+    scale = s;
+    tx = (vw - contentW * s) / 2;
+    ty = (vh - contentH * s) / 2;
+    applyTransform();
+  }
+  function zoomAt(cx, cy, next) {
+    const wx = (cx - tx) / scale;
+    const wy = (cy - ty) / scale;
+    scale = next;
+    tx = cx - wx * scale;
+    ty = cy - wy * scale;
+    applyTransform();
+  }
+  function zoomBy(factor) {
+    zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, clampScale(scale * factor));
+  }
+  function resetView() {
+    scale = 1;
+    tx = 0;
+    ty = 0;
+    applyTransform();
+  }
+  function drawMinimap() {
+    if (!minimap) return;
+    const ctx = minimap.getContext("2d");
+    if (!ctx) return;
+    const mw = minimap.width;
+    const mh = minimap.height;
+    ctx.clearRect(0, 0, mw, mh);
+    const s = Math.min(mw / Math.max(contentW, 1), mh / Math.max(contentH, 1));
+    ctx.save();
+    ctx.scale(s, s);
+    ctx.strokeStyle = payload.minimap.accent;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.45;
+    for (const y of payload.minimap.lines) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(contentW, y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = payload.minimap.accent;
+    for (const box of payload.minimap.boxes) ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.restore();
+    const vw = viewport.clientWidth;
+    const vh = viewport.clientHeight;
+    const vx = -tx / scale * s;
+    const vy = -ty / scale * s;
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = payload.minimap.accent;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(vx, vy, vw / scale * s, vh / scale * s);
+    ctx.fillStyle = payload.minimap.viewport;
+    ctx.fillRect(vx, vy, vw / scale * s, vh / scale * s);
+  }
+  let mode = "none";
+  let startX = 0;
+  let startY = 0;
+  let startTx = 0;
+  let startTy = 0;
+  function onPointerDown(ev) {
+    const target = ev.target;
+    if (target.closest && target.closest(".vnm-toolbar")) return;
+    mode = "pan";
+    startX = ev.clientX;
+    startY = ev.clientY;
+    startTx = tx;
+    startTy = ty;
+    viewport.style.cursor = "grabbing";
+    viewport.setPointerCapture(ev.pointerId);
+  }
+  function onPointerMove(ev) {
+    if (mode !== "pan") return;
+    tx = startTx + (ev.clientX - startX);
+    ty = startTy + (ev.clientY - startY);
+    applyTransform();
+  }
+  function onPointerUp(ev) {
+    viewport.style.cursor = "grab";
+    try {
+      viewport.releasePointerCapture(ev.pointerId);
+    } catch {
+    }
+    mode = "none";
+  }
+  function onWheel(ev) {
+    ev.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const cx = ev.clientX - rect.left;
+    const cy = ev.clientY - rect.top;
+    const factor = ev.deltaY < 0 ? 1.1 : 1 / 1.1;
+    zoomAt(cx, cy, clampScale(scale * factor));
+  }
+  function recenterFromMinimap(ev) {
+    const rect = minimap.getBoundingClientRect();
+    const s = Math.min(minimap.width / Math.max(contentW, 1), minimap.height / Math.max(contentH, 1));
+    const worldX = (ev.clientX - rect.left) / s;
+    const worldY = (ev.clientY - rect.top) / s;
+    tx = viewport.clientWidth / 2 - worldX * scale;
+    ty = viewport.clientHeight / 2 - worldY * scale;
+    applyTransform();
+  }
+  function onMinimapDown(ev) {
+    ev.stopPropagation();
+    mode = "minimap";
+    recenterFromMinimap(ev);
+    minimap.setPointerCapture(ev.pointerId);
+  }
+  function onMinimapMove(ev) {
+    if (mode === "minimap") recenterFromMinimap(ev);
+  }
+  function onMinimapUp(ev) {
+    mode = "none";
+    try {
+      minimap.releasePointerCapture(ev.pointerId);
+    } catch {
+    }
+  }
+  viewport.addEventListener("pointerdown", onPointerDown);
+  viewport.addEventListener("pointermove", onPointerMove);
+  viewport.addEventListener("pointerup", onPointerUp);
+  viewport.addEventListener("wheel", onWheel, { passive: false });
+  if (minimap) {
+    minimap.addEventListener("pointerdown", onMinimapDown);
+    minimap.addEventListener("pointermove", onMinimapMove);
+    minimap.addEventListener("pointerup", onMinimapUp);
+  }
+  function destroy() {
+    viewport.removeEventListener("pointerdown", onPointerDown);
+    viewport.removeEventListener("pointermove", onPointerMove);
+    viewport.removeEventListener("pointerup", onPointerUp);
+    viewport.removeEventListener("wheel", onWheel);
+    root.removeChild(viewport);
+  }
+  if (viewport.clientWidth === 0) win.requestAnimationFrame(() => fit());
+  else fit();
+  const ROCtor = win.ResizeObserver;
+  if (ROCtor) new ROCtor(() => drawMinimap()).observe(viewport);
+  return {
+    root,
+    destroy,
+    fit,
+    zoomIn: () => zoomBy(1.2),
+    zoomOut: () => zoomBy(1 / 1.2),
+    resetView
+  };
+};
+var __vnm_payload = {"svg":"\u003csvg xmlns=\"http://www.w3.org/2000/svg\" width=\"1026.2\" height=\"714\" viewBox=\"4 4 1026.2 714\" font-family=\"'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace\">\n\u003cdefs>\u003cmarker id=\"vnm-arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\">\u003cpath d=\"M0 0 L10 5 L0 10 z\" fill=\"#94a3b8\"/>\u003c/marker>\u003cmarker id=\"vnm-arrow-request\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\">\u003cpath d=\"M0 0 L10 5 L0 10 z\" fill=\"#059669\"/>\u003c/marker>\u003cmarker id=\"vnm-arrow-response\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\">\u003cpath d=\"M0 0 L10 5 L0 10 z\" fill=\"#94a3b8\"/>\u003c/marker>\u003cmarker id=\"vnm-arrow-cache\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\">\u003cpath d=\"M0 0 L10 5 L0 10 z\" fill=\"#7c3aed\"/>\u003c/marker>\u003cmarker id=\"vnm-arrow-async\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\">\u003cpath d=\"M0 0 L10 5 L0 10 z\" fill=\"#ea580c\"/>\u003c/marker>\u003cmarker id=\"vnm-arrow-exception\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\">\u003cpath d=\"M0 0 L10 5 L0 10 z\" fill=\"#e11d48\"/>\u003c/marker>\u003c/defs>\n\u003cline x1=\"69\" y1=\"84\" x2=\"69\" y2=\"592\" stroke=\"#64748b\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"211.8\" y1=\"84\" x2=\"211.8\" y2=\"592\" stroke=\"#0891b2\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"359.7\" y1=\"84\" x2=\"359.7\" y2=\"592\" stroke=\"#059669\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"525.4\" y1=\"84\" x2=\"525.4\" y2=\"592\" stroke=\"#e11d48\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"677.2\" y1=\"84\" x2=\"677.2\" y2=\"592\" stroke=\"#7c3aed\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"821.2\" y1=\"84\" x2=\"821.2\" y2=\"592\" stroke=\"#7c3aed\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"965.2\" y1=\"84\" x2=\"965.2\" y2=\"592\" stroke=\"#ea580c\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003crect x=\"206.8\" y=\"114\" width=\"10\" height=\"452\" rx=\"2\" fill=\"rgba(34,211,238,0.15)\" stroke=\"#0891b2\" stroke-width=\"1\"/>\n\u003crect x=\"354.7\" y=\"158\" width=\"10\" height=\"364\" rx=\"2\" fill=\"rgba(52,211,153,0.18)\" stroke=\"#059669\" stroke-width=\"1\"/>\n\u003crect x=\"520.4\" y=\"202\" width=\"10\" height=\"188\" rx=\"2\" fill=\"rgba(251,113,133,0.15)\" stroke=\"#e11d48\" stroke-width=\"1\"/>\n\u003crect x=\"816.2\" y=\"246\" width=\"10\" height=\"44\" rx=\"2\" fill=\"rgba(167,139,250,0.2)\" stroke=\"#7c3aed\" stroke-width=\"1\"/>\n\u003cline x1=\"69\" y1=\"114\" x2=\"211.8\" y2=\"114\" stroke=\"#059669\" stroke-width=\"1.5\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-request)\"/>\u003crect x=\"82.8\" y=\"92\" width=\"115.2\" height=\"20\" rx=\"4\" fill=\"#f8fafc\"/>\u003ctext x=\"140.4\" y=\"102\" fill=\"#475569\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\">click \"Log in\"\u003c/text>\n\u003cline x1=\"211.8\" y1=\"158\" x2=\"359.7\" y2=\"158\" stroke=\"#059669\" stroke-width=\"1.5\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-request)\"/>\u003crect x=\"239.85\" y=\"136\" width=\"91.8\" height=\"20\" rx=\"4\" fill=\"#f8fafc\"/>\u003ctext x=\"285.75\" y=\"146\" fill=\"#475569\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\">POST /login\u003c/text>\n\u003cline x1=\"359.7\" y1=\"202\" x2=\"525.4\" y2=\"202\" stroke=\"#059669\" stroke-width=\"1.5\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-request)\"/>\u003crect x=\"369.35\" y=\"180\" width=\"146.4\" height=\"20\" rx=\"4\" fill=\"#f8fafc\"/>\u003ctext x=\"442.55\" y=\"190\" fill=\"#475569\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\">verify credentials\u003c/text>\n\u003cline x1=\"525.4\" y1=\"246\" x2=\"821.2\" y2=\"246\" stroke=\"#059669\" stroke-width=\"1.5\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-request)\"/>\u003crect x=\"627.4\" y=\"224\" width=\"91.8\" height=\"20\" rx=\"4\" fill=\"#f8fafc\"/>\u003ctext x=\"673.3\" y=\"234\" fill=\"#475569\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\">lookup user\u003c/text>\n\u003cline x1=\"821.2\" y1=\"290\" x2=\"525.4\" y2=\"290\" stroke=\"#94a3b8\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-dasharray=\"6 4\" marker-end=\"url(#vnm-arrow-response)\"/>\u003crect x=\"627.4\" y=\"268\" width=\"91.8\" height=\"20\" rx=\"4\" fill=\"#f8fafc\"/>\u003ctext x=\"673.3\" y=\"278\" fill=\"#475569\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\">user record\u003c/text>\n\u003cpath d=\"M 525.4 334 L 565.4 334 L 565.4 364 L 525.4 364\" fill=\"none\" stroke=\"#059669\" stroke-width=\"1.5\" stroke-linejoin=\"round\" marker-end=\"url(#vnm-arrow-request)\"/>\u003crect x=\"575.4\" y=\"339\" width=\"68.4\" height=\"20\" rx=\"4\" fill=\"#f8fafc\"/>\u003ctext x=\"609.6\" y=\"349\" fill=\"#475569\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\">sign JWT\u003c/text>\n\u003cline x1=\"525.4\" y1=\"390\" x2=\"359.7\" y2=\"390\" stroke=\"#94a3b8\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-dasharray=\"6 4\" marker-end=\"url(#vnm-arrow-response)\"/>\u003crect x=\"404.45\" y=\"368\" width=\"76.2\" height=\"20\" rx=\"4\" fill=\"#f8fafc\"/>\u003ctext x=\"442.55\" y=\"378\" fill=\"#475569\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\">200 + JWT\u003c/text>\n\u003cline x1=\"359.7\" y1=\"434\" x2=\"677.2\" y2=\"434\" stroke=\"#7c3aed\" stroke-width=\"1.5\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-cache)\"/>\u003crect x=\"464.75\" y=\"412\" width=\"107.4\" height=\"20\" rx=\"4\" fill=\"#f8fafc\"/>\u003ctext x=\"518.45\" y=\"422\" fill=\"#475569\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\">cache session\u003c/text>\n\u003cline x1=\"359.7\" y1=\"478\" x2=\"965.2\" y2=\"478\" stroke=\"#ea580c\" stroke-width=\"1.5\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-async)\"/>\u003crect x=\"597.05\" y=\"456\" width=\"130.8\" height=\"20\" rx=\"4\" fill=\"#f8fafc\"/>\u003ctext x=\"662.45\" y=\"466\" fill=\"#475569\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\">emit login event\u003c/text>\n\u003cline x1=\"359.7\" y1=\"522\" x2=\"211.8\" y2=\"522\" stroke=\"#94a3b8\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-dasharray=\"6 4\" marker-end=\"url(#vnm-arrow-response)\"/>\u003crect x=\"224.25\" y=\"500\" width=\"123\" height=\"20\" rx=\"4\" fill=\"#f8fafc\"/>\u003ctext x=\"285.75\" y=\"510\" fill=\"#475569\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\">Set-Cookie: jwt\u003c/text>\n\u003cline x1=\"211.8\" y1=\"566\" x2=\"69\" y2=\"566\" stroke=\"#94a3b8\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-dasharray=\"6 4\" marker-end=\"url(#vnm-arrow-response)\"/>\u003crect x=\"75\" y=\"544\" width=\"130.8\" height=\"20\" rx=\"4\" fill=\"#f8fafc\"/>\u003ctext x=\"140.4\" y=\"554\" fill=\"#475569\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\">render dashboard\u003c/text>\n\u003cg>\u003crect x=\"24\" y=\"24\" width=\"90\" height=\"60\" rx=\"8\" fill=\"rgba(148,163,184,0.2)\" stroke=\"#64748b\" stroke-width=\"1.5\"/>\u003ctext x=\"69\" y=\"46.44\" fill=\"#334155\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">User\u003c/text>\u003ctext x=\"69\" y=\"63.36\" fill=\"#64748b\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">actor\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"24\" y=\"592\" width=\"90\" height=\"60\" rx=\"8\" fill=\"rgba(148,163,184,0.2)\" stroke=\"#64748b\" stroke-width=\"1.5\"/>\u003ctext x=\"69\" y=\"614.44\" fill=\"#334155\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">User\u003c/text>\u003ctext x=\"69\" y=\"631.36\" fill=\"#64748b\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">actor\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"166.8\" y=\"24\" width=\"90\" height=\"60\" rx=\"8\" fill=\"rgba(34,211,238,0.15)\" stroke=\"#0891b2\" stroke-width=\"1.5\"/>\u003ctext x=\"211.8\" y=\"46.44\" fill=\"#0e4a5b\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">Web App\u003c/text>\u003ctext x=\"211.8\" y=\"63.36\" fill=\"#0891b2\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">client\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"166.8\" y=\"592\" width=\"90\" height=\"60\" rx=\"8\" fill=\"rgba(34,211,238,0.15)\" stroke=\"#0891b2\" stroke-width=\"1.5\"/>\u003ctext x=\"211.8\" y=\"614.44\" fill=\"#0e4a5b\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">Web App\u003c/text>\u003ctext x=\"211.8\" y=\"631.36\" fill=\"#0891b2\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">client\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"300.8\" y=\"24\" width=\"117.8\" height=\"60\" rx=\"8\" fill=\"rgba(52,211,153,0.18)\" stroke=\"#059669\" stroke-width=\"1.5\"/>\u003ctext x=\"359.7\" y=\"46.44\" fill=\"#065f46\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">API Gateway\u003c/text>\u003ctext x=\"359.7\" y=\"63.36\" fill=\"#059669\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">gateway\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"300.8\" y=\"592\" width=\"117.8\" height=\"60\" rx=\"8\" fill=\"rgba(52,211,153,0.18)\" stroke=\"#059669\" stroke-width=\"1.5\"/>\u003ctext x=\"359.7\" y=\"614.44\" fill=\"#065f46\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">API Gateway\u003c/text>\u003ctext x=\"359.7\" y=\"631.36\" fill=\"#059669\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">gateway\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"462.6\" y=\"24\" width=\"125.6\" height=\"60\" rx=\"8\" fill=\"rgba(251,113,133,0.15)\" stroke=\"#e11d48\" stroke-width=\"1.5\"/>\u003ctext x=\"525.4\" y=\"46.44\" fill=\"#9f1239\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">Auth Service\u003c/text>\u003ctext x=\"525.4\" y=\"63.36\" fill=\"#e11d48\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">auth\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"462.6\" y=\"592\" width=\"125.6\" height=\"60\" rx=\"8\" fill=\"rgba(251,113,133,0.15)\" stroke=\"#e11d48\" stroke-width=\"1.5\"/>\u003ctext x=\"525.4\" y=\"614.44\" fill=\"#9f1239\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">Auth Service\u003c/text>\u003ctext x=\"525.4\" y=\"631.36\" fill=\"#e11d48\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">auth\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"632.2\" y=\"24\" width=\"90\" height=\"60\" rx=\"8\" fill=\"rgba(167,139,250,0.2)\" stroke=\"#7c3aed\" stroke-width=\"1.5\"/>\u003ctext x=\"677.2\" y=\"46.44\" fill=\"#5b21b6\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">Redis\u003c/text>\u003ctext x=\"677.2\" y=\"63.36\" fill=\"#7c3aed\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">cache\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"632.2\" y=\"592\" width=\"90\" height=\"60\" rx=\"8\" fill=\"rgba(167,139,250,0.2)\" stroke=\"#7c3aed\" stroke-width=\"1.5\"/>\u003ctext x=\"677.2\" y=\"614.44\" fill=\"#5b21b6\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">Redis\u003c/text>\u003ctext x=\"677.2\" y=\"631.36\" fill=\"#7c3aed\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">cache\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"766.2\" y=\"24\" width=\"110\" height=\"60\" rx=\"8\" fill=\"rgba(167,139,250,0.2)\" stroke=\"#7c3aed\" stroke-width=\"1.5\"/>\u003ctext x=\"821.2\" y=\"46.44\" fill=\"#5b21b6\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">PostgreSQL\u003c/text>\u003ctext x=\"821.2\" y=\"63.36\" fill=\"#7c3aed\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">store\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"766.2\" y=\"592\" width=\"110\" height=\"60\" rx=\"8\" fill=\"rgba(167,139,250,0.2)\" stroke=\"#7c3aed\" stroke-width=\"1.5\"/>\u003ctext x=\"821.2\" y=\"614.44\" fill=\"#5b21b6\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">PostgreSQL\u003c/text>\u003ctext x=\"821.2\" y=\"631.36\" fill=\"#7c3aed\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">store\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"920.2\" y=\"24\" width=\"90\" height=\"60\" rx=\"8\" fill=\"rgba(251,146,60,0.15)\" stroke=\"#ea580c\" stroke-width=\"1.5\"/>\u003ctext x=\"965.2\" y=\"46.44\" fill=\"#9a3412\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">Kafka\u003c/text>\u003ctext x=\"965.2\" y=\"63.36\" fill=\"#ea580c\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">broker\u003c/text>\u003c/g>\n\u003cg>\u003crect x=\"920.2\" y=\"592\" width=\"90\" height=\"60\" rx=\"8\" fill=\"rgba(251,146,60,0.15)\" stroke=\"#ea580c\" stroke-width=\"1.5\"/>\u003ctext x=\"965.2\" y=\"614.44\" fill=\"#9a3412\" font-size=\"13\" font-weight=\"500\" text-anchor=\"middle\" dominant-baseline=\"central\">Kafka\u003c/text>\u003ctext x=\"965.2\" y=\"631.36\" fill=\"#ea580c\" font-size=\"11\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">broker\u003c/text>\u003c/g>\n\u003cg>\u003cline x1=\"28\" y1=\"686\" x2=\"50\" y2=\"686\" stroke=\"#059669\" stroke-width=\"1.5\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-request)\"/>\u003ctext x=\"56\" y=\"686\" fill=\"#64748b\" font-size=\"11\" dominant-baseline=\"central\">request\u003c/text>\u003cline x1=\"126.2\" y1=\"686\" x2=\"148.2\" y2=\"686\" stroke=\"#94a3b8\" stroke-width=\"1.5\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-response)\"/>\u003ctext x=\"154.2\" y=\"686\" fill=\"#64748b\" font-size=\"11\" dominant-baseline=\"central\">response\u003c/text>\u003cline x1=\"231\" y1=\"686\" x2=\"253\" y2=\"686\" stroke=\"#7c3aed\" stroke-width=\"1.5\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-cache)\"/>\u003ctext x=\"259\" y=\"686\" fill=\"#64748b\" font-size=\"11\" dominant-baseline=\"central\">cache\u003c/text>\u003cline x1=\"316\" y1=\"686\" x2=\"338\" y2=\"686\" stroke=\"#ea580c\" stroke-width=\"1.5\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-async)\"/>\u003ctext x=\"344\" y=\"686\" fill=\"#64748b\" font-size=\"11\" dominant-baseline=\"central\">async\u003c/text>\u003c/g>\n\u003c/svg>","cssVars":"--vnm-bg: #f8fafc; --vnm-surface: #ffffff; --vnm-surface-stroke: #cbd5e1; --vnm-text: #0f172a; --vnm-text-muted: #64748b; --vnm-edge: #94a3b8; --vnm-edge-label-bg: #f8fafc; --vnm-edge-label-text: #475569; --vnm-subgraph-fill: #f1f5f9; --vnm-subgraph-stroke: #cbd5e1; --vnm-subgraph-text: #64748b; --vnm-accent: #059669; --vnm-minimap-bg: rgba(248,250,252,0.9); --vnm-minimap-viewport: rgba(5,150,105,0.25); --vnm-radius: 8px; --vnm-label-radius: 4px; --vnm-font: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 13px; --vnm-font-weight: 500; --vnm-node-shadow: 0 1px 2px rgba(15,23,42,0.1); --vnm-hover-lift: 2px; --vnm-edge-width: 1.5px;","bg":"#f8fafc","content":{"width":1026.2,"height":714},"minimap":{"boxes":[{"x":20,"y":20,"w":90,"h":60},{"x":20,"y":588,"w":90,"h":60},{"x":162.8,"y":20,"w":90,"h":60},{"x":162.8,"y":588,"w":90,"h":60},{"x":296.80000000000007,"y":20,"w":117.8,"h":60},{"x":296.80000000000007,"y":588,"w":117.8,"h":60},{"x":458.6000000000001,"y":20,"w":125.6,"h":60},{"x":458.6000000000001,"y":588,"w":125.6,"h":60},{"x":628.2,"y":20,"w":90,"h":60},{"x":628.2,"y":588,"w":90,"h":60},{"x":762.2,"y":20,"w":110,"h":60},{"x":762.2,"y":588,"w":110,"h":60},{"x":916.2,"y":20,"w":90,"h":60},{"x":916.2,"y":588,"w":90,"h":60}],"lines":[110,154,198,242,286,330,386,430,474,518,562],"accent":"#059669","viewport":"rgba(5,150,105,0.25)"},"options":{"fitPadding":60,"minimap":true,"minScale":0.2,"maxScale":4}};
+seqRuntime(document.getElementById("vnm-root"), __vnm_payload);
+</script>
+</body>
+</html>

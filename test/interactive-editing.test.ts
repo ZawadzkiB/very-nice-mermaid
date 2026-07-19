@@ -105,7 +105,10 @@ describe("static SVG honors the perimeter anchor distribution (FR2)", () => {
     const routed = applyPositions(model, {}, { theme });
     const svg = renderSvgFromModel(routed, theme);
     expect(XMLValidator.validate(svg)).toBe(true);
-    const starts = svg.match(/<path d="M [\d.-]+ [\d.-]+/g) ?? [];
+    // Exclude the layer-6 arrowhead caps (class="vnm-arrow-cap") — they add a stub
+    // path near each TARGET, which is not one of the hub's four outgoing starts.
+    const trunk = svg.replace(/<path class="vnm-arrow-cap"[^>]*\/>/g, "");
+    const starts = trunk.match(/<path d="M [\d.-]+ [\d.-]+/g) ?? [];
     expect(new Set(starts).size).toBe(4);
   });
 });

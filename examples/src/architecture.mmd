@@ -1,0 +1,21 @@
+flowchart LR
+  user[User Browser]:::external
+  subgraph edge [Edge]
+    cdn[CDN / WAF]:::cloud
+    web[Web App]:::frontend
+  end
+  subgraph services [Services]
+    api[API Gateway]:::backend
+    auth[Auth Service]:::security
+    worker[Worker]:::backend
+  end
+  subgraph data [Data]
+    db[(PostgreSQL)]:::database
+    cache[(Redis)]:::database
+    bus[Kafka]:::messagebus
+  end
+  user --> cdn --> web --> api
+  api -->|verify JWT| auth
+  api --> db
+  api --> cache
+  api --> bus --> worker --> db

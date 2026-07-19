@@ -1,0 +1,16 @@
+flowchart TB
+  client[Web client]:::frontend --> gw{{API gateway}}:::backend
+  gw --> auth & catalog & cart
+
+  subgraph services [Core services]
+    direction TB
+    auth[Auth service]:::security
+    catalog[Catalog service]:::backend
+    cart[Cart service]:::backend
+  end
+
+  auth --> authdb[(Auth DB)]:::database
+  catalog --> catdb[(Catalog DB)]:::database
+  cart -.-> cache[(Redis cache)]:::database
+  cart ==> orders[Order service]:::backend
+  orders --> queue[[Event queue]]:::messagebus
