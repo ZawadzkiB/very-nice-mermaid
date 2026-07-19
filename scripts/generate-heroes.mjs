@@ -28,7 +28,11 @@ const fixtures = join(repo, "fixtures");
 const outDir = join(repo, "assets");
 mkdirSync(outDir, { recursive: true });
 
-/** Each README hero: output name → fixture + theme + style. All render at scale 2. */
+/**
+ * Each README hero: output name → source + theme + style. All render at scale 2.
+ * `dir` overrides the source directory (default `fixtures/`); the two archify sequence
+ * heroes reuse the gallery sources under `examples/src/` so their DSL lives in one place.
+ */
 const HEROES = [
   { out: "example-dark", src: "state-machine.mmd", theme: "dark", style: "clean" },
   { out: "example-light", src: "ci-pipeline.mmd", theme: "light", style: "clean" },
@@ -36,16 +40,22 @@ const HEROES = [
   { out: "example-sketch", src: "cache-lookup.mmd", theme: "light", style: "sketch" },
   // the README hero: archify look — arch theme + hand-drawn sketch, semantic role colours.
   { out: "example-arch", src: "arch-microservices.mmd", theme: "arch", style: "sketch" },
+  // archify sequence heroes (arch theme, clean lines): a login flow + an order checkout
+  // whose declined-payment path exercises every message semantic (request/response/
+  // cache/async/exception) so the auto-legend shows the full set.
+  { out: "example-sequence", src: "auth-sequence.mmd", theme: "arch", style: "clean", dir: "examples/src" },
+  { out: "example-sequence-order", src: "order-checkout.mmd", theme: "arch", style: "clean", dir: "examples/src" },
 ];
 
 let count = 0;
 const failures = [];
 for (const h of HEROES) {
   try {
+    const srcDir = h.dir ? join(repo, h.dir) : fixtures;
     execFileSync(
       "node",
       [
-        cli, "render", join(fixtures, h.src),
+        cli, "render", join(srcDir, h.src),
         "--theme", h.theme, "--style", h.style,
         "-f", "png", "-o", join(outDir, `${h.out}.png`), "--scale", "2",
       ],

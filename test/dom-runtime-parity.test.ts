@@ -977,6 +977,44 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     });
   }
 
+  // ---- v0.7.1 archify semantic-edge parity: the `arch` theme opts into effects.semanticEdges,
+  // so a labeled edge takes a semantic COLOUR + its own arrowhead marker and a legend row is
+  // drawn below the diagram. Prove the twin (buildSvg / toSvgString) byte-matches renderSvg with
+  // all that on — the guard for the previously-untested semanticEdges branch of the twin — and
+  // that the feature genuinely fired (semantic markers + a legend group are present).
+  const archSemanticDsl = [
+    "flowchart TB",
+    "  client[Web client]:::frontend",
+    "  subgraph services [Core services]",
+    "    direction LR",
+    "    auth[Auth service]:::security",
+    "    cart[Cart service]:::backend",
+    "  end",
+    "  cache[(Redis cache)]:::database",
+    "  queue[[Event queue]]:::messagebus",
+    "  client -->|GET /shop| auth",
+    "  auth -->|query| cart",
+    "  cart -.->|cache lookup| cache",
+    "  cart ==>|publish event| queue",
+    "  auth -.->|401 denied| client",
+  ].join("\n");
+
+  it("archify semanticEdges: the twin byte-matches renderSvg with coloured edges + legend (v0.7.1)", () => {
+    const { model, theme } = prepare(archSemanticDsl, { theme: "arch" });
+    const { handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+    const expected = renderSvgFromModel(editedModel(model, theme, handle), theme);
+    const got = handle.toSvgString();
+    expect(got).toBe(expected);
+    expect(XMLValidator.validate(got)).toBe(true);
+    // the feature genuinely fired: per-semantic coloured markers + the legend group are present.
+    expect(got).toContain('id="vnm-arrow-request"');
+    expect(got).toContain('id="vnm-arrow-exception"');
+    expect(got).toContain('marker-end="url(#vnm-arrow-request)"');
+    // legend swatch labels (request/cache/async/exception all used above)
+    expect(got).toContain(">request<");
+    expect(got).toContain(">exception<");
+  });
+
   // ---- v0.6.6 avoidSubgraphs HORIZONTAL (LR) parity (REV-001): the TB corpus never fires the
   // horizontal branch, so drive an `flowchart LR` that DOES — BE→RULES's long horizontal trunk
   // is pushed OUTSIDE ENGINE's top/bottom span — and prove the twin's moveLane(vertical=false) +

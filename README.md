@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/logo.svg" alt="very-nice-mermaid" width="96" height="96">
+  <img src="https://raw.githubusercontent.com/ZawadzkiB/very-nice-mermaid/master/assets/logo.svg" alt="very-nice-mermaid" width="96" height="96">
 </p>
 
 <h1 align="center">very-nice-mermaid</h1>
@@ -18,7 +18,21 @@ runtime and no headless browser**.
 drag / resize / pan / zoom the actual diagrams right in your browser.
 
 <p align="center">
-  <img src="./assets/example-arch.png" alt="A microservices flowchart in the arch theme, hand-drawn sketch style, coloured by semantic role" width="600">
+  <img src="https://raw.githubusercontent.com/ZawadzkiB/very-nice-mermaid/master/assets/example-arch.png" alt="A microservices flowchart in the arch theme, hand-drawn sketch style, with semantic role colours, per-edge line types, labelled arrows, subgraph background zones, and an edge legend" width="600">
+</p>
+
+<p align="center"><em>Edges colour by <strong>semantic</strong> (request / cache / async / exception), each with its own line type; subgraphs become background zones; every arrow is labelled; a legend sits along the bottom.</em></p>
+
+And the same archify look applied to **sequence diagrams** - role-coloured participants with a
+type sub-label, activation bars, and semantically-coloured messages. A happy-path login, then
+an order checkout whose declined-payment branch shows every message colour at once:
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ZawadzkiB/very-nice-mermaid/master/assets/example-sequence.png" alt="An archify-style login sequence diagram: role-coloured participants with type sub-labels, activation bars, and semantic message colours with a legend" width="720">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ZawadzkiB/very-nice-mermaid/master/assets/example-sequence-order.png" alt="A second archify-style sequence diagram of an order checkout, whose declined-payment path exercises request, response, cache, async, and exception message colours" width="720">
 </p>
 
 - **Library** — parse DSL and `mount()` an **interactive** diagram (drag + resize nodes,
@@ -94,7 +108,7 @@ mount(document.getElementById("diagram")!, `
 
 | Light | Dark | Sketch |
 |---|---|---|
-| <img src="./assets/example-light.png" alt="light theme" width="300"> | <img src="./assets/example-dark.png" alt="dark theme" width="300"> | <img src="./assets/example-sketch.png" alt="hand-drawn sketch style" width="300"> |
+| <img src="https://raw.githubusercontent.com/ZawadzkiB/very-nice-mermaid/master/assets/example-light.png" alt="light theme" width="300"> | <img src="https://raw.githubusercontent.com/ZawadzkiB/very-nice-mermaid/master/assets/example-dark.png" alt="dark theme" width="300"> | <img src="https://raw.githubusercontent.com/ZawadzkiB/very-nice-mermaid/master/assets/example-sketch.png" alt="hand-drawn sketch style" width="300"> |
 
 Drag nodes to reorganize (edges re-route live), scroll to zoom, and the layout
 persists across reloads. `--theme fancy` adds curved edges and glow;

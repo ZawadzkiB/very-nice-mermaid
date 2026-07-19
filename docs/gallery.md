@@ -178,6 +178,49 @@ sequenceDiagram
 
 ---
 
+## Order checkout · archify sequence
+
+A second archify sequence, this one on the **unhappy path**: the declined-payment flow
+exercises **every message semantic** at once - `request`, `response`, `cache`, `async`, and
+an `exception` (the red `403 declined`) - so the auto-legend shows the full set. Activation
+bars nest (`->>+` / `-->>-`) down the Order / Payment services.
+
+```mermaid
+sequenceDiagram
+  participant U as Customer
+  participant S as Web Storefront
+  participant A as API Gateway
+  participant O as Order Service
+  participant P as Payment Service
+  participant C as Redis
+  participant K as Kafka
+  U->>+S: place order
+  S->>+A: POST /checkout
+  A->>+O: create order
+  O->>C: check stock cache
+  C-->>O: cache miss
+  O->>+P: charge card
+  P-->>-O: 403 declined
+  O->>K: emit order event
+  O-->>-A: 402 payment required
+  A-->>-S: show retry
+  S-->>-U: retry payment
+```
+
+<iframe class="vnm-embed" src="{{ '/interactive/order-checkout-clean-arch.html' | relative_url }}?v={{ cachebust }}" title="Interactive order-checkout sequence (arch)" loading="lazy"></iframe>
+
+[Open full-screen ↗]({{ '/interactive/order-checkout-clean-arch.html' | relative_url }}?v={{ cachebust }}){: .btn .btn-outline }
+
+<div class="vnm-thumbs" markdown="0">
+  <a href="{{ '/interactive/order-checkout-clean-arch.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/order-checkout-clean-arch.png' | relative_url }}?v={{ cachebust }}" alt="order-checkout clean arch"><span class="cap">clean · arch</span></a>
+  <a href="{{ '/interactive/order-checkout-clean-arch-light.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/order-checkout-clean-arch-light.png' | relative_url }}?v={{ cachebust }}" alt="order-checkout clean arch-light"><span class="cap">clean · arch-light</span></a>
+  <a href="{{ '/interactive/order-checkout-clean-dark.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/order-checkout-clean-dark.png' | relative_url }}?v={{ cachebust }}" alt="order-checkout clean dark"><span class="cap">clean · dark</span></a>
+  <a href="{{ '/interactive/order-checkout-sketch-arch.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/order-checkout-sketch-arch.png' | relative_url }}?v={{ cachebust }}" alt="order-checkout sketch arch"><span class="cap">sketch · arch</span></a>
+  <a href="{{ '/interactive/order-checkout-sketch-fancy.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/order-checkout-sketch-fancy.png' | relative_url }}?v={{ cachebust }}" alt="order-checkout sketch fancy"><span class="cap">sketch · fancy</span></a>
+</div>
+
+---
+
 ## Class
 
 ```mermaid

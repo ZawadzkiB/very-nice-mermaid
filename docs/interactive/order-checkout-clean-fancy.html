@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order-checkout — clean / fancy</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: #0b1020; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #vnm-root { position: absolute; inset: 0; }
+  button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="vnm-root"></div>
+<script>
+"use strict";
+var seqRuntime = function seqRuntime(root, payload) {
+  const doc = root.ownerDocument;
+  const win = doc.defaultView;
+  const opt = payload.options;
+  const contentW = payload.content.width;
+  const contentH = payload.content.height;
+  let tx = 0;
+  let ty = 0;
+  let scale = 1;
+  root.classList.add("vnm-root");
+  const viewport = doc.createElement("div");
+  viewport.className = "vnm-viewport";
+  viewport.setAttribute(
+    "style",
+    "position:absolute;inset:0;overflow:hidden;background:var(--vnm-bg);cursor:grab;touch-action:none;user-select:none;font-family:var(--vnm-font);" + payload.cssVars
+  );
+  if (getComputedStyle(root).position === "static") root.style.position = "relative";
+  root.appendChild(viewport);
+  const world = doc.createElement("div");
+  world.className = "vnm-world";
+  world.setAttribute(
+    "style",
+    "position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform;"
+  );
+  world.innerHTML = payload.svg;
+  viewport.appendChild(world);
+  let minimap = null;
+  if (opt.minimap) {
+    minimap = doc.createElement("canvas");
+    minimap.className = "vnm-minimap";
+    minimap.width = 180;
+    minimap.height = Math.max(80, Math.round(180 * contentH / Math.max(contentW, 1)));
+    minimap.setAttribute(
+      "style",
+      "position:absolute;right:12px;bottom:12px;border:1px solid var(--vnm-surface-stroke);border-radius:8px;background:var(--vnm-minimap-bg);cursor:pointer;box-shadow:var(--vnm-node-shadow);"
+    );
+    viewport.appendChild(minimap);
+  }
+  const toolbar = doc.createElement("div");
+  toolbar.className = "vnm-toolbar";
+  toolbar.setAttribute("style", "position:absolute;left:12px;top:12px;display:flex;gap:6px;");
+  const mkBtn = (label, title, on) => {
+    const btn = doc.createElement("button");
+    btn.type = "button";
+    btn.textContent = label;
+    btn.title = title;
+    btn.setAttribute(
+      "style",
+      "width:28px;height:28px;border:1px solid var(--vnm-surface-stroke);border-radius:6px;background:var(--vnm-surface);color:var(--vnm-text);cursor:pointer;font-size:15px;line-height:1;"
+    );
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      on();
+    });
+    toolbar.appendChild(btn);
+    return btn;
+  };
+  mkBtn("\u2922", "Fit to view", () => fit());
+  mkBtn("+", "Zoom in", () => zoomBy(1.2));
+  mkBtn("\u2212", "Zoom out", () => zoomBy(1 / 1.2));
+  viewport.appendChild(toolbar);
+  function clampScale(v) {
+    return Math.max(opt.minScale, Math.min(opt.maxScale, v));
+  }
+  function applyTransform() {
+    world.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
+    drawMinimap();
+  }
+  function fit() {
+    const vw = viewport.clientWidth || 800;
+    const vh = viewport.clientHeight || 600;
+    const pad = opt.fitPadding;
+    const s = clampScale(
+      Math.min((vw - pad * 2) / Math.max(contentW, 1), (vh - pad * 2) / Math.max(contentH, 1))
+    );
+    scale = s;
+    tx = (vw - contentW * s) / 2;
+    ty = (vh - contentH * s) / 2;
+    applyTransform();
+  }
+  function zoomAt(cx, cy, next) {
+    const wx = (cx - tx) / scale;
+    const wy = (cy - ty) / scale;
+    scale = next;
+    tx = cx - wx * scale;
+    ty = cy - wy * scale;
+    applyTransform();
+  }
+  function zoomBy(factor) {
+    zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, clampScale(scale * factor));
+  }
+  function resetView() {
+    scale = 1;
+    tx = 0;
+    ty = 0;
+    applyTransform();
+  }
+  function drawMinimap() {
+    if (!minimap) return;
+    const ctx = minimap.getContext("2d");
+    if (!ctx) return;
+    const mw = minimap.width;
+    const mh = minimap.height;
+    ctx.clearRect(0, 0, mw, mh);
+    const s = Math.min(mw / Math.max(contentW, 1), mh / Math.max(contentH, 1));
+    ctx.save();
+    ctx.scale(s, s);
+    ctx.strokeStyle = payload.minimap.accent;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.45;
+    for (const y of payload.minimap.lines) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(contentW, y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = payload.minimap.accent;
+    for (const box of payload.minimap.boxes) ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.restore();
+    const vw = viewport.clientWidth;
+    const vh = viewport.clientHeight;
+    const vx = -tx / scale * s;
+    const vy = -ty / scale * s;
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = payload.minimap.accent;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(vx, vy, vw / scale * s, vh / scale * s);
+    ctx.fillStyle = payload.minimap.viewport;
+    ctx.fillRect(vx, vy, vw / scale * s, vh / scale * s);
+  }
+  let mode = "none";
+  let startX = 0;
+  let startY = 0;
+  let startTx = 0;
+  let startTy = 0;
+  function onPointerDown(ev) {
+    const target = ev.target;
+    if (target.closest && target.closest(".vnm-toolbar")) return;
+    mode = "pan";
+    startX = ev.clientX;
+    startY = ev.clientY;
+    startTx = tx;
+    startTy = ty;
+    viewport.style.cursor = "grabbing";
+    viewport.setPointerCapture(ev.pointerId);
+  }
+  function onPointerMove(ev) {
+    if (mode !== "pan") return;
+    tx = startTx + (ev.clientX - startX);
+    ty = startTy + (ev.clientY - startY);
+    applyTransform();
+  }
+  function onPointerUp(ev) {
+    viewport.style.cursor = "grab";
+    try {
+      viewport.releasePointerCapture(ev.pointerId);
+    } catch {
+    }
+    mode = "none";
+  }
+  function onWheel(ev) {
+    ev.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const cx = ev.clientX - rect.left;
+    const cy = ev.clientY - rect.top;
+    const factor = ev.deltaY < 0 ? 1.1 : 1 / 1.1;
+    zoomAt(cx, cy, clampScale(scale * factor));
+  }
+  function recenterFromMinimap(ev) {
+    const rect = minimap.getBoundingClientRect();
+    const s = Math.min(minimap.width / Math.max(contentW, 1), minimap.height / Math.max(contentH, 1));
+    const worldX = (ev.clientX - rect.left) / s;
+    const worldY = (ev.clientY - rect.top) / s;
+    tx = viewport.clientWidth / 2 - worldX * scale;
+    ty = viewport.clientHeight / 2 - worldY * scale;
+    applyTransform();
+  }
+  function onMinimapDown(ev) {
+    ev.stopPropagation();
+    mode = "minimap";
+    recenterFromMinimap(ev);
+    minimap.setPointerCapture(ev.pointerId);
+  }
+  function onMinimapMove(ev) {
+    if (mode === "minimap") recenterFromMinimap(ev);
+  }
+  function onMinimapUp(ev) {
+    mode = "none";
+    try {
+      minimap.releasePointerCapture(ev.pointerId);
+    } catch {
+    }
+  }
+  viewport.addEventListener("pointerdown", onPointerDown);
+  viewport.addEventListener("pointermove", onPointerMove);
+  viewport.addEventListener("pointerup", onPointerUp);
+  viewport.addEventListener("wheel", onWheel, { passive: false });
+  if (minimap) {
+    minimap.addEventListener("pointerdown", onMinimapDown);
+    minimap.addEventListener("pointermove", onMinimapMove);
+    minimap.addEventListener("pointerup", onMinimapUp);
+  }
+  function destroy() {
+    viewport.removeEventListener("pointerdown", onPointerDown);
+    viewport.removeEventListener("pointermove", onPointerMove);
+    viewport.removeEventListener("pointerup", onPointerUp);
+    viewport.removeEventListener("wheel", onWheel);
+    root.removeChild(viewport);
+  }
+  if (viewport.clientWidth === 0) win.requestAnimationFrame(() => fit());
+  else fit();
+  const ROCtor = win.ResizeObserver;
+  if (ROCtor) new ROCtor(() => drawMinimap()).observe(viewport);
+  return {
+    root,
+    destroy,
+    fit,
+    zoomIn: () => zoomBy(1.2),
+    zoomOut: () => zoomBy(1 / 1.2),
+    resetView
+  };
+};
+var __vnm_payload = {"svg":"\u003csvg xmlns=\"http://www.w3.org/2000/svg\" width=\"1201.6\" height=\"737\" viewBox=\"4 4 1201.6 737\" font-family=\"system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif\">\n\u003cdefs>\u003cmarker id=\"vnm-arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"9\" markerHeight=\"9\" orient=\"auto\">\u003cpath d=\"M0 0 L10 5 L0 10 z\" fill=\"#7d88c4\"/>\u003c/marker>\u003cmarker id=\"vnm-arrow-request\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"9\" markerHeight=\"9\" orient=\"auto\">\u003cpath d=\"M0 0 L10 5 L0 10 z\" fill=\"#34d399\"/>\u003c/marker>\u003cmarker id=\"vnm-arrow-response\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"9\" markerHeight=\"9\" orient=\"auto\">\u003cpath d=\"M0 0 L10 5 L0 10 z\" fill=\"#7d88c4\"/>\u003c/marker>\u003cmarker id=\"vnm-arrow-cache\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"9\" markerHeight=\"9\" orient=\"auto\">\u003cpath d=\"M0 0 L10 5 L0 10 z\" fill=\"#a78bfa\"/>\u003c/marker>\u003cmarker id=\"vnm-arrow-async\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"9\" markerHeight=\"9\" orient=\"auto\">\u003cpath d=\"M0 0 L10 5 L0 10 z\" fill=\"#fb923c\"/>\u003c/marker>\u003cmarker id=\"vnm-arrow-exception\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"9\" markerHeight=\"9\" orient=\"auto\">\u003cpath d=\"M0 0 L10 5 L0 10 z\" fill=\"#ff6bb0\"/>\u003c/marker>\u003cfilter id=\"vnm-shadow\" x=\"-30%\" y=\"-30%\" width=\"160%\" height=\"160%\">\u003cfeDropShadow dx=\"0\" dy=\"3\" stdDeviation=\"5\" flood-color=\"#000\" flood-opacity=\"0.35\"/>\u003c/filter>\u003c/defs>\n\u003cline x1=\"75.6\" y1=\"90\" x2=\"75.6\" y2=\"608\" stroke=\"#94a3b8\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"252\" y1=\"90\" x2=\"252\" y2=\"608\" stroke=\"#22d3ee\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"441\" y1=\"90\" x2=\"441\" y2=\"608\" stroke=\"#34d399\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"627\" y1=\"90\" x2=\"627\" y2=\"608\" stroke=\"#34d399\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"828.6\" y1=\"90\" x2=\"828.6\" y2=\"608\" stroke=\"#34d399\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"1002.6\" y1=\"90\" x2=\"1002.6\" y2=\"608\" stroke=\"#a78bfa\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003cline x1=\"1140.6\" y1=\"90\" x2=\"1140.6\" y2=\"608\" stroke=\"#fb923c\" stroke-width=\"1\" stroke-dasharray=\"4 4\"/>\n\u003crect x=\"247\" y=\"121\" width=\"10\" height=\"460\" rx=\"2\" fill=\"rgba(8,51,68,0.55)\" stroke=\"#22d3ee\" stroke-width=\"1\"/>\n\u003crect x=\"436\" y=\"167\" width=\"10\" height=\"368\" rx=\"2\" fill=\"rgba(6,78,59,0.55)\" stroke=\"#34d399\" stroke-width=\"1\"/>\n\u003crect x=\"622\" y=\"213\" width=\"10\" height=\"276\" rx=\"2\" fill=\"rgba(6,78,59,0.55)\" stroke=\"#34d399\" stroke-width=\"1\"/>\n\u003crect x=\"823.6\" y=\"351\" width=\"10\" height=\"46\" rx=\"2\" fill=\"rgba(6,78,59,0.55)\" stroke=\"#34d399\" stroke-width=\"1\"/>\n\u003cline x1=\"75.6\" y1=\"121\" x2=\"252\" y2=\"121\" stroke=\"#34d399\" stroke-width=\"1.75\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-request)\"/>\u003crect x=\"114.6\" y=\"98.5\" width=\"98.4\" height=\"21\" rx=\"6\" fill=\"#0b1020\"/>\u003ctext x=\"163.8\" y=\"109\" fill=\"#c8cffb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">place order\u003c/text>\n\u003cline x1=\"252\" y1=\"167\" x2=\"441\" y2=\"167\" stroke=\"#34d399\" stroke-width=\"1.75\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-request)\"/>\u003crect x=\"284.7\" y=\"144.5\" width=\"123.6\" height=\"21\" rx=\"6\" fill=\"#0b1020\"/>\u003ctext x=\"346.5\" y=\"155\" fill=\"#c8cffb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">POST /checkout\u003c/text>\n\u003cline x1=\"441\" y1=\"213\" x2=\"627\" y2=\"213\" stroke=\"#34d399\" stroke-width=\"1.75\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-request)\"/>\u003crect x=\"480.6\" y=\"190.5\" width=\"106.8\" height=\"21\" rx=\"6\" fill=\"#0b1020\"/>\u003ctext x=\"534\" y=\"201\" fill=\"#c8cffb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">create order\u003c/text>\n\u003cline x1=\"627\" y1=\"259\" x2=\"1002.6\" y2=\"259\" stroke=\"#a78bfa\" stroke-width=\"1.75\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-cache)\"/>\u003crect x=\"740.4\" y=\"236.5\" width=\"148.8\" height=\"21\" rx=\"6\" fill=\"#0b1020\"/>\u003ctext x=\"814.8\" y=\"247\" fill=\"#c8cffb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">check stock cache\u003c/text>\n\u003cline x1=\"1002.6\" y1=\"305\" x2=\"627\" y2=\"305\" stroke=\"#a78bfa\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-dasharray=\"6 4\" marker-end=\"url(#vnm-arrow-cache)\"/>\u003crect x=\"769.8\" y=\"282.5\" width=\"90\" height=\"21\" rx=\"6\" fill=\"#0b1020\"/>\u003ctext x=\"814.8\" y=\"293\" fill=\"#c8cffb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">cache miss\u003c/text>\n\u003cline x1=\"627\" y1=\"351\" x2=\"828.6\" y2=\"351\" stroke=\"#34d399\" stroke-width=\"1.75\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-request)\"/>\u003crect x=\"678.6\" y=\"328.5\" width=\"98.4\" height=\"21\" rx=\"6\" fill=\"#0b1020\"/>\u003ctext x=\"727.8\" y=\"339\" fill=\"#c8cffb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">charge card\u003c/text>\n\u003cline x1=\"828.6\" y1=\"397\" x2=\"627\" y2=\"397\" stroke=\"#ff6bb0\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-dasharray=\"6 4\" marker-end=\"url(#vnm-arrow-exception)\"/>\u003crect x=\"674.4\" y=\"374.5\" width=\"106.8\" height=\"21\" rx=\"6\" fill=\"#0b1020\"/>\u003ctext x=\"727.8\" y=\"385\" fill=\"#c8cffb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">403 declined\u003c/text>\n\u003cline x1=\"627\" y1=\"443\" x2=\"1140.6\" y2=\"443\" stroke=\"#fb923c\" stroke-width=\"1.75\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-async)\"/>\u003crect x=\"813.6\" y=\"420.5\" width=\"140.4\" height=\"21\" rx=\"6\" fill=\"#0b1020\"/>\u003ctext x=\"883.8\" y=\"431\" fill=\"#c8cffb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">emit order event\u003c/text>\n\u003cline x1=\"627\" y1=\"489\" x2=\"441\" y2=\"489\" stroke=\"#7d88c4\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-dasharray=\"6 4\" marker-end=\"url(#vnm-arrow-response)\"/>\u003crect x=\"447\" y=\"466.5\" width=\"174\" height=\"21\" rx=\"6\" fill=\"#0b1020\"/>\u003ctext x=\"534\" y=\"477\" fill=\"#c8cffb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">402 payment required\u003c/text>\n\u003cline x1=\"441\" y1=\"535\" x2=\"252\" y2=\"535\" stroke=\"#7d88c4\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-dasharray=\"6 4\" marker-end=\"url(#vnm-arrow-response)\"/>\u003crect x=\"301.5\" y=\"512.5\" width=\"90\" height=\"21\" rx=\"6\" fill=\"#0b1020\"/>\u003ctext x=\"346.5\" y=\"523\" fill=\"#c8cffb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">show retry\u003c/text>\n\u003cline x1=\"252\" y1=\"581\" x2=\"75.6\" y2=\"581\" stroke=\"#7d88c4\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-dasharray=\"6 4\" marker-end=\"url(#vnm-arrow-response)\"/>\u003crect x=\"106.2\" y=\"558.5\" width=\"115.2\" height=\"21\" rx=\"6\" fill=\"#0b1020\"/>\u003ctext x=\"163.8\" y=\"569\" fill=\"#c8cffb\" font-size=\"13\" text-anchor=\"middle\" dominant-baseline=\"central\">retry payment\u003c/text>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"24\" y=\"24\" width=\"103.2\" height=\"66\" rx=\"14\" fill=\"rgba(30,41,59,0.7)\" stroke=\"#94a3b8\" stroke-width=\"1.5\"/>\u003ctext x=\"75.6\" y=\"49.02\" fill=\"#e2e8f0\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">Customer\u003c/text>\u003ctext x=\"75.6\" y=\"66.88\" fill=\"#94a3b8\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">actor\u003c/text>\u003c/g>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"24\" y=\"608\" width=\"103.2\" height=\"66\" rx=\"14\" fill=\"rgba(30,41,59,0.7)\" stroke=\"#94a3b8\" stroke-width=\"1.5\"/>\u003ctext x=\"75.6\" y=\"633.02\" fill=\"#e2e8f0\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">Customer\u003c/text>\u003ctext x=\"75.6\" y=\"650.88\" fill=\"#94a3b8\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">actor\u003c/text>\u003c/g>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"175.2\" y=\"24\" width=\"153.6\" height=\"66\" rx=\"14\" fill=\"rgba(8,51,68,0.55)\" stroke=\"#22d3ee\" stroke-width=\"1.5\"/>\u003ctext x=\"252\" y=\"49.02\" fill=\"#e6feff\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">Web Storefront\u003c/text>\u003ctext x=\"252\" y=\"66.88\" fill=\"#22d3ee\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">client\u003c/text>\u003c/g>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"175.2\" y=\"608\" width=\"153.6\" height=\"66\" rx=\"14\" fill=\"rgba(8,51,68,0.55)\" stroke=\"#22d3ee\" stroke-width=\"1.5\"/>\u003ctext x=\"252\" y=\"633.02\" fill=\"#e6feff\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">Web Storefront\u003c/text>\u003ctext x=\"252\" y=\"650.88\" fill=\"#22d3ee\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">client\u003c/text>\u003c/g>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"376.8\" y=\"24\" width=\"128.4\" height=\"66\" rx=\"14\" fill=\"rgba(6,78,59,0.55)\" stroke=\"#34d399\" stroke-width=\"1.5\"/>\u003ctext x=\"441\" y=\"49.02\" fill=\"#e7fff4\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">API Gateway\u003c/text>\u003ctext x=\"441\" y=\"66.88\" fill=\"#34d399\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">gateway\u003c/text>\u003c/g>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"376.8\" y=\"608\" width=\"128.4\" height=\"66\" rx=\"14\" fill=\"rgba(6,78,59,0.55)\" stroke=\"#34d399\" stroke-width=\"1.5\"/>\u003ctext x=\"441\" y=\"633.02\" fill=\"#e7fff4\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">API Gateway\u003c/text>\u003ctext x=\"441\" y=\"650.88\" fill=\"#34d399\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">gateway\u003c/text>\u003c/g>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"554.4\" y=\"24\" width=\"145.2\" height=\"66\" rx=\"14\" fill=\"rgba(6,78,59,0.55)\" stroke=\"#34d399\" stroke-width=\"1.5\"/>\u003ctext x=\"627\" y=\"49.02\" fill=\"#e7fff4\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">Order Service\u003c/text>\u003ctext x=\"627\" y=\"66.88\" fill=\"#34d399\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">service\u003c/text>\u003c/g>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"554.4\" y=\"608\" width=\"145.2\" height=\"66\" rx=\"14\" fill=\"rgba(6,78,59,0.55)\" stroke=\"#34d399\" stroke-width=\"1.5\"/>\u003ctext x=\"627\" y=\"633.02\" fill=\"#e7fff4\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">Order Service\u003c/text>\u003ctext x=\"627\" y=\"650.88\" fill=\"#34d399\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">service\u003c/text>\u003c/g>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"747.6\" y=\"24\" width=\"162\" height=\"66\" rx=\"14\" fill=\"rgba(6,78,59,0.55)\" stroke=\"#34d399\" stroke-width=\"1.5\"/>\u003ctext x=\"828.6\" y=\"49.02\" fill=\"#e7fff4\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">Payment Service\u003c/text>\u003ctext x=\"828.6\" y=\"66.88\" fill=\"#34d399\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">service\u003c/text>\u003c/g>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"747.6\" y=\"608\" width=\"162\" height=\"66\" rx=\"14\" fill=\"rgba(6,78,59,0.55)\" stroke=\"#34d399\" stroke-width=\"1.5\"/>\u003ctext x=\"828.6\" y=\"633.02\" fill=\"#e7fff4\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">Payment Service\u003c/text>\u003ctext x=\"828.6\" y=\"650.88\" fill=\"#34d399\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">service\u003c/text>\u003c/g>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"957.6\" y=\"24\" width=\"90\" height=\"66\" rx=\"14\" fill=\"rgba(76,29,149,0.5)\" stroke=\"#a78bfa\" stroke-width=\"1.5\"/>\u003ctext x=\"1002.6\" y=\"49.02\" fill=\"#f1ebff\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">Redis\u003c/text>\u003ctext x=\"1002.6\" y=\"66.88\" fill=\"#a78bfa\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">cache\u003c/text>\u003c/g>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"957.6\" y=\"608\" width=\"90\" height=\"66\" rx=\"14\" fill=\"rgba(76,29,149,0.5)\" stroke=\"#a78bfa\" stroke-width=\"1.5\"/>\u003ctext x=\"1002.6\" y=\"633.02\" fill=\"#f1ebff\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">Redis\u003c/text>\u003ctext x=\"1002.6\" y=\"650.88\" fill=\"#a78bfa\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">cache\u003c/text>\u003c/g>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"1095.6\" y=\"24\" width=\"90\" height=\"66\" rx=\"14\" fill=\"rgba(124,45,18,0.55)\" stroke=\"#fb923c\" stroke-width=\"1.5\"/>\u003ctext x=\"1140.6\" y=\"49.02\" fill=\"#ffedd5\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">Kafka\u003c/text>\u003ctext x=\"1140.6\" y=\"66.88\" fill=\"#fb923c\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">broker\u003c/text>\u003c/g>\n\u003cg filter=\"url(#vnm-shadow)\">\u003crect x=\"1095.6\" y=\"608\" width=\"90\" height=\"66\" rx=\"14\" fill=\"rgba(124,45,18,0.55)\" stroke=\"#fb923c\" stroke-width=\"1.5\"/>\u003ctext x=\"1140.6\" y=\"633.02\" fill=\"#ffedd5\" font-size=\"14\" font-weight=\"600\" text-anchor=\"middle\" dominant-baseline=\"central\">Kafka\u003c/text>\u003ctext x=\"1140.6\" y=\"650.88\" fill=\"#fb923c\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"central\" opacity=\"0.85\">broker\u003c/text>\u003c/g>\n\u003cg>\u003cline x1=\"28\" y1=\"708.5\" x2=\"50\" y2=\"708.5\" stroke=\"#34d399\" stroke-width=\"1.75\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-request)\"/>\u003ctext x=\"56\" y=\"708.5\" fill=\"#9fa9d6\" font-size=\"12\" dominant-baseline=\"central\">request\u003c/text>\u003cline x1=\"130.4\" y1=\"708.5\" x2=\"152.4\" y2=\"708.5\" stroke=\"#7d88c4\" stroke-width=\"1.75\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-response)\"/>\u003ctext x=\"158.4\" y=\"708.5\" fill=\"#9fa9d6\" font-size=\"12\" dominant-baseline=\"central\">response\u003c/text>\u003cline x1=\"240\" y1=\"708.5\" x2=\"262\" y2=\"708.5\" stroke=\"#a78bfa\" stroke-width=\"1.75\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-cache)\"/>\u003ctext x=\"268\" y=\"708.5\" fill=\"#9fa9d6\" font-size=\"12\" dominant-baseline=\"central\">cache\u003c/text>\u003cline x1=\"328\" y1=\"708.5\" x2=\"350\" y2=\"708.5\" stroke=\"#fb923c\" stroke-width=\"1.75\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-async)\"/>\u003ctext x=\"356\" y=\"708.5\" fill=\"#9fa9d6\" font-size=\"12\" dominant-baseline=\"central\">async\u003c/text>\u003cline x1=\"416\" y1=\"708.5\" x2=\"438\" y2=\"708.5\" stroke=\"#ff6bb0\" stroke-width=\"1.75\" stroke-linecap=\"round\" marker-end=\"url(#vnm-arrow-exception)\"/>\u003ctext x=\"444\" y=\"708.5\" fill=\"#9fa9d6\" font-size=\"12\" dominant-baseline=\"central\">exception\u003c/text>\u003c/g>\n\u003c/svg>","cssVars":"--vnm-bg: #0b1020; --vnm-surface: #151b34; --vnm-surface-stroke: #3b4a7a; --vnm-text: #eef1ff; --vnm-text-muted: #9fa9d6; --vnm-edge: #7d88c4; --vnm-edge-label-bg: #0b1020; --vnm-edge-label-text: #c8cffb; --vnm-subgraph-fill: #111834; --vnm-subgraph-stroke: #3b4a7a; --vnm-subgraph-text: #9fa9d6; --vnm-accent: #8b6cff; --vnm-minimap-bg: rgba(12,16,34,0.9); --vnm-minimap-viewport: rgba(139,108,255,0.35); --vnm-radius: 14px; --vnm-label-radius: 6px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 600; --vnm-node-shadow: 0 6px 22px rgba(80,60,180,0.35); --vnm-hover-lift: 3px; --vnm-edge-width: 1.75px;","bg":"#0b1020","content":{"width":1201.6,"height":737},"minimap":{"boxes":[{"x":19.999999999999993,"y":20,"w":103.2,"h":66},{"x":19.999999999999993,"y":604,"w":103.2,"h":66},{"x":171.2,"y":20,"w":153.6,"h":66},{"x":171.2,"y":604,"w":153.6,"h":66},{"x":372.8,"y":20,"w":128.39999999999998,"h":66},{"x":372.8,"y":604,"w":128.39999999999998,"h":66},{"x":550.4,"y":20,"w":145.2,"h":66},{"x":550.4,"y":604,"w":145.2,"h":66},{"x":743.6,"y":20,"w":162,"h":66},{"x":743.6,"y":604,"w":162,"h":66},{"x":953.6,"y":20,"w":90,"h":66},{"x":953.6,"y":604,"w":90,"h":66},{"x":1091.6,"y":20,"w":90,"h":66},{"x":1091.6,"y":604,"w":90,"h":66}],"lines":[117,163,209,255,301,347,393,439,485,531,577],"accent":"#8b6cff","viewport":"rgba(139,108,255,0.35)"},"options":{"fitPadding":60,"minimap":true,"minScale":0.2,"maxScale":4}};
+seqRuntime(document.getElementById("vnm-root"), __vnm_payload);
+</script>
+</body>
+</html>

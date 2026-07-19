@@ -119,6 +119,33 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   // Arrowhead caps (layer 6): on for flowcharts, off for class/state natives whose
   // static twins emit no caps (see RuntimeOptions.arrowCaps).
   const arrowCaps = opt.arrowCaps !== false;
+  // Archify semantic edge colouring — INLINED (the runtime is .toString()-serialized, can't import);
+  // byte-parity with src/native/sequence/semantics.flowEdgeSemantic + src/render/semantic-colors.
+  const semEdges = tokens.effects.semanticEdges === true;
+  const SEMANTICS_T = ["request", "response", "cache", "async", "exception"];
+  const SEMANTIC_LABEL_T: Record<string, string> = { request: "request", response: "response", cache: "cache", async: "async", exception: "exception" };
+  const flowSemT = (kind: string, label: string): string | undefined => {
+    const s = (label || "").toLowerCase();
+    if (/error|fail|reject|denied|invalid|exception|timeout|unauthor|refus|\b40[13]\b|\b500\b/.test(s)) return "exception";
+    if (/cache|redis|\bhit\b|\bmiss\b|memcache|\bttl\b|lookup/.test(s)) return "cache";
+    if (/emit|publish|event|async|enqueue|\bqueue\b|kafka|\btopic\b|stream|notify|webhook|fire|dispatch/.test(s)) return "async";
+    if (/\bget\b|\bpost\b|\bput\b|verify|login|auth|query|fetch|read|write|route|call|request|checkout|sync/.test(s)) return "request";
+    if (kind === "dotted") return "cache";
+    return undefined;
+  };
+  const semColorT = (sem: string | undefined): string => {
+    const r = tokens.colors.roles;
+    if (sem === "request") return r.backend?.stroke ?? tokens.colors.accent;
+    if (sem === "cache") return r.database?.stroke ?? tokens.colors.accent;
+    if (sem === "async") return r.messagebus?.stroke ?? tokens.colors.accent;
+    if (sem === "exception") return r.danger?.stroke ?? "#ef4444";
+    return tokens.colors.edge;
+  };
+  const semMarkerT = (sem: string | undefined): string => "vnm-arrow-" + (sem || "response");
+  const edgeColorT = (kind: string, label: string): { color: string; marker: string } => {
+    const sem = semEdges ? flowSemT(kind, label || "") : undefined;
+    return sem ? { color: semColorT(sem), marker: semMarkerT(sem) } : { color: tokens.colors.edge, marker: "vnm-arrow" };
+  };
   // Sketch look constants — mirror src/rough SKETCH (ROUGH-PARITY). Declared here
   // (not in the geometry block below) so the node-shape setup can read them.
   const SK_ROUGHNESS = 2.4;
@@ -200,7 +227,17 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     tokens.edge.arrowSize +
     '" markerHeight="' +
     tokens.edge.arrowSize +
-    '" orient="auto"><path d="M10 0 L0 5 L10 10 z"></path></marker>';
+    '" orient="auto"><path d="M10 0 L0 5 L10 10 z"></path></marker>' +
+    // Archify: coloured arrowhead markers per semantic (gated on the theme flag), so a
+    // colored live edge's head takes its own colour. Mirrors svgDefs()/static defs().
+    (semEdges
+      ? SEMANTICS_T.map(
+          (s) =>
+            '<marker id="' + semMarkerT(s) + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' +
+            tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize +
+            '" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="' + semColorT(s) + '"></path></marker>',
+        ).join("")
+      : "");
   svg.appendChild(defs);
   // Explicit z-layer groups (FR1): append order = paint order, so nothing legible
   // is ever covered — 1 subgraph boxes, 2 edges (paths + arrowheads), 3 edge
@@ -364,14 +401,16 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   for (const e of model.edges) {
     const path = doc.createElementNS(SVGNS, "path");
     path.setAttribute("fill", "none");
-    path.setAttribute("stroke", "var(--vnm-edge)");
+    // Archify: a labeled edge takes its semantic colour (else the theme edge var).
+    const ec = edgeColorT(e.kind, e.label ?? "");
+    path.setAttribute("stroke", semEdges && ec.marker !== "vnm-arrow" ? ec.color : "var(--vnm-edge)");
     path.setAttribute("stroke-width", String(e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width));
     path.setAttribute("stroke-linejoin", "round");
     path.setAttribute("stroke-linecap", "round");
     if (e.kind === "dotted") path.setAttribute("stroke-dasharray", "2 5");
     // Clean mode uses the triangle marker; sketch mode draws its own open
     // arrowheads directly into the (multi-subpath) edge `d`, so no marker.
-    if (!sketch && e.arrows.end) path.setAttribute("marker-end", "url(#vnm-arrow)");
+    if (!sketch && e.arrows.end) path.setAttribute("marker-end", "url(#" + ec.marker + ")");
     if (!sketch && e.arrows.start) path.setAttribute("marker-start", "url(#vnm-arrow-start)");
     gEdges.appendChild(path); // layer 2
     const rec: EdgeEls = { from: e.from, to: e.to, kind: e.kind, arrows: e.arrows, path };
@@ -380,7 +419,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     if (sketch && (e.arrows.end || e.arrows.start)) {
       const head = doc.createElementNS(SVGNS, "path");
       head.setAttribute("fill", "none");
-      head.setAttribute("stroke", "var(--vnm-edge)");
+      head.setAttribute("stroke", semEdges && ec.marker !== "vnm-arrow" ? ec.color : "var(--vnm-edge)");
       head.setAttribute("stroke-width", String(e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width));
       head.setAttribute("stroke-linejoin", "round");
       head.setAttribute("stroke-linecap", "round");
@@ -2890,13 +2929,21 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // Mirror src/render/svg.ts defs(): sketch embeds the bundled @font-face
     // (rides the payload — the runtime can't import sketch-font.ts).
     const font = sketch && payload.sketch ? "<style>" + payload.sketch.fontFace + "</style>" : "";
+    // Archify: one coloured arrowhead marker per semantic, matching src/render/svg.ts defs().
+    const semMarkers = semEdges
+      ? SEMANTICS_T.map(
+          (s) =>
+            '<marker id="' + semMarkerT(s) + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + a +
+            '" markerHeight="' + a + '" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="' + semColorT(s) + '"/></marker>',
+        ).join("")
+      : "";
     return (
       '<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + a +
       '" markerHeight="' + a + '" orient="auto">' +
       '<path d="M0 0 L10 5 L0 10 z" fill="' + tokens.colors.edge + '"/></marker>' +
       '<marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + a +
       '" markerHeight="' + a + '" orient="auto">' +
-      '<path d="M10 0 L0 5 L10 10 z" fill="' + tokens.colors.edge + '"/></marker>' + shadow + font + "</defs>"
+      '<path d="M10 0 L0 5 L10 10 z" fill="' + tokens.colors.edge + '"/></marker>' + semMarkers + shadow + font + "</defs>"
     );
   }
   // Recompute the container box in ABSOLUTE coords from its live member boxes —
@@ -2962,6 +3009,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   function svgEdge(e: EdgeEls, path: string, points: Pt[]): string {
     const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
     const dash = e.kind === "dotted" ? ' stroke-dasharray="2 5"' : "";
+    // Archify: a labeled edge takes its semantic colour + matching head marker
+    // (edgeColorT falls back to the theme edge colour / plain marker when off).
+    const ec = edgeColorT(e.kind, e.label ?? "");
     let out: string;
     if (sketch) {
       // Mirror src/render/svg.ts sketchEdgePath: rough strokes + open arrowheads
@@ -2970,7 +3020,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const key = e.from + "->" + e.to;
       const arr = points.map((p) => [p.x, p.y]);
       const base =
-        ' fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width +
+        ' fill="none" stroke="' + ec.color + '" stroke-width="' + width +
         '" stroke-linejoin="round" stroke-linecap="round"';
       const lineStroke = base + dash;
       let s = "";
@@ -2982,10 +3032,10 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
         s += '<path d="' + openArrowhead(arr[0]!, arr[1]!, tokens.edge.arrowSize, key + "@start") + '"' + base + "/>";
       out = s;
     } else {
-      const mEnd = e.arrows.end ? ' marker-end="url(#vnm-arrow)"' : "";
+      const mEnd = e.arrows.end ? ' marker-end="url(#' + ec.marker + ')"' : "";
       const mStart = e.arrows.start ? ' marker-start="url(#vnm-arrow-start)"' : "";
       out =
-        '<path d="' + path + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width +
+        '<path d="' + path + '" fill="none" stroke="' + ec.color + '" stroke-width="' + width +
         '" stroke-linejoin="round" stroke-linecap="round"' + dash + mStart + mEnd + "/>";
     }
     return out;
@@ -2997,11 +3047,12 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     const m = points.length;
     if (m < 2 || (!e.arrows.end && !e.arrows.start)) return "";
     const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
+    const ec = edgeColorT(e.kind, e.label ?? "");
     if (sketch) {
       const key = e.from + "->" + e.to;
       const arr = points.map((p) => [p.x, p.y]);
       const base =
-        ' fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width +
+        ' fill="none" stroke="' + ec.color + '" stroke-width="' + width +
         '" stroke-linejoin="round" stroke-linecap="round"';
       let s = "";
       if (e.arrows.end) s += '<path class="vnm-arrow-cap" d="' + openArrowhead(arr[m - 1]!, arr[m - 2]!, tokens.edge.arrowSize, key + "@end") + '"' + base + "/>";
@@ -3009,11 +3060,11 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       return s;
     }
     let s = "";
-    if (e.arrows.end) s += svgCapEnd(points[m - 2]!, points[m - 1]!, width);
-    if (e.arrows.start) s += svgCapStart(points[0]!, points[1]!, width);
+    if (e.arrows.end) s += svgCapEnd(points[m - 2]!, points[m - 1]!, width, ec.color, ec.marker);
+    if (e.arrows.start) s += svgCapStart(points[0]!, points[1]!, width, ec.color);
     return s;
   }
-  function svgCapEnd(prev: Pt, tip: Pt, width: number): string {
+  function svgCapEnd(prev: Pt, tip: Pt, width: number, color: string, marker: string): string {
     const dx = tip.x - prev.x;
     const dy = tip.y - prev.y;
     const mag = Math.hypot(dx, dy) || 1;
@@ -3021,9 +3072,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     const bx = tip.x - (dx / mag) * len;
     const by = tip.y - (dy / mag) * len;
     return '<path class="vnm-arrow-cap" d="M ' + nAt(bx) + " " + nAt(by) + " L " + nAt(tip.x) + " " + nAt(tip.y) +
-      '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>';
+      '" fill="none" stroke="' + color + '" stroke-width="' + width + '" stroke-linecap="round" marker-end="url(#' + marker + ')"/>';
   }
-  function svgCapStart(head: Pt, next: Pt, width: number): string {
+  function svgCapStart(head: Pt, next: Pt, width: number, color: string): string {
     const dx = next.x - head.x;
     const dy = next.y - head.y;
     const mag = Math.hypot(dx, dy) || 1;
@@ -3031,7 +3082,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     const bx = head.x + (dx / mag) * len;
     const by = head.y + (dy / mag) * len;
     return '<path class="vnm-arrow-cap" d="M ' + nAt(head.x) + " " + nAt(head.y) + " L " + nAt(bx) + " " + nAt(by) +
-      '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linecap="round" marker-start="url(#vnm-arrow-start)"/>';
+      '" fill="none" stroke="' + color + '" stroke-width="' + width + '" stroke-linecap="round" marker-start="url(#vnm-arrow-start)"/>';
   }
   function svgPolygon(pts: number[][], common: string): string {
     return '<polygon points="' + pts.map((p) => nAt(p[0]!) + "," + nAt(p[1]!)).join(" ") + '" ' + common + "/>";
@@ -3169,6 +3220,36 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       height: nAt(maxY - minY + pad * 2),
     };
   }
+  // The distinct edge semantics present, in legend order — mirrors src/render/svg.ts usedSemantics.
+  function usedSemanticsT(): string[] {
+    const seen: Record<string, boolean> = {};
+    for (const e of edgeEls) {
+      const s = flowSemT(e.kind, e.label ?? "");
+      if (s) seen[s] = true;
+    }
+    return SEMANTICS_T.filter((s) => seen[s]);
+  }
+  // Archify edge legend: a coloured arrow swatch + name per used semantic. Byte-parity
+  // with src/render/svg.ts renderEdgeLegend (Save-SVG matches the static PNG).
+  function svgEdgeLegend(legend: string[], x0: number, y: number): string {
+    const fs = tokens.font.size - 2;
+    const swatch = 22;
+    let x = x0;
+    let out = "";
+    for (const sem of legend) {
+      const color = semColorT(sem);
+      out +=
+        '<line x1="' + nAt(x) + '" y1="' + nAt(y) + '" x2="' + nAt(x + swatch) + '" y2="' + nAt(y) +
+        '" stroke="' + color + '" stroke-width="' + tokens.edge.width +
+        '" stroke-linecap="round" marker-end="url(#' + semMarkerT(sem) + ')"/>';
+      const label = SEMANTIC_LABEL_T[sem]!;
+      out +=
+        '<text x="' + nAt(x + swatch + 6) + '" y="' + nAt(y) + '" fill="' + tokens.colors.subgraphText +
+        '" font-size="' + fs + '" dominant-baseline="central">' + xmlEsc(label) + "</text>";
+      x += swatch + 6 + label.length * fs * 0.6 + 24;
+    }
+    return "<g>" + out + "</g>";
+  }
   function buildSvg(): { svg: string; width: number; height: number } {
     const ports = computePorts();
     const boxes: Box[] = [];
@@ -3232,15 +3313,20 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       if (pl) allPts.push({ x: pl.x - pl.w / 2, y: pl.y - pl.h / 2 }, { x: pl.x + pl.w / 2, y: pl.y + pl.h / 2 });
     }
     const b = boundsAbs(boxes, allPts);
+    // Archify edge legend (semanticEdges themes only): reserve a row below the diagram,
+    // mirroring src/render/svg.ts renderSvgFromModel (totalH / legend layer 7).
+    const legend = semEdges ? usedSemanticsT() : [];
+    const legendH = legend.length ? tokens.font.lineHeight + 20 : 0;
+    const totalH = b.height + legendH;
     const parts: string[] = [];
     parts.push(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="' + nAt(b.width) + '" height="' + nAt(b.height) +
-        '" viewBox="' + nAt(b.x) + " " + nAt(b.y) + " " + nAt(b.width) + " " + nAt(b.height) +
+      '<svg xmlns="http://www.w3.org/2000/svg" width="' + nAt(b.width) + '" height="' + nAt(totalH) +
+        '" viewBox="' + nAt(b.x) + " " + nAt(b.y) + " " + nAt(b.width) + " " + nAt(totalH) +
         '" font-family="' + xmlAttr(sketch && payload.sketch ? payload.sketch.fontFamily : tokens.font.family) + '">',
     );
     parts.push(svgDefs());
     parts.push(
-      '<rect x="' + nAt(b.x) + '" y="' + nAt(b.y) + '" width="' + nAt(b.width) + '" height="' + nAt(b.height) +
+      '<rect x="' + nAt(b.x) + '" y="' + nAt(b.y) + '" width="' + nAt(b.width) + '" height="' + nAt(totalH) +
         '" fill="' + tokens.colors.background + '"/>',
     );
     // 6-layer order (FR1) mirroring src/render/svg.ts renderSvgFromModel for
@@ -3252,8 +3338,9 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     for (const sg of model.subgraphs) parts.push(svgSubgraphTitle(sg)); // 4
     for (const nd of model.nodes) parts.push(svgNode(nd)); // 5
     for (const cap of edgeArrowCapParts) parts.push(cap); // 6
+    if (legend.length) parts.push(svgEdgeLegend(legend, b.x + 16, b.y + b.height + legendH / 2)); // 7 legend
     parts.push("</svg>");
-    return { svg: parts.join("\n"), width: b.width, height: b.height };
+    return { svg: parts.join("\n"), width: b.width, height: totalH };
   }
   function toSvgString(): string {
     return buildSvg().svg;

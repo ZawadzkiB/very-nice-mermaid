@@ -6,6 +6,7 @@
  */
 
 import type { MessageSemantic } from "../../model/sequence.js";
+import type { EdgeKind } from "../../model/index.js";
 
 /** Infer a node ROLE from a participant's display name (mirrors the flowchart role vocabulary). */
 export function inferRole(label: string): string | undefined {
@@ -58,6 +59,21 @@ export function messageSemantic(kind: "solid" | "dashed", label: string): Messag
   if (/emit|publish|event|async|enqueue|\bqueue\b|kafka|\btopic\b|stream|notify|webhook|fire/.test(s)) return "async";
   if (kind === "dashed") return "response";
   return "request";
+}
+
+/**
+ * Classify a FLOWCHART edge into a semantic from its label keywords (colours it). Unlike a sequence
+ * message, a plain unlabeled edge stays the theme's default colour (returns `undefined`) so only
+ * intentionally-labeled edges pick up a colour — a dotted edge with no keyword reads as a fallback.
+ */
+export function flowEdgeSemantic(kind: EdgeKind, label: string): MessageSemantic | undefined {
+  const s = (label ?? "").toLowerCase();
+  if (/error|fail|reject|denied|invalid|exception|timeout|unauthor|refus|\b40[13]\b|\b500\b/.test(s)) return "exception";
+  if (/cache|redis|\bhit\b|\bmiss\b|memcache|\bttl\b|lookup/.test(s)) return "cache";
+  if (/emit|publish|event|async|enqueue|\bqueue\b|kafka|\btopic\b|stream|notify|webhook|fire|dispatch/.test(s)) return "async";
+  if (/\bget\b|\bpost\b|\bput\b|verify|login|auth|query|fetch|read|write|route|call|request|checkout|sync/.test(s)) return "request";
+  if (kind === "dotted") return "cache"; // a dotted fallback edge reads as a cache/optional path
+  return undefined;
 }
 
 /** Stable display order for the legend + swatch labels. */

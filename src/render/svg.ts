@@ -16,6 +16,9 @@ import type { Theme, PartialTokenSet, RenderStyle } from "../theme/index.js";
 import { resolveTheme } from "../theme/index.js";
 import { resolveNodeStyle } from "./style.js";
 import { roughShape, roughPolyline, openArrowhead, ellipsePoints, type Pt } from "../rough/index.js";
+import { semanticColor, semanticMarkerId, SEMANTICS, SEMANTIC_LABEL } from "./semantic-colors.js";
+import { flowEdgeSemantic } from "../native/sequence/semantics.js";
+import type { MessageSemantic } from "../model/sequence.js";
 import { SKETCH_FONT_FAMILY, sketchFontFaceCss } from "./sketch-font.js";
 import { prepare, ensureSyncRenderable, type RenderInput } from "./prepare.js";
 import { isSequenceLayout, type SequenceLayout } from "../model/sequence.js";
@@ -70,10 +73,15 @@ export function renderSvgFromModel(
   const sketch = style === "sketch";
   const parts: string[] = [];
 
+  // Archify edge legend (semanticEdges themes only): reserve a row below the diagram.
+  const legend = t.effects.semanticEdges ? usedSemantics(model) : [];
+  const legendH = legend.length ? t.font.lineHeight + 20 : 0;
+  const totalH = b.height + legendH;
+
   parts.push(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${n(b.width)}" height="${n(
-      b.height,
-    )}" viewBox="${n(b.x)} ${n(b.y)} ${n(b.width)} ${n(b.height)}" font-family="${escAttr(
+      totalH,
+    )}" viewBox="${n(b.x)} ${n(b.y)} ${n(b.width)} ${n(totalH)}" font-family="${escAttr(
       sketch ? SKETCH_FONT_FAMILY : t.font.family,
     )}">`,
   );
@@ -83,7 +91,7 @@ export function renderSvgFromModel(
   if (background !== "transparent") {
     parts.push(
       `<rect x="${n(b.x)}" y="${n(b.y)}" width="${n(b.width)}" height="${n(
-        b.height,
+        totalH,
       )}" fill="${background ?? t.colors.background}"/>`,
     );
   }
@@ -104,6 +112,7 @@ export function renderSvgFromModel(
   for (const sg of model.subgraphs) parts.push(renderSubgraphTitle(sg, theme)); // 4
   for (const node of model.nodes) parts.push(renderNode(node, model, theme, sketch)); // 5
   for (const edge of model.edges) parts.push(renderEdgeArrowCaps(edge, theme, sketch)); // 6
+  if (legend.length) parts.push(renderEdgeLegend(legend, theme, b.x + 16, b.y + b.height + legendH / 2)); // 7 legend
 
   parts.push("</svg>");
   return parts.join("\n");
@@ -124,16 +133,67 @@ function defs(theme: Theme, sketch: boolean): string {
   // marker's tip is at high-x so `auto` points it forward into the target; the
   // start marker is the horizontal mirror (tip at low-x, refX at the tip) so
   // `auto` points it backward at the source. Two markers, both resvg-safe.
+  // One forward end-marker per semantic colour (only when the theme colours edges), plus the
+  // default `vnm-arrow` and the mirrored start marker.
+  const semMarkers = t.effects.semanticEdges
+    ? SEMANTICS.map(
+        (s) =>
+          `<marker id="${semanticMarkerId(s)}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${a}" markerHeight="${a}" orient="auto">` +
+          `<path d="M0 0 L10 5 L0 10 z" fill="${semanticColor(s, t)}"/></marker>`,
+      ).join("")
+    : "";
   return (
     `<defs>` +
     `<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${a}" markerHeight="${a}" orient="auto">` +
     `<path d="M0 0 L10 5 L0 10 z" fill="${t.colors.edge}"/></marker>` +
     `<marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="${a}" markerHeight="${a}" orient="auto">` +
     `<path d="M10 0 L0 5 L10 10 z" fill="${t.colors.edge}"/></marker>` +
+    semMarkers +
     shadow +
     font +
     `</defs>`
   );
+}
+
+/** The distinct edge semantics present in the model, in legend order (for the archify legend). */
+function usedSemantics(model: PositionedModel): MessageSemantic[] {
+  const seen = new Set<MessageSemantic>();
+  for (const e of model.edges) {
+    const s = flowEdgeSemantic(e.kind, e.label ?? "");
+    if (s) seen.add(s);
+  }
+  return SEMANTICS.filter((s) => seen.has(s));
+}
+
+/** Archify edge legend: a colored arrow swatch + name for each edge semantic used, along the bottom. */
+function renderEdgeLegend(legend: MessageSemantic[], theme: Theme, x0: number, y: number): string {
+  const t = theme.tokens;
+  const fs = t.font.size - 2;
+  const swatch = 22;
+  let x = x0;
+  const out: string[] = [];
+  for (const sem of legend) {
+    const color = semanticColor(sem, t);
+    out.push(
+      `<line x1="${n(x)}" y1="${n(y)}" x2="${n(x + swatch)}" y2="${n(y)}" stroke="${color}" stroke-width="${
+        t.edge.width
+      }" stroke-linecap="round" marker-end="url(#${semanticMarkerId(sem)})"/>`,
+    );
+    const label = SEMANTIC_LABEL[sem];
+    out.push(
+      `<text x="${n(x + swatch + 6)}" y="${n(y)}" fill="${t.colors.subgraphText}" font-size="${fs}" dominant-baseline="central">${esc(
+        label,
+      )}</text>`,
+    );
+    x += swatch + 6 + label.length * fs * 0.6 + 24;
+  }
+  return `<g>${out.join("")}</g>`;
+}
+
+/** Semantic colour + end-marker id for an edge (only when the theme opts in via effects.semanticEdges). */
+function edgeColor(edge: RoutedEdge, t: Theme["tokens"]): { color: string; marker: string } {
+  const sem = t.effects.semanticEdges ? flowEdgeSemantic(edge.kind, edge.label ?? "") : undefined;
+  return sem ? { color: semanticColor(sem, t), marker: semanticMarkerId(sem) } : { color: t.colors.edge, marker: "vnm-arrow" };
 }
 
 /** Layer 1: a subgraph's dashed container box (drawn behind everything). */
@@ -176,14 +236,15 @@ function renderEdge(edge: RoutedEdge, theme: Theme, sketch: boolean): string {
   const width = edge.kind === "thick" ? t.edge.thickWidth : t.edge.width;
   const dash =
     edge.kind === "dotted" ? ` stroke-dasharray="2 5"` : "";
+  const { color, marker } = edgeColor(edge, t);
   const parts: string[] = [];
   if (sketch) {
-    parts.push(sketchEdgePath(edge, t.colors.edge, width, dash, t.edge.arrowSize));
+    parts.push(sketchEdgePath(edge, color, width, dash, t.edge.arrowSize));
   } else {
-    const markerEnd = edge.arrows.end ? ` marker-end="url(#vnm-arrow)"` : "";
+    const markerEnd = edge.arrows.end ? ` marker-end="url(#${marker})"` : "";
     const markerStart = edge.arrows.start ? ` marker-start="url(#vnm-arrow-start)"` : "";
     parts.push(
-      `<path d="${edge.path}" fill="none" stroke="${t.colors.edge}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"${dash}${markerStart}${markerEnd}/>`,
+      `<path d="${edge.path}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"${dash}${markerStart}${markerEnd}/>`,
     );
   }
   // The label is emitted in its own later layer (FR1) by renderSvgFromModel, not
@@ -207,31 +268,32 @@ function renderEdgeArrowCaps(edge: RoutedEdge, theme: Theme, sketch: boolean): s
   if (m < 2 || (!edge.arrows.end && !edge.arrows.start)) return "";
   const t = theme.tokens;
   const width = edge.kind === "thick" ? t.edge.thickWidth : t.edge.width;
+  const { color, marker } = edgeColor(edge, t);
   if (sketch) {
     const key = edge.from + "->" + edge.to;
     const arr: Pt[] = pts.map((p) => [p.x, p.y]);
-    const base = ` fill="none" stroke="${t.colors.edge}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"`;
+    const base = ` fill="none" stroke="${color}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"`;
     const out: string[] = [];
     if (edge.arrows.end) out.push(`<path class="vnm-arrow-cap" d="${openArrowhead(arr[m - 1]!, arr[m - 2]!, t.edge.arrowSize, key + "@end")}"${base}/>`);
     if (edge.arrows.start) out.push(`<path class="vnm-arrow-cap" d="${openArrowhead(arr[0]!, arr[1]!, t.edge.arrowSize, key + "@start")}"${base}/>`);
     return out.join("");
   }
   const out: string[] = [];
-  if (edge.arrows.end) out.push(capEnd(pts[m - 2]!, pts[m - 1]!, t.edge.arrowSize, t.colors.edge, width));
-  if (edge.arrows.start) out.push(capStart(pts[0]!, pts[1]!, t.edge.arrowSize, t.colors.edge, width));
+  if (edge.arrows.end) out.push(capEnd(pts[m - 2]!, pts[m - 1]!, t.edge.arrowSize, color, width, marker));
+  if (edge.arrows.start) out.push(capStart(pts[0]!, pts[1]!, t.edge.arrowSize, color, width));
   return out.join("");
 }
 
 /** A stub ending at the arrow `tip` (marker-end), approaching from `prev` so the
  *  marker's `orient="auto"` matches the real edge's final leg. */
-function capEnd(prev: Point, tip: Point, arrowSize: number, color: string, width: number): string {
+function capEnd(prev: Point, tip: Point, arrowSize: number, color: string, width: number, marker = "vnm-arrow"): string {
   const dx = tip.x - prev.x;
   const dy = tip.y - prev.y;
   const mag = Math.hypot(dx, dy) || 1;
   const len = Math.min(arrowSize + 4, mag);
   const bx = tip.x - (dx / mag) * len;
   const by = tip.y - (dy / mag) * len;
-  return `<path class="vnm-arrow-cap" d="M ${n(bx)} ${n(by)} L ${n(tip.x)} ${n(tip.y)}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>`;
+  return `<path class="vnm-arrow-cap" d="M ${n(bx)} ${n(by)} L ${n(tip.x)} ${n(tip.y)}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" marker-end="url(#${marker})"/>`;
 }
 
 /** A stub starting at the arrow `head` (marker-start), heading toward `next`. */
