@@ -1528,6 +1528,8 @@ export function trimEndpointReentry(
   edges: Array<{ from: string; to: string; points: Point[]; path?: string; labelPos?: Point }>,
   nodeBoxes: ReadonlyArray<NodeBox>,
   style: EdgeStyle,
+  /** Per-edge pins: never re-anchor an endpoint the user explicitly pinned (layout.json / drag). */
+  pinned?: ReadonlyArray<{ source: boolean; target: boolean } | undefined>,
 ): void {
   const boxById = new Map<string, NodeBox>();
   for (const b of nodeBoxes) if (b.id) boxById.set(b.id, b);
@@ -1541,11 +1543,12 @@ export function trimEndpointReentry(
     Math.abs(inPt.x - outPt.x) < 0.5
       ? { x: n(inPt.x), y: n(outPt.y > inPt.y ? b.y + b.height / 2 : b.y - b.height / 2) }
       : { x: n(outPt.x > inPt.x ? b.x + b.width / 2 : b.x - b.width / 2), y: n(inPt.y) };
-  edges.forEach((e) => {
+  edges.forEach((e, ei) => {
     const p = e.points;
     if (p.length < 3 || (style === "curved" && !isOrthogonalRoute(p))) return; // skip cubic curves
-    const src = boxById.get(e.from);
-    const tgt = boxById.get(e.to);
+    const pin = pinned?.[ei];
+    const src = pin?.source ? undefined : boxById.get(e.from); // a pinned source port is user intent
+    const tgt = pin?.target ? undefined : boxById.get(e.to);
     let did = false;
     if (src && inside(p[1]!, src)) {
       let k = 1;

@@ -75,9 +75,10 @@ export function finishEdges(
   bridges?: boolean,
   nodeBoxes?: ReadonlyArray<NodeBox>,
   subgraphs?: ReadonlyArray<AvoidContainer>,
+  pinned?: ReadonlyArray<{ source: boolean; target: boolean } | undefined>,
 ): void {
   avoidSubgraphs(edges, subgraphs ?? [], theme.edgeStyle); // v0.6.6 (D1=A) — FIRST: pull a trunk piercing a foreign container outside it + re-enter near its endpoint (defect #3); separateLanes below then re-lanes any new outside-lane overlap
-  if (nodeBoxes) trimEndpointReentry(edges, nodeBoxes, theme.edgeStyle); // R2 — clamp an endpoint approach that threads back through its own box to the border it truly crosses (Worker/PostgreSQL re-entry)
+  if (nodeBoxes) trimEndpointReentry(edges, nodeBoxes, theme.edgeStyle, pinned); // R2 — clamp an endpoint approach that threads back through its own box (Worker/PostgreSQL re-entry); never re-anchors a user-pinned port
   if (nodeBoxes) for (let k = 0; k < NODE_AVOID_PASSES; k++) { avoidNodes(edges, nodeBoxes, theme.edgeStyle); detourApproaches(edges, nodeBoxes, theme.edgeStyle); } // R1 — reserved space: push any interior trunk (avoidNodes) or endpoint-approach leg (detourApproaches) piercing a NON-endpoint node outside it; repeat so a detour that then hits another node also clears (idempotent → extra passes no-op)
   offsetLabelsOffLine(edges, theme); // v0.6.4 (option d) — lift each label off its line FIRST so the line stays continuous; de-collision below then runs on the offset centres
   separateLanes(edges, theme.edgeStyle); // FR9 — give each merged run its own lane (compact, local)
@@ -481,7 +482,10 @@ export function applyPositions(
   // containers, lanes separated, labels non-overlapping (of each other AND of node boxes)
   // and its crossings bridged (parity). Node boxes in model-node order to match the runtime
   // twin; container obstacles recomputed from the (moved/resized) member boxes (FR5).
-  finishEdges(edges, theme, opts.bridges, nodes.map(toBox), computeAvoidContainers(model.subgraphs, nodeBoxes));
+  // A user-pinned endpoint (layout.json anchor) is intentional — trimEndpointReentry must not
+  // re-anchor it even if the elbow dips a crossbar into the box (REV-007 parallel-edge pins).
+  const pinned = anchorOverrides?.map((o) => (o ? { source: !!o.source, target: !!o.target } : undefined));
+  finishEdges(edges, theme, opts.bridges, nodes.map(toBox), computeAvoidContainers(model.subgraphs, nodeBoxes), pinned);
 
   // Auto-contain (subgraph FR6, prior feature): re-hug every subgraph to its
   // (possibly moved/resized) members via the shared recompute, matching the live

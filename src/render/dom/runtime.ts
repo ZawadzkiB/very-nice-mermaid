@@ -1601,8 +1601,10 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       const p = e.points;
       if (p.length < 3 || (edgeStyle === "curved" && !isOrthoT(p))) return;
       const ep = pairs[ei]!;
-      const src = boxById[ep.from];
-      const tgt = boxById[ep.to];
+      // A user-pinned endpoint (dragged handle) is intentional — never re-anchor it (parity REV-007).
+      const ov = anchorsOv[ei];
+      const src = ov && ov.source ? undefined : boxById[ep.from];
+      const tgt = ov && ov.target ? undefined : boxById[ep.to];
       let did = false;
       if (src && inside(p[1]!, src)) {
         let k = 1;
