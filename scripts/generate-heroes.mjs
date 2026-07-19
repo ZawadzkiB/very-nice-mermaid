@@ -40,10 +40,11 @@ const HEROES = [
   { out: "example-sketch", src: "cache-lookup.mmd", theme: "light", style: "sketch" },
   // the README hero: archify look — arch theme + hand-drawn sketch, semantic role colours.
   { out: "example-arch", src: "arch-microservices.mmd", theme: "arch", style: "sketch" },
-  // archify sequence heroes (arch theme, clean lines): a login flow + an order checkout
-  // whose declined-payment path exercises every message semantic (request/response/
-  // cache/async/exception) so the auto-legend shows the full set.
-  { out: "example-sequence", src: "auth-sequence.mmd", theme: "arch", style: "clean", dir: "examples/src" },
+  // archify sequence heroes (clean lines): a login flow (arch-light — the README links it
+  // to the live interactive demo, so the thumbnail matches that page's theme) + an order
+  // checkout (arch) whose declined-payment path exercises every message semantic
+  // (request/response/cache/async/exception) so the auto-legend shows the full set.
+  { out: "example-sequence", src: "auth-sequence.mmd", theme: "arch-light", style: "clean", dir: "examples/src" },
   { out: "example-sequence-order", src: "order-checkout.mmd", theme: "arch", style: "clean", dir: "examples/src" },
 ];
 

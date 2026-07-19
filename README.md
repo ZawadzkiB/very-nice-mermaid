@@ -24,12 +24,17 @@ drag / resize / pan / zoom the actual diagrams right in your browser.
 <p align="center"><em>Edges colour by <strong>semantic</strong> (request / cache / async / exception), each with its own line type; subgraphs become background zones; every arrow is labelled; a legend sits along the bottom.</em></p>
 
 And the same archify look applied to **sequence diagrams** - role-coloured participants with a
-type sub-label, activation bars, and semantically-coloured messages. A happy-path login, then
-an order checkout whose declined-payment branch shows every message colour at once:
+type sub-label, activation bars, and semantically-coloured messages. First a happy-path login
+you can **open live** (drag participants, zoom, pan, export), then an order checkout whose
+declined-payment branch shows every message colour at once:
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ZawadzkiB/very-nice-mermaid/master/assets/example-sequence.png" alt="An archify-style login sequence diagram: role-coloured participants with type sub-labels, activation bars, and semantic message colours with a legend" width="720">
+  <a href="https://zawadzkib.github.io/very-nice-mermaid/interactive/auth-sequence-clean-arch-light.html" title="Open the interactive version - drag / zoom / pan / export">
+    <img src="https://raw.githubusercontent.com/ZawadzkiB/very-nice-mermaid/master/assets/example-sequence.png" alt="An archify-style login sequence diagram (arch-light): role-coloured participants with type sub-labels, activation bars, and semantic message colours with a legend" width="720">
+  </a>
 </p>
+
+<p align="center"><strong>▶ <a href="https://zawadzkib.github.io/very-nice-mermaid/interactive/auth-sequence-clean-arch-light.html">Open this diagram interactively ↗</a></strong> - drag participants, wheel-zoom, pan, and export SVG / PNG, all in the browser.</p>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ZawadzkiB/very-nice-mermaid/master/assets/example-sequence-order.png" alt="A second archify-style sequence diagram of an order checkout, whose declined-payment path exercises request, response, cache, async, and exception message colours" width="720">
