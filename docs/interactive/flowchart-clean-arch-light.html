@@ -26,6 +26,31 @@ var vnmRuntime = function vnmRuntime(root, payload) {
   let edgeStyle = payload.theme.edgeStyle;
   const sketch = opt.style === "sketch";
   const arrowCaps = opt.arrowCaps !== false;
+  const semEdges = tokens.effects.semanticEdges === true;
+  const SEMANTICS_T = ["request", "response", "cache", "async", "exception"];
+  const SEMANTIC_LABEL_T = { request: "request", response: "response", cache: "cache", async: "async", exception: "exception" };
+  const flowSemT = (kind, label) => {
+    const s = (label || "").toLowerCase();
+    if (/error|fail|reject|denied|invalid|exception|timeout|unauthor|refus|\b40[13]\b|\b500\b/.test(s)) return "exception";
+    if (/cache|redis|\bhit\b|\bmiss\b|memcache|\bttl\b|lookup/.test(s)) return "cache";
+    if (/emit|publish|event|async|enqueue|\bqueue\b|kafka|\btopic\b|stream|notify|webhook|fire|dispatch/.test(s)) return "async";
+    if (/\bget\b|\bpost\b|\bput\b|verify|login|auth|query|fetch|read|write|route|call|request|checkout|sync/.test(s)) return "request";
+    if (kind === "dotted") return "cache";
+    return void 0;
+  };
+  const semColorT = (sem) => {
+    const r = tokens.colors.roles;
+    if (sem === "request") return r.backend?.stroke ?? tokens.colors.accent;
+    if (sem === "cache") return r.database?.stroke ?? tokens.colors.accent;
+    if (sem === "async") return r.messagebus?.stroke ?? tokens.colors.accent;
+    if (sem === "exception") return r.danger?.stroke ?? "#ef4444";
+    return tokens.colors.edge;
+  };
+  const semMarkerT = (sem) => "vnm-arrow-" + (sem || "response");
+  const edgeColorT = (kind, label) => {
+    const sem = semEdges ? flowSemT(kind, label || "") : void 0;
+    return sem ? { color: semColorT(sem), marker: semMarkerT(sem) } : { color: tokens.colors.edge, marker: "vnm-arrow" };
+  };
   const SK_ROUGHNESS = 2.4;
   const SK_BOWING = 2.2;
   const SK_OUTLINE_STROKES = 2;
@@ -73,7 +98,11 @@ var vnmRuntime = function vnmRuntime(root, payload) {
   svg.setAttribute("height", String(contentH));
   svg.setAttribute("style", "position:absolute;left:0;top:0;overflow:visible;pointer-events:none;");
   const defs5 = doc.createElementNS(SVGNS, "defs");
-  defs5.innerHTML = '<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M0 0 L10 5 L0 10 z"></path></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M10 0 L0 5 L10 10 z"></path></marker>';
+  defs5.innerHTML = '<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M0 0 L10 5 L0 10 z"></path></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M10 0 L0 5 L10 10 z"></path></marker>' + // Archify: coloured arrowhead markers per semantic (gated on the theme flag), so a
+  // colored live edge's head takes its own colour. Mirrors svgDefs()/static defs().
+  (semEdges ? SEMANTICS_T.map(
+    (s) => '<marker id="' + semMarkerT(s) + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="' + semColorT(s) + '"></path></marker>'
+  ).join("") : "");
   svg.appendChild(defs5);
   const gBoxes = doc.createElementNS(SVGNS, "g");
   const gEdges = doc.createElementNS(SVGNS, "g");
@@ -191,19 +220,20 @@ var vnmRuntime = function vnmRuntime(root, payload) {
   for (const e of model.edges) {
     const path = doc.createElementNS(SVGNS, "path");
     path.setAttribute("fill", "none");
-    path.setAttribute("stroke", "var(--vnm-edge)");
+    const ec = edgeColorT(e.kind, e.label ?? "");
+    path.setAttribute("stroke", semEdges && ec.marker !== "vnm-arrow" ? ec.color : "var(--vnm-edge)");
     path.setAttribute("stroke-width", String(e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width));
     path.setAttribute("stroke-linejoin", "round");
     path.setAttribute("stroke-linecap", "round");
     if (e.kind === "dotted") path.setAttribute("stroke-dasharray", "2 5");
-    if (!sketch && e.arrows.end) path.setAttribute("marker-end", "url(#vnm-arrow)");
+    if (!sketch && e.arrows.end) path.setAttribute("marker-end", "url(#" + ec.marker + ")");
     if (!sketch && e.arrows.start) path.setAttribute("marker-start", "url(#vnm-arrow-start)");
     gEdges.appendChild(path);
     const rec = { from: e.from, to: e.to, kind: e.kind, arrows: e.arrows, path };
     if (sketch && (e.arrows.end || e.arrows.start)) {
       const head = doc.createElementNS(SVGNS, "path");
       head.setAttribute("fill", "none");
-      head.setAttribute("stroke", "var(--vnm-edge)");
+      head.setAttribute("stroke", semEdges && ec.marker !== "vnm-arrow" ? ec.color : "var(--vnm-edge)");
       head.setAttribute("stroke-width", String(e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width));
       head.setAttribute("stroke-linejoin", "round");
       head.setAttribute("stroke-linecap", "round");
@@ -1219,8 +1249,9 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const p = e.points;
       if (p.length < 3 || edgeStyle === "curved" && !isOrthoT(p)) return;
       const ep = pairs[ei];
-      const src = boxById[ep.from];
-      const tgt = boxById[ep.to];
+      const ov = anchorsOv[ei];
+      const src = ov && ov.source ? void 0 : boxById[ep.from];
+      const tgt = ov && ov.target ? void 0 : boxById[ep.to];
       let did = false;
       if (src && inside(p[1], src)) {
         let k = 1;
@@ -2275,7 +2306,10 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     const a = tokens.edge.arrowSize;
     const shadow = tokens.effects.gradient ? '<filter id="vnm-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter>' : "";
     const font = sketch && payload.sketch ? "<style>" + payload.sketch.fontFace + "</style>" : "";
-    return '<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="' + tokens.colors.edge + '"/></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="' + tokens.colors.edge + '"/></marker>' + shadow + font + "</defs>";
+    const semMarkers = semEdges ? SEMANTICS_T.map(
+      (s) => '<marker id="' + semMarkerT(s) + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="' + semColorT(s) + '"/></marker>'
+    ).join("") : "";
+    return '<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="' + tokens.colors.edge + '"/></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="' + tokens.colors.edge + '"/></marker>' + semMarkers + shadow + font + "</defs>";
   }
   function subgraphAbsBox(sg) {
     const ids = subgraphMembers[sg.id] || [];
@@ -2316,11 +2350,12 @@ var vnmRuntime = function vnmRuntime(root, payload) {
   function svgEdge(e, path, points) {
     const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
     const dash = e.kind === "dotted" ? ' stroke-dasharray="2 5"' : "";
+    const ec = edgeColorT(e.kind, e.label ?? "");
     let out;
     if (sketch) {
       const key = e.from + "->" + e.to;
       const arr = points.map((p) => [p.x, p.y]);
-      const base = ' fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"';
+      const base = ' fill="none" stroke="' + ec.color + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"';
       const lineStroke = base + dash;
       let s = "";
       for (const d of roughPolyline2(arr, key)) s += '<path d="' + d + '"' + lineStroke + "/>";
@@ -2331,9 +2366,9 @@ var vnmRuntime = function vnmRuntime(root, payload) {
         s += '<path d="' + openArrowhead2(arr[0], arr[1], tokens.edge.arrowSize, key + "@start") + '"' + base + "/>";
       out = s;
     } else {
-      const mEnd = e.arrows.end ? ' marker-end="url(#vnm-arrow)"' : "";
+      const mEnd = e.arrows.end ? ' marker-end="url(#' + ec.marker + ')"' : "";
       const mStart = e.arrows.start ? ' marker-start="url(#vnm-arrow-start)"' : "";
-      out = '<path d="' + path + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"' + dash + mStart + mEnd + "/>";
+      out = '<path d="' + path + '" fill="none" stroke="' + ec.color + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"' + dash + mStart + mEnd + "/>";
     }
     return out;
   }
@@ -2341,37 +2376,38 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     const m = points.length;
     if (m < 2 || !e.arrows.end && !e.arrows.start) return "";
     const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
+    const ec = edgeColorT(e.kind, e.label ?? "");
     if (sketch) {
       const key = e.from + "->" + e.to;
       const arr = points.map((p) => [p.x, p.y]);
-      const base = ' fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"';
+      const base = ' fill="none" stroke="' + ec.color + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"';
       let s2 = "";
       if (e.arrows.end) s2 += '<path class="vnm-arrow-cap" d="' + openArrowhead2(arr[m - 1], arr[m - 2], tokens.edge.arrowSize, key + "@end") + '"' + base + "/>";
       if (e.arrows.start) s2 += '<path class="vnm-arrow-cap" d="' + openArrowhead2(arr[0], arr[1], tokens.edge.arrowSize, key + "@start") + '"' + base + "/>";
       return s2;
     }
     let s = "";
-    if (e.arrows.end) s += svgCapEnd(points[m - 2], points[m - 1], width);
-    if (e.arrows.start) s += svgCapStart(points[0], points[1], width);
+    if (e.arrows.end) s += svgCapEnd(points[m - 2], points[m - 1], width, ec.color, ec.marker);
+    if (e.arrows.start) s += svgCapStart(points[0], points[1], width, ec.color);
     return s;
   }
-  function svgCapEnd(prev, tip, width) {
+  function svgCapEnd(prev, tip, width, color, marker) {
     const dx = tip.x - prev.x;
     const dy = tip.y - prev.y;
     const mag = Math.hypot(dx, dy) || 1;
     const len = Math.min(tokens.edge.arrowSize + 4, mag);
     const bx = tip.x - dx / mag * len;
     const by = tip.y - dy / mag * len;
-    return '<path class="vnm-arrow-cap" d="M ' + nAt(bx) + " " + nAt(by) + " L " + nAt(tip.x) + " " + nAt(tip.y) + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>';
+    return '<path class="vnm-arrow-cap" d="M ' + nAt(bx) + " " + nAt(by) + " L " + nAt(tip.x) + " " + nAt(tip.y) + '" fill="none" stroke="' + color + '" stroke-width="' + width + '" stroke-linecap="round" marker-end="url(#' + marker + ')"/>';
   }
-  function svgCapStart(head, next, width) {
+  function svgCapStart(head, next, width, color) {
     const dx = next.x - head.x;
     const dy = next.y - head.y;
     const mag = Math.hypot(dx, dy) || 1;
     const len = Math.min(tokens.edge.arrowSize + 4, mag);
     const bx = head.x + dx / mag * len;
     const by = head.y + dy / mag * len;
-    return '<path class="vnm-arrow-cap" d="M ' + nAt(head.x) + " " + nAt(head.y) + " L " + nAt(bx) + " " + nAt(by) + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linecap="round" marker-start="url(#vnm-arrow-start)"/>';
+    return '<path class="vnm-arrow-cap" d="M ' + nAt(head.x) + " " + nAt(head.y) + " L " + nAt(bx) + " " + nAt(by) + '" fill="none" stroke="' + color + '" stroke-width="' + width + '" stroke-linecap="round" marker-start="url(#vnm-arrow-start)"/>';
   }
   function svgPolygon(pts, common) {
     return '<polygon points="' + pts.map((p) => nAt(p[0]) + "," + nAt(p[1])).join(" ") + '" ' + common + "/>";
@@ -2482,6 +2518,28 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       height: nAt(maxY - minY + pad * 2)
     };
   }
+  function usedSemanticsT() {
+    const seen = {};
+    for (const e of edgeEls) {
+      const s = flowSemT(e.kind, e.label ?? "");
+      if (s) seen[s] = true;
+    }
+    return SEMANTICS_T.filter((s) => seen[s]);
+  }
+  function svgEdgeLegend(legend, x0, y) {
+    const fs = tokens.font.size - 2;
+    const swatch = 22;
+    let x = x0;
+    let out = "";
+    for (const sem of legend) {
+      const color = semColorT(sem);
+      out += '<line x1="' + nAt(x) + '" y1="' + nAt(y) + '" x2="' + nAt(x + swatch) + '" y2="' + nAt(y) + '" stroke="' + color + '" stroke-width="' + tokens.edge.width + '" stroke-linecap="round" marker-end="url(#' + semMarkerT(sem) + ')"/>';
+      const label = SEMANTIC_LABEL_T[sem];
+      out += '<text x="' + nAt(x + swatch + 6) + '" y="' + nAt(y) + '" fill="' + tokens.colors.subgraphText + '" font-size="' + fs + '" dominant-baseline="central">' + xmlEsc(label) + "</text>";
+      x += swatch + 6 + label.length * fs * 0.6 + 24;
+    }
+    return "<g>" + out + "</g>";
+  }
   function buildSvg() {
     const ports = computePorts();
     const boxes = [];
@@ -2531,13 +2589,16 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       if (pl) allPts.push({ x: pl.x - pl.w / 2, y: pl.y - pl.h / 2 }, { x: pl.x + pl.w / 2, y: pl.y + pl.h / 2 });
     }
     const b = boundsAbs(boxes, allPts);
+    const legend = semEdges ? usedSemanticsT() : [];
+    const legendH = legend.length ? tokens.font.lineHeight + 20 : 0;
+    const totalH = b.height + legendH;
     const parts = [];
     parts.push(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="' + nAt(b.width) + '" height="' + nAt(b.height) + '" viewBox="' + nAt(b.x) + " " + nAt(b.y) + " " + nAt(b.width) + " " + nAt(b.height) + '" font-family="' + xmlAttr(sketch && payload.sketch ? payload.sketch.fontFamily : tokens.font.family) + '">'
+      '<svg xmlns="http://www.w3.org/2000/svg" width="' + nAt(b.width) + '" height="' + nAt(totalH) + '" viewBox="' + nAt(b.x) + " " + nAt(b.y) + " " + nAt(b.width) + " " + nAt(totalH) + '" font-family="' + xmlAttr(sketch && payload.sketch ? payload.sketch.fontFamily : tokens.font.family) + '">'
     );
     parts.push(svgDefs());
     parts.push(
-      '<rect x="' + nAt(b.x) + '" y="' + nAt(b.y) + '" width="' + nAt(b.width) + '" height="' + nAt(b.height) + '" fill="' + tokens.colors.background + '"/>'
+      '<rect x="' + nAt(b.x) + '" y="' + nAt(b.y) + '" width="' + nAt(b.width) + '" height="' + nAt(totalH) + '" fill="' + tokens.colors.background + '"/>'
     );
     for (const sg of model.subgraphs) parts.push(svgSubgraphBox(sg));
     for (const ep of edgePathParts) parts.push(ep);
@@ -2545,8 +2606,9 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     for (const sg of model.subgraphs) parts.push(svgSubgraphTitle(sg));
     for (const nd of model.nodes) parts.push(svgNode(nd));
     for (const cap of edgeArrowCapParts) parts.push(cap);
+    if (legend.length) parts.push(svgEdgeLegend(legend, b.x + 16, b.y + b.height + legendH / 2));
     parts.push("</svg>");
-    return { svg: parts.join("\n"), width: b.width, height: b.height };
+    return { svg: parts.join("\n"), width: b.width, height: totalH };
   }
   function toSvgString() {
     return buildSvg().svg;
@@ -2625,7 +2687,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     toSvgString
   };
 };
-var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"start","label":"Push to main","shape":"stadium","classes":[],"x":277.25,"y":29,"width":146,"height":42},{"id":"lint","label":"Lint passes?","shape":"diamond","classes":[],"x":277.25,"y":145.5,"width":181,"height":63},{"id":"test","label":"Run tests","shape":"rect","classes":[],"x":180.75,"y":262,"width":105,"height":42},{"id":"fail","label":"Report failure","shape":"cylinder","classes":[],"x":471.5,"y":480,"width":145,"height":54},{"id":"deploy","label":"Deploy?","shape":"hexagon","classes":[],"x":180.75,"y":368,"width":114,"height":42},{"id":"prod","label":"Ship to prod","shape":"parallelogram","classes":[],"x":83,"y":480,"width":150,"height":42},{"id":"stg","label":"Ship to staging","shape":"rect","classes":[],"x":278.5,"y":480,"width":153,"height":42},{"id":"done","label":"Done","shape":"circle","classes":[],"x":278.5,"y":608.5,"width":75,"height":75}],"edges":[{"from":"start","to":"lint","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":277.25,"y":50},{"x":277.25,"y":114}],"path":"M 277.25 50 L 277.25 114"},{"from":"lint","to":"test","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"yes","points":[{"x":262.25,"y":171.77900552486187},{"x":262.25,"y":206.38950276243094},{"x":180.75,"y":206.38950276243094},{"x":180.75,"y":241}],"path":"M 262.25 171.78 L 262.25 206.39 L 180.75 206.39 L 180.75 241","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":221.5,"y":197}},{"from":"lint","to":"fail","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"no","points":[{"x":292.25,"y":171.77900552486187},{"x":292.25,"y":209},{"x":471.5,"y":209},{"x":471.5,"y":453}],"path":"M 292.25 171.78 L 292.25 209 L 471.5 209 L 471.5 453","waypoints":[{"x":471.5,"y":209},{"x":471.5,"y":262},{"x":471.5,"y":315},{"x":471.5,"y":368},{"x":471.5,"y":421}],"ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":381.88,"y":197}},{"from":"test","to":"deploy","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":180.75,"y":283},{"x":180.75,"y":347}],"path":"M 180.75 283 L 180.75 347"},{"from":"deploy","to":"prod","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"prod","points":[{"x":165.75,"y":389},{"x":165.75,"y":424},{"x":83,"y":424},{"x":83,"y":459}],"path":"M 165.75 389 L 165.75 424 L 83 424 L 83 459","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":124.38,"y":411}},{"from":"deploy","to":"stg","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"staging","points":[{"x":195.75,"y":389},{"x":195.75,"y":424},{"x":278.5,"y":424},{"x":278.5,"y":459}],"path":"M 195.75 389 L 195.75 424 L 278.5 424 L 278.5 459","ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":237.13,"y":411}},{"from":"prod","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":83,"y":501},{"x":83,"y":608.5},{"x":241,"y":608.5}],"path":"M 83 501 L 83 608.5 L 241 608.5"},{"from":"stg","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":278.5,"y":501},{"x":278.5,"y":571}],"path":"M 278.5 501 L 278.5 571"},{"from":"fail","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":471.5,"y":507},{"x":471.5,"y":608.5},{"x":316,"y":608.5}],"path":"M 471.5 507 L 471.5 608.5 L 316 608.5"}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":-12,"width":576,"height":678}},"theme":{"name":"arch-light","edgeStyle":"elbow","tokens":{"colors":{"background":"#f8fafc","surface":"#ffffff","surfaceStroke":"#cbd5e1","text":"#0f172a","textMuted":"#64748b","edge":"#94a3b8","edgeLabelBg":"#f8fafc","edgeLabelText":"#475569","subgraphFill":"#f1f5f9","subgraphStroke":"#cbd5e1","subgraphText":"#64748b","accent":"#059669","minimapBg":"rgba(248,250,252,0.9)","minimapViewport":"rgba(5,150,105,0.25)","roles":{"frontend":{"fill":"rgba(34,211,238,0.15)","stroke":"#0891b2","text":"#0e4a5b"},"backend":{"fill":"rgba(52,211,153,0.18)","stroke":"#059669","text":"#065f46"},"database":{"fill":"rgba(167,139,250,0.2)","stroke":"#7c3aed","text":"#5b21b6"},"cloud":{"fill":"rgba(251,191,36,0.2)","stroke":"#d97706","text":"#92400e"},"security":{"fill":"rgba(251,113,133,0.15)","stroke":"#e11d48","text":"#9f1239"},"messagebus":{"fill":"rgba(251,146,60,0.15)","stroke":"#ea580c","text":"#9a3412"},"external":{"fill":"rgba(148,163,184,0.2)","stroke":"#64748b","text":"#334155"},"accent":{"fill":"rgba(2,132,199,0.12)","stroke":"#0284c7","text":"#075985"},"success":{"fill":"rgba(5,150,105,0.14)","stroke":"#059669","text":"#065f46"},"warn":{"fill":"rgba(217,119,6,0.16)","stroke":"#d97706","text":"#92400e"},"danger":{"fill":"rgba(225,29,72,0.12)","stroke":"#e11d48","text":"#9f1239"}}},"radii":{"node":8,"card":8,"label":4},"spacing":{"nodePadX":16,"nodePadY":12,"nodesep":44,"ranksep":64,"fitPadding":60},"font":{"family":"'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":13,"lineHeight":18,"weight":500},"edge":{"style":"elbow","width":1.5,"thickWidth":3,"arrowSize":8},"effects":{"nodeShadow":"0 1px 2px rgba(15,23,42,0.1)","gradient":false,"hoverLift":2}}},"cssVars":"--vnm-bg: #f8fafc; --vnm-surface: #ffffff; --vnm-surface-stroke: #cbd5e1; --vnm-text: #0f172a; --vnm-text-muted: #64748b; --vnm-edge: #94a3b8; --vnm-edge-label-bg: #f8fafc; --vnm-edge-label-text: #475569; --vnm-subgraph-fill: #f1f5f9; --vnm-subgraph-stroke: #cbd5e1; --vnm-subgraph-text: #64748b; --vnm-accent: #059669; --vnm-minimap-bg: rgba(248,250,252,0.9); --vnm-minimap-viewport: rgba(5,150,105,0.25); --vnm-radius: 8px; --vnm-label-radius: 4px; --vnm-font: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 13px; --vnm-font-weight: 500; --vnm-node-shadow: 0 1px 2px rgba(15,23,42,0.1); --vnm-hover-lift: 2px; --vnm-edge-width: 1.5px;","options":{"fitPadding":60,"persistKey":"vnm-layout:1wui0yq","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true,"arrowCaps":true}};
+var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"start","label":"Push to main","shape":"stadium","classes":[],"x":277.25,"y":29,"width":146,"height":42},{"id":"lint","label":"Lint passes?","shape":"diamond","classes":[],"x":277.25,"y":145.5,"width":181,"height":63},{"id":"test","label":"Run tests","shape":"rect","classes":[],"x":180.75,"y":262,"width":105,"height":42},{"id":"fail","label":"Report failure","shape":"cylinder","classes":[],"x":471.5,"y":480,"width":145,"height":54},{"id":"deploy","label":"Deploy?","shape":"hexagon","classes":[],"x":180.75,"y":368,"width":114,"height":42},{"id":"prod","label":"Ship to prod","shape":"parallelogram","classes":[],"x":83,"y":480,"width":150,"height":42},{"id":"stg","label":"Ship to staging","shape":"rect","classes":[],"x":278.5,"y":480,"width":153,"height":42},{"id":"done","label":"Done","shape":"circle","classes":[],"x":278.5,"y":608.5,"width":75,"height":75}],"edges":[{"from":"start","to":"lint","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":277.25,"y":50},{"x":277.25,"y":114}],"path":"M 277.25 50 L 277.25 114"},{"from":"lint","to":"test","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"yes","points":[{"x":262.25,"y":171.77900552486187},{"x":262.25,"y":206.38950276243094},{"x":180.75,"y":206.38950276243094},{"x":180.75,"y":241}],"path":"M 262.25 171.78 L 262.25 206.39 L 180.75 206.39 L 180.75 241","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":221.5,"y":197}},{"from":"lint","to":"fail","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"no","points":[{"x":292.25,"y":171.77900552486187},{"x":292.25,"y":209},{"x":471.5,"y":209},{"x":471.5,"y":453}],"path":"M 292.25 171.78 L 292.25 209 L 471.5 209 L 471.5 453","waypoints":[{"x":471.5,"y":209},{"x":471.5,"y":262},{"x":471.5,"y":315},{"x":471.5,"y":368},{"x":471.5,"y":421}],"ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":381.88,"y":197}},{"from":"test","to":"deploy","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":180.75,"y":283},{"x":180.75,"y":347}],"path":"M 180.75 283 L 180.75 347"},{"from":"deploy","to":"prod","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"prod","points":[{"x":165.75,"y":389},{"x":165.75,"y":424},{"x":83,"y":424},{"x":83,"y":459}],"path":"M 165.75 389 L 165.75 424 L 83 424 L 83 459","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}},"labelPos":{"x":124.38,"y":411}},{"from":"deploy","to":"stg","kind":"solid","arrows":{"start":false,"end":true},"length":2,"label":"staging","points":[{"x":195.75,"y":389},{"x":195.75,"y":424},{"x":278.5,"y":424},{"x":278.5,"y":459}],"path":"M 195.75 389 L 195.75 424 L 278.5 424 L 278.5 459","ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}},"labelPos":{"x":237.13,"y":411}},{"from":"prod","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":83,"y":501},{"x":83,"y":608.5},{"x":241,"y":608.5}],"path":"M 83 501 L 83 608.5 L 241 608.5"},{"from":"stg","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":278.5,"y":501},{"x":278.5,"y":571}],"path":"M 278.5 501 L 278.5 571"},{"from":"fail","to":"done","kind":"solid","arrows":{"start":false,"end":true},"length":2,"points":[{"x":471.5,"y":507},{"x":471.5,"y":608.5},{"x":316,"y":608.5}],"path":"M 471.5 507 L 471.5 608.5 L 316 608.5"}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":-12,"width":576,"height":678}},"theme":{"name":"arch-light","edgeStyle":"elbow","tokens":{"colors":{"background":"#f8fafc","surface":"#ffffff","surfaceStroke":"#cbd5e1","text":"#0f172a","textMuted":"#64748b","edge":"#94a3b8","edgeLabelBg":"#f8fafc","edgeLabelText":"#475569","subgraphFill":"#f1f5f9","subgraphStroke":"#cbd5e1","subgraphText":"#64748b","accent":"#059669","minimapBg":"rgba(248,250,252,0.9)","minimapViewport":"rgba(5,150,105,0.25)","roles":{"frontend":{"fill":"rgba(34,211,238,0.15)","stroke":"#0891b2","text":"#0e4a5b"},"backend":{"fill":"rgba(52,211,153,0.18)","stroke":"#059669","text":"#065f46"},"database":{"fill":"rgba(167,139,250,0.2)","stroke":"#7c3aed","text":"#5b21b6"},"cloud":{"fill":"rgba(251,191,36,0.2)","stroke":"#d97706","text":"#92400e"},"security":{"fill":"rgba(251,113,133,0.15)","stroke":"#e11d48","text":"#9f1239"},"messagebus":{"fill":"rgba(251,146,60,0.15)","stroke":"#ea580c","text":"#9a3412"},"external":{"fill":"rgba(148,163,184,0.2)","stroke":"#64748b","text":"#334155"},"accent":{"fill":"rgba(2,132,199,0.12)","stroke":"#0284c7","text":"#075985"},"success":{"fill":"rgba(5,150,105,0.14)","stroke":"#059669","text":"#065f46"},"warn":{"fill":"rgba(217,119,6,0.16)","stroke":"#d97706","text":"#92400e"},"danger":{"fill":"rgba(225,29,72,0.12)","stroke":"#e11d48","text":"#9f1239"}}},"radii":{"node":8,"card":8,"label":4},"spacing":{"nodePadX":16,"nodePadY":12,"nodesep":44,"ranksep":64,"fitPadding":60},"font":{"family":"'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":13,"lineHeight":18,"weight":500},"edge":{"style":"elbow","width":1.5,"thickWidth":3,"arrowSize":8},"effects":{"nodeShadow":"0 1px 2px rgba(15,23,42,0.1)","gradient":false,"hoverLift":2,"semanticEdges":true}}},"cssVars":"--vnm-bg: #f8fafc; --vnm-surface: #ffffff; --vnm-surface-stroke: #cbd5e1; --vnm-text: #0f172a; --vnm-text-muted: #64748b; --vnm-edge: #94a3b8; --vnm-edge-label-bg: #f8fafc; --vnm-edge-label-text: #475569; --vnm-subgraph-fill: #f1f5f9; --vnm-subgraph-stroke: #cbd5e1; --vnm-subgraph-text: #64748b; --vnm-accent: #059669; --vnm-minimap-bg: rgba(248,250,252,0.9); --vnm-minimap-viewport: rgba(5,150,105,0.25); --vnm-radius: 8px; --vnm-label-radius: 4px; --vnm-font: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 13px; --vnm-font-weight: 500; --vnm-node-shadow: 0 1px 2px rgba(15,23,42,0.1); --vnm-hover-lift: 2px; --vnm-edge-width: 1.5px;","options":{"fitPadding":60,"persistKey":"vnm-layout:1wui0yq","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true,"arrowCaps":true}};
 vnmRuntime(document.getElementById("vnm-root"), __vnm_payload);
 </script>
 </body>

@@ -4131,6 +4131,25 @@ var dagreNs = __toESM(require_dagre());
 // src/theme/index.ts
 var MONO = 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
 var SANS = 'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+var MONO_ARCH = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace";
+var domainRolesDark = {
+  frontend: { fill: "rgba(8,51,68,0.55)", stroke: "#22d3ee", text: "#e6feff" },
+  backend: { fill: "rgba(6,78,59,0.55)", stroke: "#34d399", text: "#e7fff4" },
+  database: { fill: "rgba(76,29,149,0.5)", stroke: "#a78bfa", text: "#f1ebff" },
+  cloud: { fill: "rgba(120,53,15,0.55)", stroke: "#fbbf24", text: "#fff6e0" },
+  security: { fill: "rgba(136,19,55,0.5)", stroke: "#fb7185", text: "#ffe4ec" },
+  messagebus: { fill: "rgba(124,45,18,0.55)", stroke: "#fb923c", text: "#ffedd5" },
+  external: { fill: "rgba(30,41,59,0.7)", stroke: "#94a3b8", text: "#e2e8f0" }
+};
+var domainRolesLight = {
+  frontend: { fill: "rgba(34,211,238,0.15)", stroke: "#0891b2", text: "#0e4a5b" },
+  backend: { fill: "rgba(52,211,153,0.18)", stroke: "#059669", text: "#065f46" },
+  database: { fill: "rgba(167,139,250,0.2)", stroke: "#7c3aed", text: "#5b21b6" },
+  cloud: { fill: "rgba(251,191,36,0.2)", stroke: "#d97706", text: "#92400e" },
+  security: { fill: "rgba(251,113,133,0.15)", stroke: "#e11d48", text: "#9f1239" },
+  messagebus: { fill: "rgba(251,146,60,0.15)", stroke: "#ea580c", text: "#9a3412" },
+  external: { fill: "rgba(148,163,184,0.2)", stroke: "#64748b", text: "#334155" }
+};
 var lightTokens = {
   colors: {
     background: "#f7f8fb",
@@ -4151,6 +4170,7 @@ var lightTokens = {
     minimapBg: "rgba(240,242,247,0.9)",
     minimapViewport: "rgba(79,124,255,0.28)",
     roles: {
+      ...domainRolesLight,
       accent: { fill: "#e8ecff", stroke: "#7c8bd9", text: "#1b2030" },
       success: { fill: "#e6f4ea", stroke: "#5db97a", text: "#12331f" },
       warn: { fill: "#fff3d6", stroke: "#caa54a", text: "#3b2f0b" },
@@ -4180,6 +4200,7 @@ var darkTokens = {
     minimapBg: "rgba(20,24,34,0.9)",
     minimapViewport: "rgba(111,155,255,0.32)",
     roles: {
+      ...domainRolesDark,
       accent: { fill: "#26314f", stroke: "#6f9bff", text: "#e7eaf2" },
       success: { fill: "#183226", stroke: "#4bbf83", text: "#d6f5e4" },
       warn: { fill: "#33290f", stroke: "#d3ad4e", text: "#f7ecc9" },
@@ -4209,6 +4230,7 @@ var fancyTokens = {
     minimapBg: "rgba(12,16,34,0.9)",
     minimapViewport: "rgba(139,108,255,0.35)",
     roles: {
+      ...domainRolesDark,
       accent: { fill: "#2a2160", stroke: "#8b6cff", text: "#eef1ff" },
       success: { fill: "#123a2e", stroke: "#3fd39b", text: "#d6ffef" },
       warn: { fill: "#3a2f0f", stroke: "#e6c04d", text: "#fff4cf" },
@@ -4224,6 +4246,66 @@ var fancyTokens = {
     gradient: true,
     hoverLift: 3
   }
+};
+var archTokens = {
+  colors: {
+    background: "#020617",
+    surface: "#0f172a",
+    surfaceStroke: "#334155",
+    text: "#f1f5f9",
+    textMuted: "#94a3b8",
+    edge: "#64748b",
+    edgeLabelBg: "#020617",
+    edgeLabelText: "#cbd5e1",
+    subgraphFill: "#0b1324",
+    subgraphStroke: "#334155",
+    subgraphText: "#94a3b8",
+    accent: "#34d399",
+    minimapBg: "rgba(2,6,23,0.9)",
+    minimapViewport: "rgba(52,211,153,0.3)",
+    roles: {
+      ...domainRolesDark,
+      accent: { fill: "rgba(14,165,233,0.18)", stroke: "#38bdf8", text: "#e0f2fe" },
+      success: { fill: "rgba(6,78,59,0.55)", stroke: "#34d399", text: "#d1fae5" },
+      warn: { fill: "rgba(120,53,15,0.55)", stroke: "#fbbf24", text: "#fef3c7" },
+      danger: { fill: "rgba(136,19,55,0.5)", stroke: "#fb7185", text: "#ffe4e6" }
+    }
+  },
+  radii: { node: 8, card: 8, label: 4 },
+  spacing: { nodePadX: 16, nodePadY: 12, nodesep: 44, ranksep: 64, fitPadding: 60 },
+  font: { family: MONO_ARCH, mono: MONO, size: 13, lineHeight: 18, weight: 500 },
+  edge: { style: "elbow", width: 1.5, thickWidth: 3, arrowSize: 8 },
+  effects: { nodeShadow: "0 2px 10px rgba(0,0,0,0.45)", gradient: false, hoverLift: 2, semanticEdges: true }
+};
+var archLightTokens = {
+  colors: {
+    background: "#f8fafc",
+    surface: "#ffffff",
+    surfaceStroke: "#cbd5e1",
+    text: "#0f172a",
+    textMuted: "#64748b",
+    edge: "#94a3b8",
+    edgeLabelBg: "#f8fafc",
+    edgeLabelText: "#475569",
+    subgraphFill: "#f1f5f9",
+    subgraphStroke: "#cbd5e1",
+    subgraphText: "#64748b",
+    accent: "#059669",
+    minimapBg: "rgba(248,250,252,0.9)",
+    minimapViewport: "rgba(5,150,105,0.25)",
+    roles: {
+      ...domainRolesLight,
+      accent: { fill: "rgba(2,132,199,0.12)", stroke: "#0284c7", text: "#075985" },
+      success: { fill: "rgba(5,150,105,0.14)", stroke: "#059669", text: "#065f46" },
+      warn: { fill: "rgba(217,119,6,0.16)", stroke: "#d97706", text: "#92400e" },
+      danger: { fill: "rgba(225,29,72,0.12)", stroke: "#e11d48", text: "#9f1239" }
+    }
+  },
+  radii: { node: 8, card: 8, label: 4 },
+  spacing: { nodePadX: 16, nodePadY: 12, nodesep: 44, ranksep: 64, fitPadding: 60 },
+  font: { family: MONO_ARCH, mono: MONO, size: 13, lineHeight: 18, weight: 500 },
+  edge: { style: "elbow", width: 1.5, thickWidth: 3, arrowSize: 8 },
+  effects: { nodeShadow: "0 1px 2px rgba(15,23,42,0.1)", gradient: false, hoverLift: 2, semanticEdges: true }
 };
 function makeTheme(name, tokens) {
   return {
@@ -4267,7 +4349,9 @@ function themeCssVars(t) {
 var themes = {
   light: makeTheme("light", lightTokens),
   dark: makeTheme("dark", darkTokens),
-  fancy: makeTheme("fancy", fancyTokens)
+  fancy: makeTheme("fancy", fancyTokens),
+  arch: makeTheme("arch", archTokens),
+  "arch-light": makeTheme("arch-light", archLightTokens)
 };
 function isPlainObject(v) {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -4420,6 +4504,31 @@ function computePerimeterPorts(edges, boxes, labelSizes, overrides, bends) {
     recs.forEach((r, slot) => {
       result[r.edgeIndex][r.role].offset = (slot - (k - 1) / 2) * step;
     });
+  }
+  const deskewer = (nodeId, sideA, sideB) => {
+    const ra = groups.get(nodeId + "|" + sideA);
+    const rb = groups.get(nodeId + "|" + sideB);
+    if (!ra || !rb || ra.length !== 1 || rb.length !== 1) return;
+    const box = boxes.get(nodeId);
+    const axisIsX = sideA === "top" || sideA === "bottom";
+    const c = axisIsX ? box.x : box.y;
+    const farOff = (rec2) => {
+      const e = edges[rec2.edgeIndex];
+      const fb = boxes.get(rec2.role === "target" ? e.from : e.to);
+      return fb ? (axisIsX ? fb.x : fb.y) - c : void 0;
+    };
+    const dA = farOff(ra[0]);
+    const dB = farOff(rb[0]);
+    if (dA === void 0 || dB === void 0) return;
+    const tol = PORT_STEP / 2;
+    if (Math.sign(dA) === Math.sign(dB) || Math.abs(dA) < tol || Math.abs(dB) < tol) return;
+    if ((axisIsX ? box.width : box.height) / 2 - PORT_MARGIN < tol) return;
+    const rec = ra[0];
+    result[rec.edgeIndex][rec.role].offset = Math.sign(dA) * tol;
+  };
+  for (const nodeId of new Set(groupNode.values())) {
+    deskewer(nodeId, "top", "bottom");
+    deskewer(nodeId, "left", "right");
   }
   if (labelSizes) computeLabelShifts(edges, boxes, labelSizes, result);
   return result;
@@ -4751,7 +4860,7 @@ var LANE_GAP = 26;
 var LANE_MIN_OVERLAP = 40;
 var LANE_PASSES = 8;
 function separateLanes(edges, style) {
-  if (style !== "elbow") return;
+  if (style !== "elbow" && style !== "curved") return;
   const moved = /* @__PURE__ */ new Set();
   for (let pass = 0; pass < LANE_PASSES; pass++) {
     let changed = false;
@@ -4792,7 +4901,7 @@ function separateLanes(edges, style) {
     }
     if (!changed) break;
   }
-  for (const ei of moved) edges[ei].path = toPath(edges[ei].points, "elbow");
+  for (const ei of moved) edges[ei].path = orthoPath(edges[ei].points, style);
 }
 function moveLane(e, vertical, seg, target) {
   const p = e.points;
@@ -4819,6 +4928,7 @@ function shiftLabelOnSeg(e, vertical, seg, target) {
   }
 }
 var JOG_GAP = 26;
+var CONVERGE_MIN = 3;
 function separateAntiParallelJogs(edges, style) {
   if (style !== "elbow") return;
   const pairs = /* @__PURE__ */ new Map();
@@ -4871,6 +4981,259 @@ function separateAntiParallelJogs(edges, style) {
     });
   }
   for (const ei of moved) edges[ei].path = toPath(edges[ei].points, "elbow");
+}
+function separateConvergentJogs(edges, style) {
+  if (style !== "elbow") return;
+  const jogOf = (p, role) => {
+    const len = p.length;
+    if (len < 4) return null;
+    const i = role === "target" ? len - 3 : 1;
+    if (i < 1 || i + 2 > len) return null;
+    const a = p[i];
+    const b = p[i + 1];
+    const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+    const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+    if (!isVert && !isHorz) return null;
+    const along2 = isVert ? a.x : a.y;
+    const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+    const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+    const appFrom = role === "target" ? p[i + 1] : p[1];
+    const appTo = role === "target" ? p[len - 1] : p[0];
+    const toward = isVert ? Math.sign(appTo.x - appFrom.x) : Math.sign(appTo.y - appFrom.y);
+    const end = role === "target" ? p[0] : p[len - 1];
+    const far = isVert ? end.x : end.y;
+    return { seg: { edge: 0, i, along: along2, lo, hi }, vertical: isVert, toward, far };
+  };
+  const buckets = /* @__PURE__ */ new Map();
+  edges.forEach((e, idx) => {
+    for (const [role, node] of [
+      ["source", e.from],
+      ["target", e.to]
+    ]) {
+      const j = jogOf(e.points, role);
+      if (!j) continue;
+      const key = node + "|" + (j.vertical ? "V" : "H") + "|" + j.toward + "|" + n(j.seg.along);
+      const rec = { edge: idx, seg: { ...j.seg, edge: idx }, vertical: j.vertical, toward: j.toward, far: j.far };
+      (buckets.get(key) ?? buckets.set(key, []).get(key)).push(rec);
+    }
+  });
+  const moved = /* @__PURE__ */ new Set();
+  for (const recs of buckets.values()) {
+    if (recs.length < CONVERGE_MIN) continue;
+    recs.sort((x, y) => x.far - y.far || x.edge - y.edge);
+    const mean = recs.reduce((s, r) => s + r.seg.along, 0) / recs.length;
+    const k = recs.length;
+    const toward = recs[0].toward;
+    recs.forEach((r, s) => {
+      const lane = n(mean + (s - (k - 1) / 2 - toward * (k - 1) / 2) * JOG_GAP);
+      if (Math.abs(lane - r.seg.along) < 1e-6) return;
+      moveLane(edges[r.edge], r.vertical, r.seg, lane);
+      moved.add(r.edge);
+    });
+  }
+  for (const ei of moved) edges[ei].path = toPath(edges[ei].points, "elbow");
+}
+var SUBGRAPH_AVOID_MARGIN = 28;
+var SUBGRAPH_AVOID_MIN_CROSS = 120;
+var SUBGRAPH_AVOID_APPROACH = 30;
+function avoidSubgraphs(edges, containers, style) {
+  if (style !== "elbow" || containers.length === 0) return;
+  const moved = /* @__PURE__ */ new Set();
+  edges.forEach((e, ei) => {
+    const p = e.points;
+    const len = p.length;
+    if (len < 4) return;
+    let best;
+    for (let i = 1; i + 2 < len; i++) {
+      const a = p[i];
+      const b = p[i + 1];
+      const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+      const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+      if (!isVert && !isHorz) continue;
+      const along2 = isVert ? a.x : a.y;
+      const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+      const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+      const runLen = hi - lo;
+      for (const c of containers) {
+        if (c.members.has(e.from) && c.members.has(e.to)) continue;
+        if (i === 1 && c.members.has(e.from) || i === len - 3 && c.members.has(e.to)) continue;
+        const cx0 = c.box.x - c.box.width / 2;
+        const cx1 = c.box.x + c.box.width / 2;
+        const cy0 = c.box.y - c.box.height / 2;
+        const cy1 = c.box.y + c.box.height / 2;
+        const perpLo = isVert ? cx0 : cy0;
+        const perpHi = isVert ? cx1 : cy1;
+        const parLo = isVert ? cy0 : cx0;
+        const parHi = isVert ? cy1 : cx1;
+        if (along2 <= perpLo || along2 >= perpHi) continue;
+        if (Math.min(hi, parHi) - Math.max(lo, parLo) < SUBGRAPH_AVOID_MIN_CROSS) continue;
+        const side = along2 - perpLo <= perpHi - along2 ? n(perpLo - SUBGRAPH_AVOID_MARGIN) : n(perpHi + SUBGRAPH_AVOID_MARGIN);
+        if (!best || runLen > best.runLen) best = { i, vertical: isVert, along: along2, lo, hi, side, container: c, runLen };
+      }
+    }
+    if (!best) return;
+    moveLane(e, best.vertical, { i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+    moved.add(ei);
+    if (best.container.members.has(e.from)) lowerReentry(p, best.i, best.i - 1, p[0], best.vertical);
+    if (best.container.members.has(e.to)) lowerReentry(p, best.i + 1, best.i + 2, p[len - 1], best.vertical);
+  });
+  for (const ei of moved) edges[ei].path = toPath(edges[ei].points, "elbow");
+}
+var NODE_AVOID_MARGIN = 14;
+var NODE_AVOID_MIN_CROSS = 14;
+var NODE_AVOID_PASSES = 4;
+function isOrthogonalRoute(pts) {
+  for (let i = 0; i + 1 < pts.length; i++) {
+    if (Math.abs(pts[i].x - pts[i + 1].x) >= 0.5 && Math.abs(pts[i].y - pts[i + 1].y) >= 0.5) return false;
+  }
+  return true;
+}
+function orthoPath(pts, style) {
+  return style === "curved" ? roundedPath(pts) : toPath(pts, "elbow");
+}
+function avoidNodes(edges, nodeBoxes, style) {
+  if (nodeBoxes.length === 0) return;
+  const moved = /* @__PURE__ */ new Set();
+  edges.forEach((e, ei) => {
+    const p = e.points;
+    const len = p.length;
+    if (len < 4 || style === "curved" && !isOrthogonalRoute(p)) return;
+    let best;
+    for (let i = 1; i + 2 < len; i++) {
+      const a = p[i];
+      const b = p[i + 1];
+      const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+      const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+      if (!isVert && !isHorz) continue;
+      const along2 = isVert ? a.x : a.y;
+      const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+      const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+      const runLen = hi - lo;
+      for (const nb of nodeBoxes) {
+        if (nb.id === e.from || nb.id === e.to) continue;
+        const cx0 = nb.x - nb.width / 2;
+        const cx1 = nb.x + nb.width / 2;
+        const cy0 = nb.y - nb.height / 2;
+        const cy1 = nb.y + nb.height / 2;
+        const perpLo = isVert ? cx0 : cy0;
+        const perpHi = isVert ? cx1 : cy1;
+        const parLo = isVert ? cy0 : cx0;
+        const parHi = isVert ? cy1 : cx1;
+        if (along2 <= perpLo || along2 >= perpHi) continue;
+        if (Math.min(hi, parHi) - Math.max(lo, parLo) < NODE_AVOID_MIN_CROSS) continue;
+        const side = along2 - perpLo <= perpHi - along2 ? n(perpLo - NODE_AVOID_MARGIN) : n(perpHi + NODE_AVOID_MARGIN);
+        if (!best || runLen > best.runLen) best = { i, vertical: isVert, along: along2, lo, hi, side, runLen };
+      }
+    }
+    if (!best) return;
+    moveLane(e, best.vertical, { i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+    moved.add(ei);
+  });
+  for (const ei of moved) edges[ei].path = orthoPath(edges[ei].points, style);
+}
+function detourApproaches(edges, nodeBoxes, style) {
+  if (nodeBoxes.length === 0) return;
+  const spans = (nb) => ({
+    l: nb.x - nb.width / 2,
+    r: nb.x + nb.width / 2,
+    t: nb.y - nb.height / 2,
+    b: nb.y + nb.height / 2
+  });
+  const detour = (a, pp, nb) => {
+    const s = spans(nb);
+    if (Math.abs(a.x - pp.x) < 0.5) {
+      const sideX = a.x - s.l <= s.r - a.x ? n(s.l - NODE_AVOID_MARGIN) : n(s.r + NODE_AVOID_MARGIN);
+      const gapY = pp.y > a.y ? n(s.b + NODE_AVOID_MARGIN) : n(s.t - NODE_AVOID_MARGIN);
+      return [{ x: sideX, y: a.y }, { x: sideX, y: gapY }, { x: n(a.x), y: gapY }];
+    }
+    const sideY = a.y - s.t <= s.b - a.y ? n(s.t - NODE_AVOID_MARGIN) : n(s.b + NODE_AVOID_MARGIN);
+    const gapX = pp.x > a.x ? n(s.r + NODE_AVOID_MARGIN) : n(s.l - NODE_AVOID_MARGIN);
+    return [{ x: a.x, y: sideY }, { x: gapX, y: sideY }, { x: gapX, y: n(a.y) }];
+  };
+  const pierces = (a, pp, nb) => {
+    const s = spans(nb);
+    const vert = Math.abs(a.x - pp.x) < 0.5;
+    if (!vert && Math.abs(a.y - pp.y) >= 0.5) return false;
+    const along2 = vert ? a.x : a.y;
+    const lo = vert ? Math.min(a.y, pp.y) : Math.min(a.x, pp.x);
+    const hi = vert ? Math.max(a.y, pp.y) : Math.max(a.x, pp.x);
+    const perpLo = vert ? s.l : s.t;
+    const perpHi = vert ? s.r : s.b;
+    const parLo = vert ? s.t : s.l;
+    const parHi = vert ? s.b : s.r;
+    if (along2 <= perpLo || along2 >= perpHi) return false;
+    return Math.min(hi, parHi) - Math.max(lo, parLo) >= NODE_AVOID_MIN_CROSS;
+  };
+  const changed = /* @__PURE__ */ new Set();
+  edges.forEach((e, ei) => {
+    const p = e.points;
+    if (p.length < 2 || style === "curved" && !isOrthogonalRoute(p)) return;
+    const a = p[p.length - 2];
+    const port = p[p.length - 1];
+    for (const nb of nodeBoxes) {
+      if (nb.id === e.from || nb.id === e.to) continue;
+      if (pierces(a, port, nb)) {
+        p.splice(p.length - 1, 0, ...detour(a, port, nb));
+        changed.add(ei);
+        break;
+      }
+    }
+  });
+  for (const ei of changed) {
+    const sp = simplify(edges[ei].points);
+    edges[ei].points.splice(0, edges[ei].points.length, ...sp);
+    edges[ei].path = orthoPath(edges[ei].points, style);
+  }
+}
+function trimEndpointReentry(edges, nodeBoxes, style, pinned) {
+  const boxById = /* @__PURE__ */ new Map();
+  for (const b of nodeBoxes) if (b.id) boxById.set(b.id, b);
+  const inside = (pt, b) => pt.x > b.x - b.width / 2 + 0.5 && pt.x < b.x + b.width / 2 - 0.5 && pt.y > b.y - b.height / 2 + 0.5 && pt.y < b.y + b.height / 2 - 0.5;
+  const cross = (inPt, outPt, b) => Math.abs(inPt.x - outPt.x) < 0.5 ? { x: n(inPt.x), y: n(outPt.y > inPt.y ? b.y + b.height / 2 : b.y - b.height / 2) } : { x: n(outPt.x > inPt.x ? b.x + b.width / 2 : b.x - b.width / 2), y: n(inPt.y) };
+  edges.forEach((e, ei) => {
+    const p = e.points;
+    if (p.length < 3 || style === "curved" && !isOrthogonalRoute(p)) return;
+    const src = boxById.get(e.from);
+    const tgt = boxById.get(e.to);
+    let did = false;
+    if (src && inside(p[1], src)) {
+      let k = 1;
+      while (k < p.length && inside(p[k], src)) k++;
+      if (k < p.length) {
+        p.splice(0, k, cross(p[k - 1], p[k], src));
+        did = true;
+      }
+    }
+    if (tgt && p.length >= 3 && inside(p[p.length - 2], tgt)) {
+      let j = p.length - 2;
+      while (j >= 0 && inside(p[j], tgt)) j--;
+      if (j >= 0) {
+        p.splice(j + 1, p.length - 1 - j, cross(p[j + 1], p[j], tgt));
+        did = true;
+      }
+    }
+    if (did) {
+      const sp = simplify(p);
+      p.splice(0, p.length, ...sp);
+      e.path = orthoPath(p, style);
+    }
+  });
+}
+function lowerReentry(p, trunkEndIdx, cornerIdx, anchor, vertical) {
+  if (cornerIdx < 0 || cornerIdx >= p.length || trunkEndIdx < 0 || trunkEndIdx >= p.length) return;
+  const anchorPar = vertical ? anchor.y : anchor.x;
+  const cornerOld = vertical ? p[cornerIdx].y : p[cornerIdx].x;
+  const dir = Math.sign(cornerOld - anchorPar);
+  if (dir === 0) return;
+  const target = n(anchorPar + dir * SUBGRAPH_AVOID_APPROACH);
+  if (Math.abs(target - anchorPar) >= Math.abs(cornerOld - anchorPar)) return;
+  if (vertical) {
+    p[cornerIdx] = { x: p[cornerIdx].x, y: target };
+    p[trunkEndIdx] = { x: p[trunkEndIdx].x, y: target };
+  } else {
+    p[cornerIdx] = { x: target, y: p[cornerIdx].y };
+    p[trunkEndIdx] = { x: target, y: p[trunkEndIdx].y };
+  }
 }
 var isHorizontalLayout = (d) => d === "LR" || d === "RL";
 function pickSides(from, to, direction) {
@@ -5148,6 +5511,18 @@ function computeSubgraphBoxes(subgraphs, nodeBoxes) {
   }
   return result;
 }
+function computeAvoidContainers(subgraphs, nodeBoxes) {
+  const childrenById = new Map(subgraphs.map((sg) => [sg.id, sg.children]));
+  const isNode = (id) => nodeBoxes.has(id);
+  const boxes = computeSubgraphBoxes(subgraphs, nodeBoxes);
+  const out = [];
+  for (const sg of subgraphs) {
+    const memberIds = resolveMemberNodes(sg.id, childrenById, isNode, /* @__PURE__ */ new Set([sg.id]));
+    if (memberIds.length === 0) continue;
+    out.push({ box: boxes.get(sg.id), members: new Set(memberIds) });
+  }
+  return out;
+}
 function contentBounds(boxes, extraPoints = [], padding = 0) {
   let minX = Infinity;
   let minY = Infinity;
@@ -5217,10 +5592,17 @@ function applyBridges(edges, theme, bridges) {
     if (bridged[i]) e.path = bridged[i];
   });
 }
-function finishEdges(edges, theme, bridges, nodeBoxes) {
+function finishEdges(edges, theme, bridges, nodeBoxes, subgraphs, pinned) {
+  avoidSubgraphs(edges, subgraphs ?? [], theme.edgeStyle);
+  if (nodeBoxes) trimEndpointReentry(edges, nodeBoxes, theme.edgeStyle);
+  if (nodeBoxes) for (let k = 0; k < NODE_AVOID_PASSES; k++) {
+    avoidNodes(edges, nodeBoxes, theme.edgeStyle);
+    detourApproaches(edges, nodeBoxes, theme.edgeStyle);
+  }
   offsetLabelsOffLine(edges, theme);
   separateLanes(edges, theme.edgeStyle);
   separateAntiParallelJogs(edges, theme.edgeStyle);
+  separateConvergentJogs(edges, theme.edgeStyle);
   deCollideLabels(edges, theme);
   deCollideLabelsFromEdges(edges, theme);
   if (nodeBoxes) deCollideLabelsFromNodes(edges, theme, nodeBoxes);
@@ -5383,7 +5765,13 @@ function layout(model, opts = {}) {
     if (edge.label) out.labelPos = routed.labelPos;
     edges.push(out);
   });
-  finishEdges(edges, theme, opts.bridges, positionedNodes.map(toBox));
+  finishEdges(
+    edges,
+    theme,
+    opts.bridges,
+    positionedNodes.map(toBox),
+    computeAvoidContainers(positionedSubgraphs, nodeBoxes)
+  );
   const allEdgePoints = edges.flatMap((e) => e.points);
   const bounds = contentBounds(
     [...subgraphBoxes, ...positionedNodes.map(toBox)],
@@ -5426,7 +5814,7 @@ function labelPlateCorners(edges, theme) {
   return pts;
 }
 function toBox(node) {
-  return { x: node.x, y: node.y, width: node.width, height: node.height };
+  return { id: node.id, x: node.x, y: node.y, width: node.width, height: node.height };
 }
 function round(value) {
   return Math.round(value * 100) / 100;
@@ -5556,6 +5944,32 @@ function vnmRuntime(root, payload) {
   let tokens = payload.theme.tokens;
   let edgeStyle = payload.theme.edgeStyle;
   const sketch = opt.style === "sketch";
+  const arrowCaps = opt.arrowCaps !== false;
+  const semEdges = tokens.effects.semanticEdges === true;
+  const SEMANTICS_T = ["request", "response", "cache", "async", "exception"];
+  const SEMANTIC_LABEL_T = { request: "request", response: "response", cache: "cache", async: "async", exception: "exception" };
+  const flowSemT = (kind, label) => {
+    const s = (label || "").toLowerCase();
+    if (/error|fail|reject|denied|invalid|exception|timeout|unauthor|refus|\b40[13]\b|\b500\b/.test(s)) return "exception";
+    if (/cache|redis|\bhit\b|\bmiss\b|memcache|\bttl\b|lookup/.test(s)) return "cache";
+    if (/emit|publish|event|async|enqueue|\bqueue\b|kafka|\btopic\b|stream|notify|webhook|fire|dispatch/.test(s)) return "async";
+    if (/\bget\b|\bpost\b|\bput\b|verify|login|auth|query|fetch|read|write|route|call|request|checkout|sync/.test(s)) return "request";
+    if (kind === "dotted") return "cache";
+    return void 0;
+  };
+  const semColorT = (sem) => {
+    const r = tokens.colors.roles;
+    if (sem === "request") return r.backend?.stroke ?? tokens.colors.accent;
+    if (sem === "cache") return r.database?.stroke ?? tokens.colors.accent;
+    if (sem === "async") return r.messagebus?.stroke ?? tokens.colors.accent;
+    if (sem === "exception") return r.danger?.stroke ?? "#ef4444";
+    return tokens.colors.edge;
+  };
+  const semMarkerT = (sem) => "vnm-arrow-" + (sem || "response");
+  const edgeColorT = (kind, label) => {
+    const sem = semEdges ? flowSemT(kind, label || "") : void 0;
+    return sem ? { color: semColorT(sem), marker: semMarkerT(sem) } : { color: tokens.colors.edge, marker: "vnm-arrow" };
+  };
   const SK_ROUGHNESS = 2.4;
   const SK_BOWING = 2.2;
   const SK_OUTLINE_STROKES = 2;
@@ -5603,7 +6017,11 @@ function vnmRuntime(root, payload) {
   svg.setAttribute("height", String(contentH));
   svg.setAttribute("style", "position:absolute;left:0;top:0;overflow:visible;pointer-events:none;");
   const defs2 = doc.createElementNS(SVGNS, "defs");
-  defs2.innerHTML = '<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M0 0 L10 5 L0 10 z"></path></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M10 0 L0 5 L10 10 z"></path></marker>';
+  defs2.innerHTML = '<marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M0 0 L10 5 L0 10 z"></path></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M10 0 L0 5 L10 10 z"></path></marker>' + // Archify: coloured arrowhead markers per semantic (gated on the theme flag), so a
+  // colored live edge's head takes its own colour. Mirrors svgDefs()/static defs().
+  (semEdges ? SEMANTICS_T.map(
+    (s) => '<marker id="' + semMarkerT(s) + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + tokens.edge.arrowSize + '" markerHeight="' + tokens.edge.arrowSize + '" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="' + semColorT(s) + '"></path></marker>'
+  ).join("") : "");
   svg.appendChild(defs2);
   const gBoxes = doc.createElementNS(SVGNS, "g");
   const gEdges = doc.createElementNS(SVGNS, "g");
@@ -5721,19 +6139,20 @@ function vnmRuntime(root, payload) {
   for (const e of model.edges) {
     const path = doc.createElementNS(SVGNS, "path");
     path.setAttribute("fill", "none");
-    path.setAttribute("stroke", "var(--vnm-edge)");
+    const ec = edgeColorT(e.kind, e.label ?? "");
+    path.setAttribute("stroke", semEdges && ec.marker !== "vnm-arrow" ? ec.color : "var(--vnm-edge)");
     path.setAttribute("stroke-width", String(e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width));
     path.setAttribute("stroke-linejoin", "round");
     path.setAttribute("stroke-linecap", "round");
     if (e.kind === "dotted") path.setAttribute("stroke-dasharray", "2 5");
-    if (!sketch && e.arrows.end) path.setAttribute("marker-end", "url(#vnm-arrow)");
+    if (!sketch && e.arrows.end) path.setAttribute("marker-end", "url(#" + ec.marker + ")");
     if (!sketch && e.arrows.start) path.setAttribute("marker-start", "url(#vnm-arrow-start)");
     gEdges.appendChild(path);
     const rec = { from: e.from, to: e.to, kind: e.kind, arrows: e.arrows, path };
     if (sketch && (e.arrows.end || e.arrows.start)) {
       const head = doc.createElementNS(SVGNS, "path");
       head.setAttribute("fill", "none");
-      head.setAttribute("stroke", "var(--vnm-edge)");
+      head.setAttribute("stroke", semEdges && ec.marker !== "vnm-arrow" ? ec.color : "var(--vnm-edge)");
       head.setAttribute("stroke-width", String(e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width));
       head.setAttribute("stroke-linejoin", "round");
       head.setAttribute("stroke-linecap", "round");
@@ -5777,6 +6196,14 @@ function vnmRuntime(root, payload) {
     card.appendChild(inner);
     world.appendChild(card);
     cards[nd.id] = card;
+  }
+  const capOverlay = arrowCaps ? doc.createElementNS(SVGNS, "svg") : null;
+  if (capOverlay) {
+    capOverlay.setAttribute("class", "vnm-arrow-caps");
+    capOverlay.setAttribute("width", String(contentW));
+    capOverlay.setAttribute("height", String(contentH));
+    capOverlay.setAttribute("style", "position:absolute;left:0;top:0;overflow:visible;pointer-events:none;");
+    world.appendChild(capOverlay);
   }
   const nodeShapeEls = {};
   const stateMarkerEls = {};
@@ -6333,6 +6760,33 @@ function vnmRuntime(root, payload) {
         res[r.i][r.role].offset = (slot - (k - 1) / 2) * step;
       });
     }
+    const deskewer = (nodeId, sideA, sideB) => {
+      const ra = groups[nodeId + "|" + sideA];
+      const rb = groups[nodeId + "|" + sideB];
+      if (!ra || !rb || ra.length !== 1 || rb.length !== 1) return;
+      const box = boxOf(nodeId);
+      const axisIsX = sideA === "top" || sideA === "bottom";
+      const c = axisIsX ? box.x : box.y;
+      const farOff = (rec2) => {
+        const e = edgeEls[rec2.i];
+        const fb = boxOf(rec2.role === "target" ? e.from : e.to);
+        return fb ? (axisIsX ? fb.x : fb.y) - c : void 0;
+      };
+      const dA = farOff(ra[0]);
+      const dB = farOff(rb[0]);
+      if (dA === void 0 || dB === void 0) return;
+      const tol = 30 / 2;
+      if (Math.sign(dA) === Math.sign(dB) || Math.abs(dA) < tol || Math.abs(dB) < tol) return;
+      if ((axisIsX ? box.w : box.h) / 2 - 6 < tol) return;
+      const rec = ra[0];
+      res[rec.i][rec.role].offset = Math.sign(dA) * tol;
+    };
+    const skNodes = {};
+    for (const key in groups) skNodes[key.slice(0, key.lastIndexOf("|"))] = true;
+    for (const nodeId in skNodes) {
+      deskewer(nodeId, "top", "bottom");
+      deskewer(nodeId, "left", "right");
+    }
     const pairs = {};
     edgeEls.forEach((e, i) => {
       if (!e.label) return;
@@ -6505,8 +6959,248 @@ function vnmRuntime(root, payload) {
       e.labelPos = { x: lp.x, y: nAt(lp.y + (target - seg.along)) };
     }
   }
+  function avoidSubgraphs2(edges, pairs, containers) {
+    if (edgeStyle !== "elbow" || !containers.length) return;
+    const MARGIN2 = 28;
+    const MIN_CROSS = 120;
+    const APPROACH = 30;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const lowerReentry2 = (p, trunkEndIdx, cornerIdx, anchor2, vertical) => {
+      if (cornerIdx < 0 || cornerIdx >= p.length || trunkEndIdx < 0 || trunkEndIdx >= p.length) return;
+      const anchorPar = vertical ? anchor2.y : anchor2.x;
+      const cornerOld = vertical ? p[cornerIdx].y : p[cornerIdx].x;
+      const dir = Math.sign(cornerOld - anchorPar);
+      if (dir === 0) return;
+      const target = nAt(anchorPar + dir * APPROACH);
+      if (Math.abs(target - anchorPar) >= Math.abs(cornerOld - anchorPar)) return;
+      if (vertical) {
+        p[cornerIdx] = { x: p[cornerIdx].x, y: target };
+        p[trunkEndIdx] = { x: p[trunkEndIdx].x, y: target };
+      } else {
+        p[cornerIdx] = { x: target, y: p[cornerIdx].y };
+        p[trunkEndIdx] = { x: target, y: p[trunkEndIdx].y };
+      }
+    };
+    const moved2 = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      const len = p.length;
+      if (len < 4) return;
+      const ep = pairs[ei];
+      let best;
+      for (let i = 1; i + 2 < len; i++) {
+        const a = p[i];
+        const b = p[i + 1];
+        const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+        const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+        if (!isVert && !isHorz) continue;
+        const along3 = isVert ? a.x : a.y;
+        const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+        const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+        const runLen = hi - lo;
+        for (const c of containers) {
+          if (c.members[ep.from] && c.members[ep.to]) continue;
+          if (i === 1 && c.members[ep.from] || i === len - 3 && c.members[ep.to]) continue;
+          const cx0 = c.box.x - c.box.w / 2;
+          const cx1 = c.box.x + c.box.w / 2;
+          const cy0 = c.box.y - c.box.h / 2;
+          const cy1 = c.box.y + c.box.h / 2;
+          const perpLo = isVert ? cx0 : cy0;
+          const perpHi = isVert ? cx1 : cy1;
+          const parLo = isVert ? cy0 : cx0;
+          const parHi = isVert ? cy1 : cx1;
+          if (along3 <= perpLo || along3 >= perpHi) continue;
+          if (Math.min(hi, parHi) - Math.max(lo, parLo) < MIN_CROSS) continue;
+          const side = along3 - perpLo <= perpHi - along3 ? nAt(perpLo - MARGIN2) : nAt(perpHi + MARGIN2);
+          if (!best || runLen > best.runLen) best = { i, vertical: isVert, along: along3, lo, hi, side, container: c, runLen };
+        }
+      }
+      if (!best) return;
+      moveLane2(edges[ei], best.vertical, { i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+      moved2[ei] = true;
+      if (best.container.members[ep.from]) lowerReentry2(p, best.i, best.i - 1, p[0], best.vertical);
+      if (best.container.members[ep.to]) lowerReentry2(p, best.i + 1, best.i + 2, p[len - 1], best.vertical);
+    });
+    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+  }
+  function avoidContainersFrom(boxOf) {
+    const out = [];
+    for (const sg of model.subgraphs) {
+      const ids = subgraphMembers[sg.id] || [];
+      if (!ids.length) continue;
+      const members = {};
+      for (const id of ids) members[id] = true;
+      out.push({ box: boxOf(sg), members });
+    }
+    return out;
+  }
+  const NODE_AVOID_MARGIN2 = 14;
+  const NODE_AVOID_MIN_CROSS2 = 14;
+  const NODE_AVOID_PASSES2 = 4;
+  const isOrthoT = (pts) => {
+    for (let i = 0; i + 1 < pts.length; i++) if (Math.abs(pts[i].x - pts[i + 1].x) >= 0.5 && Math.abs(pts[i].y - pts[i + 1].y) >= 0.5) return false;
+    return true;
+  };
+  const orthoPathT = (pts) => edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts);
+  function avoidNodes2(edges, pairs, nodeBoxes) {
+    if (!nodeBoxes.length) return;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const moved2 = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      const len = p.length;
+      if (len < 4 || edgeStyle === "curved" && !isOrthoT(p)) return;
+      const ep = pairs[ei];
+      let best;
+      for (let i = 1; i + 2 < len; i++) {
+        const a = p[i];
+        const b = p[i + 1];
+        const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+        const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+        if (!isVert && !isHorz) continue;
+        const along3 = isVert ? a.x : a.y;
+        const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+        const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+        const runLen = hi - lo;
+        for (const nb of nodeBoxes) {
+          if (nb.id === ep.from || nb.id === ep.to) continue;
+          const cx0 = nb.x - nb.w / 2;
+          const cx1 = nb.x + nb.w / 2;
+          const cy0 = nb.y - nb.h / 2;
+          const cy1 = nb.y + nb.h / 2;
+          const perpLo = isVert ? cx0 : cy0;
+          const perpHi = isVert ? cx1 : cy1;
+          const parLo = isVert ? cy0 : cx0;
+          const parHi = isVert ? cy1 : cx1;
+          if (along3 <= perpLo || along3 >= perpHi) continue;
+          if (Math.min(hi, parHi) - Math.max(lo, parLo) < NODE_AVOID_MIN_CROSS2) continue;
+          const side = along3 - perpLo <= perpHi - along3 ? nAt(perpLo - NODE_AVOID_MARGIN2) : nAt(perpHi + NODE_AVOID_MARGIN2);
+          if (!best || runLen > best.runLen) best = { i, vertical: isVert, along: along3, lo, hi, side, runLen };
+        }
+      }
+      if (!best) return;
+      moveLane2(edges[ei], best.vertical, { i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+      moved2[ei] = true;
+    });
+    for (const kk in moved2) edges[Number(kk)].path = orthoPathT(edges[Number(kk)].points);
+  }
+  function detourApproaches2(edges, pairs, nodeBoxes) {
+    if (!nodeBoxes.length) return;
+    const spans = (nb) => ({ l: nb.x - nb.w / 2, r: nb.x + nb.w / 2, t: nb.y - nb.h / 2, b: nb.y + nb.h / 2 });
+    const detour = (a, pp, nb) => {
+      const s = spans(nb);
+      if (Math.abs(a.x - pp.x) < 0.5) {
+        const sideX = a.x - s.l <= s.r - a.x ? nAt(s.l - NODE_AVOID_MARGIN2) : nAt(s.r + NODE_AVOID_MARGIN2);
+        const gapY = pp.y > a.y ? nAt(s.b + NODE_AVOID_MARGIN2) : nAt(s.t - NODE_AVOID_MARGIN2);
+        return [{ x: sideX, y: a.y }, { x: sideX, y: gapY }, { x: nAt(a.x), y: gapY }];
+      }
+      const sideY = a.y - s.t <= s.b - a.y ? nAt(s.t - NODE_AVOID_MARGIN2) : nAt(s.b + NODE_AVOID_MARGIN2);
+      const gapX = pp.x > a.x ? nAt(s.r + NODE_AVOID_MARGIN2) : nAt(s.l - NODE_AVOID_MARGIN2);
+      return [{ x: a.x, y: sideY }, { x: gapX, y: sideY }, { x: gapX, y: nAt(a.y) }];
+    };
+    const pierces = (a, pp, nb) => {
+      const s = spans(nb);
+      const vert = Math.abs(a.x - pp.x) < 0.5;
+      if (!vert && Math.abs(a.y - pp.y) >= 0.5) return false;
+      const along3 = vert ? a.x : a.y;
+      const lo = vert ? Math.min(a.y, pp.y) : Math.min(a.x, pp.x);
+      const hi = vert ? Math.max(a.y, pp.y) : Math.max(a.x, pp.x);
+      const perpLo = vert ? s.l : s.t;
+      const perpHi = vert ? s.r : s.b;
+      const parLo = vert ? s.t : s.l;
+      const parHi = vert ? s.b : s.r;
+      if (along3 <= perpLo || along3 >= perpHi) return false;
+      return Math.min(hi, parHi) - Math.max(lo, parLo) >= NODE_AVOID_MIN_CROSS2;
+    };
+    const changed = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      if (p.length < 2 || edgeStyle === "curved" && !isOrthoT(p)) return;
+      const ep = pairs[ei];
+      const a = p[p.length - 2];
+      const port = p[p.length - 1];
+      for (const nb of nodeBoxes) {
+        if (nb.id === ep.from || nb.id === ep.to) continue;
+        if (pierces(a, port, nb)) {
+          p.splice(p.length - 1, 0, ...detour(a, port, nb));
+          changed[ei] = true;
+          break;
+        }
+      }
+    });
+    for (const kk in changed) {
+      const e = edges[Number(kk)];
+      const sp = simplify2(e.points);
+      e.points.splice(0, e.points.length, ...sp);
+      e.path = orthoPathT(e.points);
+    }
+  }
+  function trimEndpointReentry2(edges, pairs, nodeBoxes) {
+    const boxById = {};
+    for (const b of nodeBoxes) if (b.id) boxById[b.id] = b;
+    const inside = (pt, b) => pt.x > b.x - b.w / 2 + 0.5 && pt.x < b.x + b.w / 2 - 0.5 && pt.y > b.y - b.h / 2 + 0.5 && pt.y < b.y + b.h / 2 - 0.5;
+    const cross = (inPt, outPt, b) => Math.abs(inPt.x - outPt.x) < 0.5 ? { x: nAt(inPt.x), y: nAt(outPt.y > inPt.y ? b.y + b.h / 2 : b.y - b.h / 2) } : { x: nAt(outPt.x > inPt.x ? b.x + b.w / 2 : b.x - b.w / 2), y: nAt(inPt.y) };
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      if (p.length < 3 || edgeStyle === "curved" && !isOrthoT(p)) return;
+      const ep = pairs[ei];
+      const ov = anchorsOv[ei];
+      const src = ov && ov.source ? void 0 : boxById[ep.from];
+      const tgt = ov && ov.target ? void 0 : boxById[ep.to];
+      let did = false;
+      if (src && inside(p[1], src)) {
+        let k = 1;
+        while (k < p.length && inside(p[k], src)) k++;
+        if (k < p.length) {
+          p.splice(0, k, cross(p[k - 1], p[k], src));
+          did = true;
+        }
+      }
+      if (tgt && p.length >= 3 && inside(p[p.length - 2], tgt)) {
+        let j = p.length - 2;
+        while (j >= 0 && inside(p[j], tgt)) j--;
+        if (j >= 0) {
+          p.splice(j + 1, p.length - 1 - j, cross(p[j + 1], p[j], tgt));
+          did = true;
+        }
+      }
+      if (did) {
+        const sp = simplify2(p);
+        p.splice(0, p.length, ...sp);
+        e.path = orthoPathT(p);
+      }
+    });
+  }
+  const avoidNodeBoxes = (boxOf) => model.nodes.map((nd) => {
+    const b = boxOf(nd.id);
+    return { id: nd.id, x: b.x, y: b.y, w: b.w, h: b.h };
+  });
   function separateLanes2(edges) {
-    if (edgeStyle !== "elbow") return;
+    if (edgeStyle !== "elbow" && edgeStyle !== "curved") return;
     const LANE_GAP2 = 26;
     const LANE_MIN_OVERLAP2 = 40;
     const LANE_PASSES2 = 8;
@@ -6563,7 +7257,7 @@ function vnmRuntime(root, payload) {
       }
       if (!changed) break;
     }
-    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+    for (const kk in moved2) edges[Number(kk)].path = orthoPathT(edges[Number(kk)].points);
   }
   function separateAntiParallelJogs2(edges, pairs) {
     if (edgeStyle !== "elbow") return;
@@ -6633,6 +7327,74 @@ function vnmRuntime(root, payload) {
         if (Math.abs(lane - j.seg.along) < 1e-6) return;
         moveLane2(edges[j.edge], j.vertical, j.seg, lane);
         moved2[j.edge] = true;
+      });
+    }
+    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+  }
+  function separateConvergentJogs2(edges, pairs) {
+    if (edgeStyle !== "elbow") return;
+    const JOG_GAP2 = 26;
+    const CONVERGE_MIN2 = 3;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const jogOf = (p, role) => {
+      const len = p.length;
+      if (len < 4) return null;
+      const i = role === "target" ? len - 3 : 1;
+      if (i < 1 || i + 2 > len) return null;
+      const a = p[i];
+      const b = p[i + 1];
+      const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+      const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+      if (!isVert && !isHorz) return null;
+      const along3 = isVert ? a.x : a.y;
+      const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+      const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+      const appFrom = role === "target" ? p[i + 1] : p[1];
+      const appTo = role === "target" ? p[len - 1] : p[0];
+      const toward = isVert ? Math.sign(appTo.x - appFrom.x) : Math.sign(appTo.y - appFrom.y);
+      const end = role === "target" ? p[0] : p[len - 1];
+      const far = isVert ? end.x : end.y;
+      return { seg: { edge: 0, i, along: along3, lo, hi }, vertical: isVert, toward, far };
+    };
+    const buckets = {};
+    edges.forEach((e, idx) => {
+      const ep = pairs[idx];
+      const roles = [["source", ep.from], ["target", ep.to]];
+      for (const [role, node] of roles) {
+        const j = jogOf(e.points, role);
+        if (!j) continue;
+        const key = node + "|" + (j.vertical ? "V" : "H") + "|" + j.toward + "|" + nAt(j.seg.along);
+        const rec = { edge: idx, seg: { edge: idx, i: j.seg.i, along: j.seg.along, lo: j.seg.lo, hi: j.seg.hi }, vertical: j.vertical, toward: j.toward, far: j.far };
+        (buckets[key] || (buckets[key] = [])).push(rec);
+      }
+    });
+    const moved2 = {};
+    for (const key in buckets) {
+      const recs = buckets[key];
+      if (recs.length < CONVERGE_MIN2) continue;
+      recs.sort((x, y) => x.far - y.far || x.edge - y.edge);
+      let sum = 0;
+      for (const r of recs) sum += r.seg.along;
+      const mean = sum / recs.length;
+      const k = recs.length;
+      const toward = recs[0].toward;
+      recs.forEach((r, s) => {
+        const lane = nAt(mean + (s - (k - 1) / 2 - toward * (k - 1) / 2) * JOG_GAP2);
+        if (Math.abs(lane - r.seg.along) < 1e-6) return;
+        moveLane2(edges[r.edge], r.vertical, r.seg, lane);
+        moved2[r.edge] = true;
       });
     }
     for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
@@ -6934,9 +7696,17 @@ function vnmRuntime(root, payload) {
   function renderEdges() {
     const ports = computePorts();
     const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
+    avoidSubgraphs2(routed, edgeEls, avoidContainersFrom(subgraphWorldBox));
+    const nabL = avoidNodeBoxes((id) => ({ x: positions[id].x, y: positions[id].y, w: sizes[id].w, h: sizes[id].h }));
+    trimEndpointReentry2(routed, edgeEls, nabL);
+    for (let k = 0; k < NODE_AVOID_PASSES2; k++) {
+      avoidNodes2(routed, edgeEls, nabL);
+      detourApproaches2(routed, edgeEls, nabL);
+    }
     foldLabelShifts(routed, resolveLabelLineOffsets2(labelPlatesOf(routed), routed.map((r) => r.points)));
     separateLanes2(routed);
     separateAntiParallelJogs2(routed, edgeEls);
+    separateConvergentJogs2(routed, edgeEls);
     foldLabelShifts(routed, resolveLabelCollisions2(labelPlatesOf(routed)));
     foldLabelShifts(routed, resolveLabelEdgeCollisions2(labelPlatesOf(routed), routed.map((r) => r.points)));
     const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id].x, y: positions[nd.id].y, w: sizes[nd.id].w, h: sizes[nd.id].h }));
@@ -6965,6 +7735,13 @@ function vnmRuntime(root, payload) {
         e.text.setAttribute("y", String(nAt(ly)));
       }
     });
+    if (capOverlay) {
+      let caps = "";
+      edgeEls.forEach((e, i) => {
+        caps += svgEdgeArrowCap(e, routed[i].points);
+      });
+      capOverlay.innerHTML = caps;
+    }
     positionEdgeHandles(ports);
   }
   function applyTransform() {
@@ -7448,7 +8225,10 @@ function vnmRuntime(root, payload) {
     const a = tokens.edge.arrowSize;
     const shadow = tokens.effects.gradient ? '<filter id="vnm-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter>' : "";
     const font = sketch && payload.sketch ? "<style>" + payload.sketch.fontFace + "</style>" : "";
-    return '<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="' + tokens.colors.edge + '"/></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="' + tokens.colors.edge + '"/></marker>' + shadow + font + "</defs>";
+    const semMarkers = semEdges ? SEMANTICS_T.map(
+      (s) => '<marker id="' + semMarkerT(s) + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="' + semColorT(s) + '"/></marker>'
+    ).join("") : "";
+    return '<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="' + tokens.colors.edge + '"/></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="' + a + '" markerHeight="' + a + '" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="' + tokens.colors.edge + '"/></marker>' + semMarkers + shadow + font + "</defs>";
   }
   function subgraphAbsBox(sg) {
     const ids = subgraphMembers[sg.id] || [];
@@ -7489,11 +8269,12 @@ function vnmRuntime(root, payload) {
   function svgEdge(e, path, points) {
     const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
     const dash = e.kind === "dotted" ? ' stroke-dasharray="2 5"' : "";
+    const ec = edgeColorT(e.kind, e.label ?? "");
     let out;
     if (sketch) {
       const key = e.from + "->" + e.to;
       const arr = points.map((p) => [p.x, p.y]);
-      const base = ' fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"';
+      const base = ' fill="none" stroke="' + ec.color + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"';
       const lineStroke = base + dash;
       let s = "";
       for (const d of roughPolyline2(arr, key)) s += '<path d="' + d + '"' + lineStroke + "/>";
@@ -7504,11 +8285,48 @@ function vnmRuntime(root, payload) {
         s += '<path d="' + openArrowhead2(arr[0], arr[1], tokens.edge.arrowSize, key + "@start") + '"' + base + "/>";
       out = s;
     } else {
-      const mEnd = e.arrows.end ? ' marker-end="url(#vnm-arrow)"' : "";
+      const mEnd = e.arrows.end ? ' marker-end="url(#' + ec.marker + ')"' : "";
       const mStart = e.arrows.start ? ' marker-start="url(#vnm-arrow-start)"' : "";
-      out = '<path d="' + path + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"' + dash + mStart + mEnd + "/>";
+      out = '<path d="' + path + '" fill="none" stroke="' + ec.color + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"' + dash + mStart + mEnd + "/>";
     }
     return out;
+  }
+  function svgEdgeArrowCap(e, points) {
+    const m = points.length;
+    if (m < 2 || !e.arrows.end && !e.arrows.start) return "";
+    const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
+    const ec = edgeColorT(e.kind, e.label ?? "");
+    if (sketch) {
+      const key = e.from + "->" + e.to;
+      const arr = points.map((p) => [p.x, p.y]);
+      const base = ' fill="none" stroke="' + ec.color + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"';
+      let s2 = "";
+      if (e.arrows.end) s2 += '<path class="vnm-arrow-cap" d="' + openArrowhead2(arr[m - 1], arr[m - 2], tokens.edge.arrowSize, key + "@end") + '"' + base + "/>";
+      if (e.arrows.start) s2 += '<path class="vnm-arrow-cap" d="' + openArrowhead2(arr[0], arr[1], tokens.edge.arrowSize, key + "@start") + '"' + base + "/>";
+      return s2;
+    }
+    let s = "";
+    if (e.arrows.end) s += svgCapEnd(points[m - 2], points[m - 1], width, ec.color, ec.marker);
+    if (e.arrows.start) s += svgCapStart(points[0], points[1], width, ec.color);
+    return s;
+  }
+  function svgCapEnd(prev, tip, width, color, marker) {
+    const dx = tip.x - prev.x;
+    const dy = tip.y - prev.y;
+    const mag = Math.hypot(dx, dy) || 1;
+    const len = Math.min(tokens.edge.arrowSize + 4, mag);
+    const bx = tip.x - dx / mag * len;
+    const by = tip.y - dy / mag * len;
+    return '<path class="vnm-arrow-cap" d="M ' + nAt(bx) + " " + nAt(by) + " L " + nAt(tip.x) + " " + nAt(tip.y) + '" fill="none" stroke="' + color + '" stroke-width="' + width + '" stroke-linecap="round" marker-end="url(#' + marker + ')"/>';
+  }
+  function svgCapStart(head, next, width, color) {
+    const dx = next.x - head.x;
+    const dy = next.y - head.y;
+    const mag = Math.hypot(dx, dy) || 1;
+    const len = Math.min(tokens.edge.arrowSize + 4, mag);
+    const bx = head.x + dx / mag * len;
+    const by = head.y + dy / mag * len;
+    return '<path class="vnm-arrow-cap" d="M ' + nAt(head.x) + " " + nAt(head.y) + " L " + nAt(bx) + " " + nAt(by) + '" fill="none" stroke="' + color + '" stroke-width="' + width + '" stroke-linecap="round" marker-start="url(#vnm-arrow-start)"/>';
   }
   function svgPolygon(pts, common) {
     return '<polygon points="' + pts.map((p) => nAt(p[0]) + "," + nAt(p[1])).join(" ") + '" ' + common + "/>";
@@ -7619,6 +8437,28 @@ function vnmRuntime(root, payload) {
       height: nAt(maxY - minY + pad * 2)
     };
   }
+  function usedSemanticsT() {
+    const seen = {};
+    for (const e of edgeEls) {
+      const s = flowSemT(e.kind, e.label ?? "");
+      if (s) seen[s] = true;
+    }
+    return SEMANTICS_T.filter((s) => seen[s]);
+  }
+  function svgEdgeLegend(legend, x0, y) {
+    const fs = tokens.font.size - 2;
+    const swatch = 22;
+    let x = x0;
+    let out = "";
+    for (const sem of legend) {
+      const color = semColorT(sem);
+      out += '<line x1="' + nAt(x) + '" y1="' + nAt(y) + '" x2="' + nAt(x + swatch) + '" y2="' + nAt(y) + '" stroke="' + color + '" stroke-width="' + tokens.edge.width + '" stroke-linecap="round" marker-end="url(#' + semMarkerT(sem) + ')"/>';
+      const label = SEMANTIC_LABEL_T[sem];
+      out += '<text x="' + nAt(x + swatch + 6) + '" y="' + nAt(y) + '" fill="' + tokens.colors.subgraphText + '" font-size="' + fs + '" dominant-baseline="central">' + xmlEsc(label) + "</text>";
+      x += swatch + 6 + label.length * fs * 0.6 + 24;
+    }
+    return "<g>" + out + "</g>";
+  }
   function buildSvg() {
     const ports = computePorts();
     const boxes = [];
@@ -7626,14 +8466,26 @@ function vnmRuntime(root, payload) {
     for (const nd of model.nodes) boxes.push(absBox(nd.id));
     const edgePathParts = [];
     const edgeLabelParts = [];
+    const edgeArrowCapParts = [];
     const allPts = [];
     const routesB = edgeEls.map((e, i) => {
       const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : void 0;
       return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
     });
+    avoidSubgraphs2(routesB, edgeEls, avoidContainersFrom(subgraphAbsBox));
+    const nabB = avoidNodeBoxes((id) => {
+      const b2 = absBox(id);
+      return { x: b2.x, y: b2.y, w: b2.w, h: b2.h };
+    });
+    trimEndpointReentry2(routesB, edgeEls, nabB);
+    for (let k = 0; k < NODE_AVOID_PASSES2; k++) {
+      avoidNodes2(routesB, edgeEls, nabB);
+      detourApproaches2(routesB, edgeEls, nabB);
+    }
     foldLabelShifts(routesB, resolveLabelLineOffsets2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     separateLanes2(routesB);
     separateAntiParallelJogs2(routesB, edgeEls);
+    separateConvergentJogs2(routesB, edgeEls);
     foldLabelShifts(routesB, resolveLabelCollisions2(labelPlatesOf(routesB)));
     foldLabelShifts(routesB, resolveLabelEdgeCollisions2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     const nodeBoxesB = model.nodes.map((nd) => {
@@ -7647,6 +8499,7 @@ function vnmRuntime(root, payload) {
       const r = routesB[i];
       for (const p of r.points) allPts.push(p);
       edgePathParts.push(svgEdge(e, bridgedB[i] ?? r.path, r.points));
+      if (arrowCaps) edgeArrowCapParts.push(svgEdgeArrowCap(e, r.points));
       if (e.label) {
         edgeLabelParts.push(svgEdgeLabel(e.label, r.labelPos.x, r.labelPos.y));
       }
@@ -7655,21 +8508,26 @@ function vnmRuntime(root, payload) {
       if (pl) allPts.push({ x: pl.x - pl.w / 2, y: pl.y - pl.h / 2 }, { x: pl.x + pl.w / 2, y: pl.y + pl.h / 2 });
     }
     const b = boundsAbs(boxes, allPts);
+    const legend = semEdges ? usedSemanticsT() : [];
+    const legendH = legend.length ? tokens.font.lineHeight + 20 : 0;
+    const totalH = b.height + legendH;
     const parts = [];
     parts.push(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="' + nAt(b.width) + '" height="' + nAt(b.height) + '" viewBox="' + nAt(b.x) + " " + nAt(b.y) + " " + nAt(b.width) + " " + nAt(b.height) + '" font-family="' + xmlAttr(sketch && payload.sketch ? payload.sketch.fontFamily : tokens.font.family) + '">'
+      '<svg xmlns="http://www.w3.org/2000/svg" width="' + nAt(b.width) + '" height="' + nAt(totalH) + '" viewBox="' + nAt(b.x) + " " + nAt(b.y) + " " + nAt(b.width) + " " + nAt(totalH) + '" font-family="' + xmlAttr(sketch && payload.sketch ? payload.sketch.fontFamily : tokens.font.family) + '">'
     );
     parts.push(svgDefs());
     parts.push(
-      '<rect x="' + nAt(b.x) + '" y="' + nAt(b.y) + '" width="' + nAt(b.width) + '" height="' + nAt(b.height) + '" fill="' + tokens.colors.background + '"/>'
+      '<rect x="' + nAt(b.x) + '" y="' + nAt(b.y) + '" width="' + nAt(b.width) + '" height="' + nAt(totalH) + '" fill="' + tokens.colors.background + '"/>'
     );
     for (const sg of model.subgraphs) parts.push(svgSubgraphBox(sg));
     for (const ep of edgePathParts) parts.push(ep);
     for (const lp of edgeLabelParts) parts.push(lp);
     for (const sg of model.subgraphs) parts.push(svgSubgraphTitle(sg));
     for (const nd of model.nodes) parts.push(svgNode(nd));
+    for (const cap of edgeArrowCapParts) parts.push(cap);
+    if (legend.length) parts.push(svgEdgeLegend(legend, b.x + 16, b.y + b.height + legendH / 2));
     parts.push("</svg>");
-    return { svg: parts.join("\n"), width: b.width, height: b.height };
+    return { svg: parts.join("\n"), width: b.width, height: totalH };
   }
   function toSvgString() {
     return buildSvg().svg;
@@ -7784,7 +8642,8 @@ function buildPayload(model, theme, opts = {}) {
       minScale: opts.minScale ?? 0.2,
       maxScale: opts.maxScale ?? 4,
       style: sketch ? "sketch" : "clean",
-      bridges: opts.bridges
+      bridges: opts.bridges,
+      arrowCaps: opts.arrowCaps ?? true
     }
   };
   if (sketch) payload.sketch = { fontFace: sketchFontFaceCss(), fontFamily: SKETCH_FONT_FAMILY };
@@ -8289,6 +9148,7 @@ function readParticipants(doc, centers) {
 }
 function readMessages(doc, ids) {
   const messages = [];
+  const ys = [];
   let pendingLabel = "";
   let order = 0;
   for (const el of Array.from(doc.querySelectorAll("*"))) {
@@ -8313,9 +9173,64 @@ function readMessages(doc, ids) {
       self: from === to,
       order: order++
     });
+    ys.push(messageY(el));
     pendingLabel = "";
   }
-  return messages;
+  return { messages, ys };
+}
+function messageY(el) {
+  const y2 = parseFloat(el.getAttribute("y2") ?? "");
+  if (Number.isFinite(y2)) return y2;
+  const y1 = parseFloat(el.getAttribute("y1") ?? "");
+  if (Number.isFinite(y1)) return y1;
+  const m = (el.getAttribute("d") ?? "").match(/M\s*[\d.-]+[\s,]+([\d.-]+)/);
+  return m ? parseFloat(m[1]) : Number.NaN;
+}
+function readActivations(doc, centers, ys) {
+  const centerList = Array.from(centers.entries());
+  const nearest2 = (x) => {
+    let best = "";
+    let bd = Number.POSITIVE_INFINITY;
+    for (const [id, cx] of centerList) {
+      const d = Math.abs(cx - x);
+      if (d < bd) {
+        bd = d;
+        best = id;
+      }
+    }
+    return best;
+  };
+  const orderAtY = (y) => {
+    let bi = 0;
+    let bd = Number.POSITIVE_INFINITY;
+    ys.forEach((my, i) => {
+      const d = Math.abs(my - y);
+      if (d < bd) {
+        bd = d;
+        bi = i;
+      }
+    });
+    return bi;
+  };
+  const raw = [];
+  for (const rect of Array.from(doc.querySelectorAll('rect[class^="activation"]'))) {
+    const x = parseFloat(rect.getAttribute("x") ?? "");
+    const w = parseFloat(rect.getAttribute("width") ?? "");
+    const y = parseFloat(rect.getAttribute("y") ?? "");
+    const h = parseFloat(rect.getAttribute("height") ?? "");
+    if (![x, w, y, h].every(Number.isFinite) || ys.length === 0) continue;
+    const participant = nearest2(x + w / 2);
+    if (!participant) continue;
+    const startOrder = orderAtY(y);
+    const endOrder = Math.max(startOrder, orderAtY(y + h));
+    raw.push({ participant, startOrder, endOrder, depth: 0 });
+  }
+  for (const a of raw) {
+    a.depth = raw.filter(
+      (o) => o !== a && o.participant === a.participant && o.startOrder <= a.startOrder && o.endOrder >= a.endOrder && (o.startOrder < a.startOrder || o.endOrder > a.endOrder)
+    ).length;
+  }
+  return raw;
 }
 async function readSequenceModel(dsl) {
   const svg = await renderMermaidSvg(dsl);
@@ -8323,9 +9238,64 @@ async function readSequenceModel(dsl) {
   const centers = lifelineCenters(doc);
   const participants = readParticipants(doc, centers);
   const ids = new Set(participants.map((p) => p.id));
-  const messages = readMessages(doc, ids);
-  return { kind: "sequence", participants, messages };
+  const { messages, ys } = readMessages(doc, ids);
+  const activations = readActivations(doc, centers, ys);
+  return { kind: "sequence", participants, messages, ...activations.length ? { activations } : {} };
 }
+
+// src/native/sequence/semantics.ts
+function inferRole(label) {
+  const s = label.toLowerCase();
+  const rules = [
+    ["database", /postgres|postgresql|mysql|mariadb|redis|mongo|cassandra|dynamo|sqlite|datastore|\bdb\b|database|\bcache\b/],
+    ["messagebus", /kafka|rabbit|\bsqs\b|\bsns\b|pubsub|\bqueue\b|\btopic\b|\bbus\b|\bstream\b|\bnats\b|\bmq\b|eventbridge|broker/],
+    ["security", /\bauth\b|oauth|\bjwt\b|\biam\b|vault|keycloak|identity|\blogin\b|\bsso\b|security|\btoken\b/],
+    ["external", /\buser\b|customer|external|third[- ]?party|\b3rd\b|\bactor\b|browser|\bclient\b|visitor/],
+    ["frontend", /\bweb\b|\bui\b|frontend|\bspa\b|mobile|\bapp\b|portal|dashboard/],
+    ["cloud", /\bcdn\b|\bwaf\b|\bs3\b|cloudfront|nginx|proxy|ingress|load ?balancer|\blb\b|\bcloud\b/],
+    ["backend", /\bapi\b|gateway|service|server|backend|worker|lambda|function|microservice|grpc|handler|orchestrat/]
+  ];
+  for (const [role, re] of rules) if (re.test(s)) return role;
+  return void 0;
+}
+function typeLabel(label) {
+  const role = inferRole(label);
+  const s = label.toLowerCase();
+  switch (role) {
+    case "database":
+      return /redis|memcache|\bcache\b/.test(s) ? "cache" : "store";
+    case "backend":
+      return /gateway/.test(s) ? "gateway" : /worker/.test(s) ? "worker" : "service";
+    case "security":
+      return "auth";
+    case "messagebus":
+      return "broker";
+    case "frontend":
+      return /browser/.test(s) ? "browser" : "client";
+    case "cloud":
+      return /cdn/.test(s) ? "cdn" : /waf/.test(s) ? "waf" : "edge";
+    case "external":
+      return "actor";
+    default:
+      return "";
+  }
+}
+function messageSemantic(kind, label) {
+  const s = label.toLowerCase();
+  if (/error|fail|reject|denied|invalid|exception|timeout|unauthor|\b40[13]\b|\b500\b|refus/.test(s)) return "exception";
+  if (/cache|redis|\bhit\b|\bmiss\b|memcache|\bttl\b/.test(s)) return "cache";
+  if (/emit|publish|event|async|enqueue|\bqueue\b|kafka|\btopic\b|stream|notify|webhook|fire/.test(s)) return "async";
+  if (kind === "dashed") return "response";
+  return "request";
+}
+var SEMANTIC_ORDER = ["request", "response", "cache", "async", "exception"];
+var SEMANTIC_LABEL = {
+  request: "request",
+  response: "response",
+  cache: "cache",
+  async: "async",
+  exception: "exception"
+};
 
 // src/native/sequence/layout.ts
 var MARGIN = 24;
@@ -8350,7 +9320,10 @@ function layoutSequence(model, opts = {}) {
   const t = theme.tokens;
   const fontSize = t.font.size;
   const lineHeight = t.font.lineHeight;
-  const boxH = lineHeight + t.spacing.nodePadY * 2;
+  const types = model.participants.map((p) => typeLabel(p.label));
+  const twoLine = types.some((ty) => ty !== "");
+  const typeFont = fontSize - 2;
+  const boxH = lineHeight * (twoLine ? 2 : 1) + t.spacing.nodePadY * 2;
   const rowPitch = Math.max(44, lineHeight * 2 + 8);
   const topGap = lineHeight + 12;
   const bottomGap = lineHeight + 8;
@@ -8358,7 +9331,11 @@ function layoutSequence(model, opts = {}) {
   const order = /* @__PURE__ */ new Map();
   model.participants.forEach((p, i) => order.set(p.id, i));
   const widths = model.participants.map(
-    (p) => Math.max(MIN_BOX_W, textWidth(p.label, fontSize) + t.spacing.nodePadX * 2)
+    (p, i) => Math.max(
+      MIN_BOX_W,
+      textWidth(p.label, fontSize) + t.spacing.nodePadX * 2,
+      textWidth(types[i], typeFont) + t.spacing.nodePadX * 2
+    )
   );
   const adjacentLabel = new Array(Math.max(0, widths.length - 1)).fill(0);
   for (const m of model.messages) {
@@ -8387,7 +9364,8 @@ function layoutSequence(model, opts = {}) {
     ...p,
     x: xs[i],
     width: widths[i],
-    height: boxH
+    height: boxH,
+    type: types[i] || void 0
   }));
   const messages = [];
   let y = lifelineTop + topGap;
@@ -8397,10 +9375,12 @@ function layoutSequence(model, opts = {}) {
     const toI = order.get(m.to);
     if (fromI === void 0 || toI === void 0) continue;
     const fromX = xs[fromI];
+    const semantic = messageSemantic(m.kind, m.label);
     if (m.self) {
       const toX = fromX;
       messages.push({
         ...m,
+        semantic,
         y,
         fromX,
         toX,
@@ -8415,6 +9395,7 @@ function layoutSequence(model, opts = {}) {
       const toX = xs[toI];
       messages.push({
         ...m,
+        semantic,
         y,
         fromX,
         toX,
@@ -8427,6 +9408,27 @@ function layoutSequence(model, opts = {}) {
   }
   const lifelineBottom = lastBottom + bottomGap;
   const boxBottom = lifelineBottom + boxH / 2;
+  const ACTIVATION_W = 10;
+  const byOrder = new Map(messages.map((m) => [m.order, m]));
+  const activations = (model.activations ?? []).map((a) => {
+    const pi = order.get(a.participant);
+    const px = pi !== void 0 ? xs[pi] : 0;
+    const sm = byOrder.get(a.startOrder);
+    const em = byOrder.get(a.endOrder);
+    const startY = sm ? sm.y : lifelineTop;
+    const endY = em ? em.self && em.loopHeight ? em.y + em.loopHeight : em.y : lifelineBottom;
+    return {
+      participant: a.participant,
+      x: px + a.depth * (ACTIVATION_W - 3),
+      width: ACTIVATION_W,
+      startY,
+      endY: Math.max(endY, startY + 10)
+    };
+  });
+  const used = new Set(messages.map((m) => m.semantic));
+  const legend = SEMANTIC_ORDER.filter((s) => used.has(s));
+  const legendH = legend.length ? lineHeight + 6 : 0;
+  const legendY = boxBottom + boxH / 2 + 22 + legendH / 2;
   const boxes = [];
   for (const p of participants) {
     boxes.push({ x: p.x, y: boxTop, width: p.width, height: boxH });
@@ -8446,6 +9448,10 @@ function layoutSequence(model, opts = {}) {
       extra.push({ x: m.fromX + m.loopWidth, y: m.y + m.loopHeight });
     }
   }
+  if (legend.length) {
+    const legendLeft = xs[0] - widths[0] / 2;
+    extra.push({ x: legendLeft, y: legendY - legendH / 2 }, { x: legendLeft + legend.length * 132, y: legendY + legendH / 2 });
+  }
   const bounds = contentBounds(boxes, extra, BOUNDS_PADDING2);
   return {
     kind: "sequence-layout",
@@ -8455,6 +9461,9 @@ function layoutSequence(model, opts = {}) {
     boxBottom,
     lifelineTop,
     lifelineBottom,
+    activations,
+    legend,
+    legendY,
     bounds
   };
 }
@@ -8566,6 +9575,29 @@ function sketchArrowSvg(tip, from, size, stroke, sw, key) {
 }
 
 // src/native/sequence/svg.ts
+function participantColors(label, theme) {
+  const t = theme.tokens;
+  const role = inferRole(label);
+  const rc = role ? t.colors.roles[role] : void 0;
+  return { fill: rc?.fill ?? t.colors.surface, stroke: rc?.stroke ?? t.colors.surfaceStroke, text: rc?.text ?? t.colors.text };
+}
+function semanticColor(sem, t) {
+  const roles = t.colors.roles;
+  switch (sem) {
+    case "request":
+      return roles.backend?.stroke ?? t.colors.accent;
+    case "cache":
+      return roles.database?.stroke ?? t.colors.accent;
+    case "async":
+      return roles.messagebus?.stroke ?? t.colors.accent;
+    case "exception":
+      return roles.danger?.stroke ?? "#ef4444";
+    case "response":
+    default:
+      return t.colors.edge;
+  }
+}
+var markerId = (sem) => "vnm-arrow-" + (sem ?? "response");
 function renderSequenceSvg(layout2, theme, background, style = "clean") {
   const b = layout2.bounds;
   const t = theme.tokens;
@@ -8580,29 +9612,33 @@ function renderSequenceSvg(layout2, theme, background, style = "clean") {
   );
   parts.push(defs(theme, sketch));
   for (const p of layout2.participants) parts.push(renderLifeline(p, layout2, theme, sketch));
+  for (const a of layout2.activations) parts.push(renderActivation(a, layout2, theme, sketch));
   layout2.messages.forEach((m, i) => parts.push(renderMessage(m, theme, sketch, i)));
   for (const p of layout2.participants) {
     parts.push(renderParticipant(p, layout2.boxTop, theme, sketch, "t"));
     parts.push(renderParticipant(p, layout2.boxBottom, theme, sketch, "b"));
   }
+  if (layout2.legend.length) parts.push(renderLegend(layout2, theme));
   parts.push("</svg>");
   return parts.join("\n");
 }
+var SEMANTICS = ["request", "response", "cache", "async", "exception"];
 function defs(theme, sketch) {
   const t = theme.tokens;
   const a = t.edge.arrowSize;
   const shadow = t.effects.gradient ? `<filter id="vnm-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter>` : "";
-  return `<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${a}" markerHeight="${a}" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="${t.colors.edge}"/></marker>` + shadow + (sketch ? sketchFontDefs() : "") + `</defs>`;
+  const marker = (id, fill) => `<marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="${a}" markerHeight="${a}" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="${fill}"/></marker>`;
+  return `<defs>` + marker("vnm-arrow", t.colors.edge) + SEMANTICS.map((s) => marker(markerId(s), semanticColor(s, t))).join("") + shadow + (sketch ? sketchFontDefs() : "") + `</defs>`;
 }
 function renderLifeline(p, layout2, theme, sketch) {
-  const t = theme.tokens;
+  const stroke = participantColors(p.label, theme).stroke;
   if (sketch) {
     return sketchLineSvg(
       [
         [p.x, layout2.lifelineTop],
         [p.x, layout2.lifelineBottom]
       ],
-      t.colors.edge,
+      stroke,
       1,
       "life:" + p.id,
       ' stroke-dasharray="4 4"'
@@ -8610,23 +9646,26 @@ function renderLifeline(p, layout2, theme, sketch) {
   }
   return `<line x1="${n(p.x)}" y1="${n(layout2.lifelineTop)}" x2="${n(p.x)}" y2="${n(
     layout2.lifelineBottom
-  )}" stroke="${t.colors.edge}" stroke-width="1" stroke-dasharray="4 4"/>`;
+  )}" stroke="${stroke}" stroke-width="1" stroke-dasharray="4 4"/>`;
 }
 function renderParticipant(p, cy, theme, sketch, posKey) {
   const t = theme.tokens;
   const x = p.x - p.width / 2;
   const y = cy - p.height / 2;
   const shadow = t.effects.gradient && !sketch ? ` filter="url(#vnm-shadow)"` : "";
-  const rect = sketch ? sketchRectSvg(x, y, p.width, p.height, t.colors.surface, t.colors.surfaceStroke, "1.5", "p:" + p.id + "@" + posKey) : `<rect x="${n(x)}" y="${n(y)}" width="${n(p.width)}" height="${n(
+  const c = participantColors(p.label, theme);
+  const rect = sketch ? sketchRectSvg(x, y, p.width, p.height, c.fill, c.stroke, "1.5", "p:" + p.id + "@" + posKey) : `<rect x="${n(x)}" y="${n(y)}" width="${n(p.width)}" height="${n(
     p.height
-  )}" rx="${t.radii.card}" fill="${t.colors.surface}" stroke="${t.colors.surfaceStroke}" stroke-width="1.5"/>`;
-  const text = `<text x="${n(p.x)}" y="${n(cy)}" fill="${t.colors.text}" font-size="${t.font.size}" font-weight="${t.font.weight}" text-anchor="middle" dominant-baseline="central">${escapeXml(p.label)}</text>`;
+  )}" rx="${t.radii.card}" fill="${c.fill}" stroke="${c.stroke}" stroke-width="1.5"/>`;
+  const nameY = p.type ? cy - t.font.lineHeight * 0.42 : cy;
+  const text = `<text x="${n(p.x)}" y="${n(nameY)}" fill="${c.text}" font-size="${t.font.size}" font-weight="${t.font.weight}" text-anchor="middle" dominant-baseline="central">${escapeXml(p.label)}</text>` + (p.type ? `<text x="${n(p.x)}" y="${n(cy + t.font.lineHeight * 0.52)}" fill="${c.stroke}" font-size="${t.font.size - 2}" text-anchor="middle" dominant-baseline="central" opacity="0.85">${escapeXml(p.type)}</text>` : "");
   return `<g${shadow}>${rect}${text}</g>`;
 }
 function renderMessage(m, theme, sketch, index) {
   const t = theme.tokens;
   const dash = m.kind === "dashed" ? ` stroke-dasharray="6 4"` : "";
-  const marker = m.arrowEnd ? ` marker-end="url(#vnm-arrow)"` : "";
+  const color = semanticColor(m.semantic, t);
+  const marker = m.arrowEnd ? ` marker-end="url(#${markerId(m.semantic)})"` : "";
   const parts = [];
   if (sketch) {
     const dashAttr = m.kind === "dashed" ? ' stroke-dasharray="6 4"' : "";
@@ -8646,10 +9685,10 @@ function renderMessage(m, theme, sketch, index) {
         [m.toX, m.y]
       ];
     }
-    parts.push(sketchLineSvg(pts, t.colors.edge, t.edge.width, key, dashAttr));
+    parts.push(sketchLineSvg(pts, color, t.edge.width, key, dashAttr));
     const mlen = pts.length;
     if (m.arrowEnd && mlen >= 2)
-      parts.push(sketchArrowSvg(pts[mlen - 1], pts[mlen - 2], t.edge.arrowSize, t.colors.edge, t.edge.width, key + "@end"));
+      parts.push(sketchArrowSvg(pts[mlen - 1], pts[mlen - 2], t.edge.arrowSize, color, t.edge.width, key + "@end"));
     if (m.label) parts.push(messageLabel(m.label, m.labelX, m.labelY, theme));
     return parts.join("");
   }
@@ -8659,15 +9698,48 @@ function renderMessage(m, theme, sketch, index) {
     const h = m.loopHeight;
     const d = `M ${n(x)} ${n(m.y)} L ${n(x + w)} ${n(m.y)} L ${n(x + w)} ${n(m.y + h)} L ${n(x)} ${n(m.y + h)}`;
     parts.push(
-      `<path d="${d}" fill="none" stroke="${t.colors.edge}" stroke-width="${t.edge.width}" stroke-linejoin="round"${dash}${marker}/>`
+      `<path d="${d}" fill="none" stroke="${color}" stroke-width="${t.edge.width}" stroke-linejoin="round"${dash}${marker}/>`
     );
   } else {
     parts.push(
-      `<line x1="${n(m.fromX)}" y1="${n(m.y)}" x2="${n(m.toX)}" y2="${n(m.y)}" stroke="${t.colors.edge}" stroke-width="${t.edge.width}" stroke-linecap="round"${dash}${marker}/>`
+      `<line x1="${n(m.fromX)}" y1="${n(m.y)}" x2="${n(m.toX)}" y2="${n(m.y)}" stroke="${color}" stroke-width="${t.edge.width}" stroke-linecap="round"${dash}${marker}/>`
     );
   }
   if (m.label) parts.push(messageLabel(m.label, m.labelX, m.labelY, theme));
   return parts.join("");
+}
+function renderActivation(a, layout2, theme, sketch) {
+  const t = theme.tokens;
+  const p = layout2.participants.find((pp) => pp.id === a.participant);
+  const c = p ? participantColors(p.label, theme) : { fill: t.colors.surface, stroke: t.colors.edge };
+  const x = a.x - a.width / 2;
+  const h = a.endY - a.startY;
+  if (sketch) {
+    return sketchRectSvg(x, a.startY, a.width, h, c.fill, c.stroke, "1", "act:" + a.participant + "@" + Math.round(a.startY));
+  }
+  return `<rect x="${n(x)}" y="${n(a.startY)}" width="${n(a.width)}" height="${n(h)}" rx="2" fill="${c.fill}" stroke="${c.stroke}" stroke-width="1"/>`;
+}
+function renderLegend(layout2, theme) {
+  const t = theme.tokens;
+  const y = layout2.legendY;
+  const fs = t.font.size - 2;
+  const swatch = 22;
+  let x = layout2.bounds.x + 24;
+  const parts = [];
+  for (const sem of layout2.legend) {
+    const color = semanticColor(sem, t);
+    parts.push(
+      `<line x1="${n(x)}" y1="${n(y)}" x2="${n(x + swatch)}" y2="${n(y)}" stroke="${color}" stroke-width="${t.edge.width}" stroke-linecap="round" marker-end="url(#${markerId(sem)})"/>`
+    );
+    const label = SEMANTIC_LABEL[sem];
+    parts.push(
+      `<text x="${n(x + swatch + 6)}" y="${n(y)}" fill="${t.colors.subgraphText}" font-size="${fs}" dominant-baseline="central">${escapeXml(
+        label
+      )}</text>`
+    );
+    x += swatch + 6 + label.length * fs * 0.6 + 24;
+  }
+  return `<g>${parts.join("")}</g>`;
 }
 function messageLabel(label, cx, cy, theme) {
   const t = theme.tokens;
@@ -8978,7 +10050,7 @@ function layoutClass(model, opts = {}) {
 
 // src/native/class/interactive.ts
 function mountClass(el, layout2, theme, opts = {}) {
-  return vnmRuntime(el, buildPayload(layout2.model, theme, opts));
+  return vnmRuntime(el, buildPayload(layout2.model, theme, { ...opts, arrowCaps: false }));
 }
 
 // src/native/state/read.ts
@@ -9136,7 +10208,7 @@ function layoutState(model, opts = {}) {
 
 // src/native/state/interactive.ts
 function mountState(el, layout2, theme, opts = {}) {
-  return vnmRuntime(el, buildPayload(layout2.model, theme, opts));
+  return vnmRuntime(el, buildPayload(layout2.model, theme, { ...opts, arrowCaps: false }));
 }
 
 // src/render/dom/index.ts

@@ -79,6 +79,12 @@ export interface EffectTokens {
   nodeShadow: string;
   gradient: boolean;
   hoverLift: number;
+  /**
+   * Archify semantic edge colouring: a labeled flowchart edge takes a colour from its label's
+   * kind (request / cache / async / exception) and a legend is drawn. On for `arch`/`arch-light`;
+   * off (default) elsewhere so `light`/`dark`/`fancy` render unchanged.
+   */
+  semanticEdges?: boolean;
 }
 
 export interface TokenSet {
@@ -275,7 +281,7 @@ const archTokens: TokenSet = {
   spacing: { nodePadX: 16, nodePadY: 12, nodesep: 44, ranksep: 64, fitPadding: 60 },
   font: { family: MONO_ARCH, mono: MONO, size: 13, lineHeight: 18, weight: 500 },
   edge: { style: "elbow", width: 1.5, thickWidth: 3, arrowSize: 8 },
-  effects: { nodeShadow: "0 2px 10px rgba(0,0,0,0.45)", gradient: false, hoverLift: 2 },
+  effects: { nodeShadow: "0 2px 10px rgba(0,0,0,0.45)", gradient: false, hoverLift: 2, semanticEdges: true },
 };
 
 /** `arch-light` — the archify light palette (`--bg:#f8fafc`) with the same
@@ -308,7 +314,7 @@ const archLightTokens: TokenSet = {
   spacing: { nodePadX: 16, nodePadY: 12, nodesep: 44, ranksep: 64, fitPadding: 60 },
   font: { family: MONO_ARCH, mono: MONO, size: 13, lineHeight: 18, weight: 500 },
   edge: { style: "elbow", width: 1.5, thickWidth: 3, arrowSize: 8 },
-  effects: { nodeShadow: "0 1px 2px rgba(15,23,42,0.1)", gradient: false, hoverLift: 2 },
+  effects: { nodeShadow: "0 1px 2px rgba(15,23,42,0.1)", gradient: false, hoverLift: 2, semanticEdges: true },
 };
 
 /** Attach a `cssVars()` method to a plain token set. */

@@ -1,16 +1,29 @@
 flowchart TB
-  client[Web client]:::frontend --> gw{{API gateway}}:::backend
-  gw --> auth & catalog & cart
-
+  client[Web client]:::frontend
+  subgraph gateway [Gateway]
+    gw{{API gateway}}:::backend
+  end
   subgraph services [Core services]
-    direction TB
+    direction LR
     auth[Auth service]:::security
     catalog[Catalog service]:::backend
     cart[Cart service]:::backend
   end
-
-  auth --> authdb[(Auth DB)]:::database
-  catalog --> catdb[(Catalog DB)]:::database
-  cart -.-> cache[(Redis cache)]:::database
-  cart ==> orders[Order service]:::backend
-  orders --> queue[[Event queue]]:::messagebus
+  subgraph data [Data]
+    direction LR
+    authdb[(Auth DB)]:::database
+    catdb[(Catalog DB)]:::database
+    cache[(Redis cache)]:::database
+    orders[Order service]:::backend
+    queue[[Event queue]]:::messagebus
+  end
+  client -->|GET /shop| gw
+  gw -->|verify JWT| auth
+  gw -->|route| catalog
+  gw -->|route| cart
+  auth -->|query| authdb
+  catalog -->|read| catdb
+  cart -.->|cache lookup| cache
+  cart ==>|checkout| orders
+  orders -->|publish event| queue
+  auth -.->|401 denied| gw

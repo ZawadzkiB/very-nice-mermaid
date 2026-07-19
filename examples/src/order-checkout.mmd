@@ -1,0 +1,19 @@
+sequenceDiagram
+  participant U as Customer
+  participant S as Web Storefront
+  participant A as API Gateway
+  participant O as Order Service
+  participant P as Payment Service
+  participant C as Redis
+  participant K as Kafka
+  U->>+S: place order
+  S->>+A: POST /checkout
+  A->>+O: create order
+  O->>C: check stock cache
+  C-->>O: cache miss
+  O->>+P: charge card
+  P-->>-O: 403 declined
+  O->>K: emit order event
+  O-->>-A: 402 payment required
+  A-->>-S: show retry
+  S-->>-U: retry payment
