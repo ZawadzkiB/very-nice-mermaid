@@ -578,15 +578,30 @@ describe("separateLanes gives merged parallel runs distinct lanes (FR9)", () => 
     expect(JSON.stringify(twice.map((e) => e.points))).toBe(JSON.stringify(once.map((e) => e.points)));
   });
 
-  it("leaves a lone run untouched, and no-ops for curved (elbow-only)", () => {
+  it("leaves a lone run untouched; separates a curved-with-bends bundle; skips a cubic curve", () => {
     const solo = [mk(10, 200, 300)];
     const soloBefore = JSON.stringify(solo);
     separateLanes(solo, "elbow");
-    expect(JSON.stringify(solo)).toBe(soloBefore); // < LANE_MIN_BUNDLE → untouched
+    expect(JSON.stringify(solo)).toBe(soloBefore); // lone run → untouched
+    // A curved edge WITH bends is an orthogonal polyline (rendered via roundedPath), so it now
+    // gets lane separation too — the same as elbow (previously deferred / no-op for curved).
     const curved = [mk(10, 200, 300), mk(30, 220, 320), mk(50, 240, 340)];
-    const curvedBefore = JSON.stringify(curved);
     separateLanes(curved, "curved");
-    expect(JSON.stringify(curved)).toBe(curvedBefore); // curved is deferred
+    const lanes = curved.map((e) => e.points[2]!.x).sort((a, b) => a - b);
+    for (let i = 1; i < lanes.length; i++) expect(lanes[i]! - lanes[i - 1]!).toBeGreaterThanOrEqual(26 - 1e-6);
+    curved.forEach((e) => {
+      expect(e.points[2]!.x).toBe(e.points[3]!.x); // the vertical stayed vertical
+      expect(orthogonal(e)).toBe(true);
+    });
+    // A simple 4-point CUBIC curve (diagonal control points) is NOT an orthogonal route: its
+    // segments fail the isVert/isHorz test → no lane runs → left byte-identical.
+    const cubic = [
+      { points: [{ x: 0, y: 0 }, { x: 40, y: 10 }, { x: 60, y: 90 }, { x: 100, y: 100 }] },
+      { points: [{ x: 5, y: 0 }, { x: 45, y: 10 }, { x: 65, y: 90 }, { x: 105, y: 100 }] },
+    ];
+    const cubicBefore = JSON.stringify(cubic);
+    separateLanes(cubic, "curved");
+    expect(JSON.stringify(cubic)).toBe(cubicBefore); // cubic → untouched
   });
 });
 

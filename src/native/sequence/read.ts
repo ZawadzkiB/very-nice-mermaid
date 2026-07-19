@@ -20,6 +20,7 @@ import type {
   SequenceParticipant,
   SequenceMessage,
   SequenceArrowKind,
+  SequenceActivation,
 } from "../../model/sequence.js";
 import { loadMermaid } from "../../mermaid/router.js";
 
@@ -100,8 +101,9 @@ function readParticipants(doc: Document, centers: Map<string, number>): Sequence
  * message line/path (`data-et="message"` with `data-from`/`data-to`), so the
  * most-recent unconsumed message text is the current message's label.
  */
-function readMessages(doc: Document, ids: Set<string>): SequenceMessage[] {
+function readMessages(doc: Document, ids: Set<string>): { messages: SequenceMessage[]; ys: number[] } {
   const messages: SequenceMessage[] = [];
+  const ys: number[] = []; // mermaid y of each message (for mapping activation rects → order)
   let pendingLabel = "";
   let order = 0;
   for (const el of Array.from(doc.querySelectorAll("*"))) {
@@ -128,9 +130,68 @@ function readMessages(doc: Document, ids: Set<string>): SequenceMessage[] {
       self: from === to,
       order: order++,
     });
+    ys.push(messageY(el));
     pendingLabel = "";
   }
-  return messages;
+  return { messages, ys };
+}
+
+/** The message line's y in mermaid's coord space (horizontal line → y1/y2; self path → first M y). */
+function messageY(el: Element): number {
+  const y2 = parseFloat(el.getAttribute("y2") ?? "");
+  if (Number.isFinite(y2)) return y2;
+  const y1 = parseFloat(el.getAttribute("y1") ?? "");
+  if (Number.isFinite(y1)) return y1;
+  const m = (el.getAttribute("d") ?? "").match(/M\s*[\d.-]+[\s,]+([\d.-]+)/);
+  return m ? parseFloat(m[1]!) : Number.NaN;
+}
+
+/**
+ * Read activation spans from mermaid's `rect.activation{0,1,2}` bars. Mermaid puts no actor id on
+ * the rect, so match its x-center to the nearest lifeline center; map its top/bottom y to the
+ * message order at that y (the activating / deactivating message). Nesting depth is derived by
+ * counting enclosing spans on the same participant.
+ */
+function readActivations(doc: Document, centers: Map<string, number>, ys: number[]): SequenceActivation[] {
+  const centerList = Array.from(centers.entries());
+  const nearest = (x: number): string => {
+    let best = "";
+    let bd = Number.POSITIVE_INFINITY;
+    for (const [id, cx] of centerList) {
+      const d = Math.abs(cx - x);
+      if (d < bd) { bd = d; best = id; }
+    }
+    return best;
+  };
+  const orderAtY = (y: number): number => {
+    let bi = 0;
+    let bd = Number.POSITIVE_INFINITY;
+    ys.forEach((my, i) => {
+      const d = Math.abs(my - y);
+      if (d < bd) { bd = d; bi = i; }
+    });
+    return bi;
+  };
+  const raw: SequenceActivation[] = [];
+  for (const rect of Array.from(doc.querySelectorAll('rect[class^="activation"]'))) {
+    const x = parseFloat(rect.getAttribute("x") ?? "");
+    const w = parseFloat(rect.getAttribute("width") ?? "");
+    const y = parseFloat(rect.getAttribute("y") ?? "");
+    const h = parseFloat(rect.getAttribute("height") ?? "");
+    if (![x, w, y, h].every(Number.isFinite) || ys.length === 0) continue;
+    const participant = nearest(x + w / 2);
+    if (!participant) continue;
+    const startOrder = orderAtY(y);
+    const endOrder = Math.max(startOrder, orderAtY(y + h));
+    raw.push({ participant, startOrder, endOrder, depth: 0 });
+  }
+  // Nesting depth: an activation nested inside another on the same participant sits at depth+1.
+  for (const a of raw) {
+    a.depth = raw.filter(
+      (o) => o !== a && o.participant === a.participant && o.startOrder <= a.startOrder && o.endOrder >= a.endOrder && (o.startOrder < a.startOrder || o.endOrder > a.endOrder),
+    ).length;
+  }
+  return raw;
 }
 
 /**
@@ -145,6 +206,7 @@ export async function readSequenceModel(dsl: string): Promise<SequenceModel> {
   const centers = lifelineCenters(doc);
   const participants = readParticipants(doc, centers);
   const ids = new Set(participants.map((p) => p.id));
-  const messages = readMessages(doc, ids);
-  return { kind: "sequence", participants, messages };
+  const { messages, ys } = readMessages(doc, ids);
+  const activations = readActivations(doc, centers, ys);
+  return { kind: "sequence", participants, messages, ...(activations.length ? { activations } : {}) };
 }

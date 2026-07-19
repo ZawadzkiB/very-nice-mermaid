@@ -46,11 +46,17 @@ describe("renderSequenceSvg", () => {
     const svg = renderSequenceSvg(layout, themes.light!);
     expect(svg).toContain(">User<");
     expect(svg).toContain(">DB<");
-    expect(svg).toContain('<marker id="vnm-arrow"');
-    expect(svg).toContain('marker-end="url(#vnm-arrow)"');
+    // archify TYPE sub-labels (User→actor, DB→store) + colored per-semantic markers
+    expect(svg).toContain(">actor<");
+    expect(svg).toContain(">store<");
+    expect(svg).toContain('<marker id="vnm-arrow-request"');
+    expect(svg).toContain('marker-end="url(#vnm-arrow-request)"'); // solid request
+    expect(svg).toContain('marker-end="url(#vnm-arrow-response)"'); // dashed response
     expect(svg).toContain('stroke-dasharray="6 4"'); // dashed message
     expect(svg).toContain('stroke-dasharray="4 4"'); // lifelines
     expect(svg).toMatch(/<path d="M [\d.]+ [\d.]+ L/); // self-loop path
+    expect(svg).toContain(">request<"); // legend
+    expect(svg).toContain(">response<");
   });
 
   it("escapes XML-special characters in a participant / message label", () => {

@@ -1,6 +1,8 @@
 /**
  * Theming: a theme is a **token set** (colors, radii, spacing, fonts, edge
- * style, effects). Built-ins `light` / `dark` / `fancy`; {@link defineTheme}
+ * style, effects). Built-ins `light` / `dark` / `fancy` / `arch` / `arch-light`
+ * (the last two are the archify look — slate canvas, monospace, jewel-tone
+ * semantic roles); {@link defineTheme}
  * deep-merges a partial over a base; {@link Theme.cssVars} emits the CSS custom
  * properties the DOM renderer (and HTML export) apply to their root.
  */
@@ -100,6 +102,43 @@ const MONO =
   'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
 const SANS =
   'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+/**
+ * The `arch` themes' typography. Prefers JetBrains Mono when the reader has it
+ * installed (the near-universal case for a dev audience) and falls back to a
+ * strong system-monospace stack everywhere else — the exact approach the
+ * archify reference uses (its Google-Fonts link degrades to system mono
+ * offline), so no font bytes are bundled into every export.
+ */
+const MONO_ARCH =
+  "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace";
+
+/**
+ * The **archify semantic role palette** — one named role per component type,
+ * each a distinct jewel tone (a DSL node opts in with `X:::backend` or
+ * `class X backend`). Two bundles: `Dark` for dark canvases, `Light` for light
+ * ones. Every built-in theme mixes the matching bundle in, so the vocabulary
+ * (`frontend`/`backend`/`database`/`cloud`/`security`/`messagebus`/`external`)
+ * resolves under any theme, not just `arch`. Fills are translucent tints and
+ * strokes are saturated, mirroring archify's tinted-card look.
+ */
+const domainRolesDark: Record<string, RoleColors> = {
+  frontend: { fill: "rgba(8,51,68,0.55)", stroke: "#22d3ee", text: "#e6feff" },
+  backend: { fill: "rgba(6,78,59,0.55)", stroke: "#34d399", text: "#e7fff4" },
+  database: { fill: "rgba(76,29,149,0.5)", stroke: "#a78bfa", text: "#f1ebff" },
+  cloud: { fill: "rgba(120,53,15,0.55)", stroke: "#fbbf24", text: "#fff6e0" },
+  security: { fill: "rgba(136,19,55,0.5)", stroke: "#fb7185", text: "#ffe4ec" },
+  messagebus: { fill: "rgba(124,45,18,0.55)", stroke: "#fb923c", text: "#ffedd5" },
+  external: { fill: "rgba(30,41,59,0.7)", stroke: "#94a3b8", text: "#e2e8f0" },
+};
+const domainRolesLight: Record<string, RoleColors> = {
+  frontend: { fill: "rgba(34,211,238,0.15)", stroke: "#0891b2", text: "#0e4a5b" },
+  backend: { fill: "rgba(52,211,153,0.18)", stroke: "#059669", text: "#065f46" },
+  database: { fill: "rgba(167,139,250,0.2)", stroke: "#7c3aed", text: "#5b21b6" },
+  cloud: { fill: "rgba(251,191,36,0.2)", stroke: "#d97706", text: "#92400e" },
+  security: { fill: "rgba(251,113,133,0.15)", stroke: "#e11d48", text: "#9f1239" },
+  messagebus: { fill: "rgba(251,146,60,0.15)", stroke: "#ea580c", text: "#9a3412" },
+  external: { fill: "rgba(148,163,184,0.2)", stroke: "#64748b", text: "#334155" },
+};
 
 const lightTokens: TokenSet = {
   colors: {
@@ -121,6 +160,7 @@ const lightTokens: TokenSet = {
     minimapBg: "rgba(240,242,247,0.9)",
     minimapViewport: "rgba(79,124,255,0.28)",
     roles: {
+      ...domainRolesLight,
       accent: { fill: "#e8ecff", stroke: "#7c8bd9", text: "#1b2030" },
       success: { fill: "#e6f4ea", stroke: "#5db97a", text: "#12331f" },
       warn: { fill: "#fff3d6", stroke: "#caa54a", text: "#3b2f0b" },
@@ -151,6 +191,7 @@ const darkTokens: TokenSet = {
     minimapBg: "rgba(20,24,34,0.9)",
     minimapViewport: "rgba(111,155,255,0.32)",
     roles: {
+      ...domainRolesDark,
       accent: { fill: "#26314f", stroke: "#6f9bff", text: "#e7eaf2" },
       success: { fill: "#183226", stroke: "#4bbf83", text: "#d6f5e4" },
       warn: { fill: "#33290f", stroke: "#d3ad4e", text: "#f7ecc9" },
@@ -181,6 +222,7 @@ const fancyTokens: TokenSet = {
     minimapBg: "rgba(12,16,34,0.9)",
     minimapViewport: "rgba(139,108,255,0.35)",
     roles: {
+      ...domainRolesDark,
       accent: { fill: "#2a2160", stroke: "#8b6cff", text: "#eef1ff" },
       success: { fill: "#123a2e", stroke: "#3fd39b", text: "#d6ffef" },
       warn: { fill: "#3a2f0f", stroke: "#e6c04d", text: "#fff4cf" },
@@ -196,6 +238,77 @@ const fancyTokens: TokenSet = {
     gradient: true,
     hoverLift: 3,
   },
+};
+
+/**
+ * `arch` — the **archify** look: a near-black slate canvas, monospace type, and
+ * the semantic jewel-tone role palette (tinted fill + saturated stroke). Ported
+ * from archify's dark CSS-variable set (`--bg:#020617`, `--arrow:#64748b`, the
+ * per-type strokes). Pairs with {@link archLightTokens}; both add the full role
+ * vocabulary a component diagram tags nodes with.
+ */
+const archTokens: TokenSet = {
+  colors: {
+    background: "#020617",
+    surface: "#0f172a",
+    surfaceStroke: "#334155",
+    text: "#f1f5f9",
+    textMuted: "#94a3b8",
+    edge: "#64748b",
+    edgeLabelBg: "#020617",
+    edgeLabelText: "#cbd5e1",
+    subgraphFill: "#0b1324",
+    subgraphStroke: "#334155",
+    subgraphText: "#94a3b8",
+    accent: "#34d399",
+    minimapBg: "rgba(2,6,23,0.9)",
+    minimapViewport: "rgba(52,211,153,0.3)",
+    roles: {
+      ...domainRolesDark,
+      accent: { fill: "rgba(14,165,233,0.18)", stroke: "#38bdf8", text: "#e0f2fe" },
+      success: { fill: "rgba(6,78,59,0.55)", stroke: "#34d399", text: "#d1fae5" },
+      warn: { fill: "rgba(120,53,15,0.55)", stroke: "#fbbf24", text: "#fef3c7" },
+      danger: { fill: "rgba(136,19,55,0.5)", stroke: "#fb7185", text: "#ffe4e6" },
+    },
+  },
+  radii: { node: 8, card: 8, label: 4 },
+  spacing: { nodePadX: 16, nodePadY: 12, nodesep: 44, ranksep: 64, fitPadding: 60 },
+  font: { family: MONO_ARCH, mono: MONO, size: 13, lineHeight: 18, weight: 500 },
+  edge: { style: "elbow", width: 1.5, thickWidth: 3, arrowSize: 8 },
+  effects: { nodeShadow: "0 2px 10px rgba(0,0,0,0.45)", gradient: false, hoverLift: 2 },
+};
+
+/** `arch-light` — the archify light palette (`--bg:#f8fafc`) with the same
+ * monospace type and semantic role vocabulary, for light backgrounds. */
+const archLightTokens: TokenSet = {
+  colors: {
+    background: "#f8fafc",
+    surface: "#ffffff",
+    surfaceStroke: "#cbd5e1",
+    text: "#0f172a",
+    textMuted: "#64748b",
+    edge: "#94a3b8",
+    edgeLabelBg: "#f8fafc",
+    edgeLabelText: "#475569",
+    subgraphFill: "#f1f5f9",
+    subgraphStroke: "#cbd5e1",
+    subgraphText: "#64748b",
+    accent: "#059669",
+    minimapBg: "rgba(248,250,252,0.9)",
+    minimapViewport: "rgba(5,150,105,0.25)",
+    roles: {
+      ...domainRolesLight,
+      accent: { fill: "rgba(2,132,199,0.12)", stroke: "#0284c7", text: "#075985" },
+      success: { fill: "rgba(5,150,105,0.14)", stroke: "#059669", text: "#065f46" },
+      warn: { fill: "rgba(217,119,6,0.16)", stroke: "#d97706", text: "#92400e" },
+      danger: { fill: "rgba(225,29,72,0.12)", stroke: "#e11d48", text: "#9f1239" },
+    },
+  },
+  radii: { node: 8, card: 8, label: 4 },
+  spacing: { nodePadX: 16, nodePadY: 12, nodesep: 44, ranksep: 64, fitPadding: 60 },
+  font: { family: MONO_ARCH, mono: MONO, size: 13, lineHeight: 18, weight: 500 },
+  edge: { style: "elbow", width: 1.5, thickWidth: 3, arrowSize: 8 },
+  effects: { nodeShadow: "0 1px 2px rgba(15,23,42,0.1)", gradient: false, hoverLift: 2 },
 };
 
 /** Attach a `cssVars()` method to a plain token set. */
@@ -246,6 +359,8 @@ export const themes: Record<string, Theme> = {
   light: makeTheme("light", lightTokens),
   dark: makeTheme("dark", darkTokens),
   fancy: makeTheme("fancy", fancyTokens),
+  arch: makeTheme("arch", archTokens),
+  "arch-light": makeTheme("arch-light", archLightTokens),
 };
 
 /** Deep-partial of a token set for {@link defineTheme}. */

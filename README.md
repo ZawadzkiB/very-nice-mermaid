@@ -27,8 +27,20 @@ drag / resize / pan / zoom the actual diagrams right in your browser.
 - **CLI** (`vnm`) — render a `.mmd` file (or stdin) to a **self-contained
   interactive HTML** file, a static **SVG**, a **PNG**, or **ASCII** in a
   markdown fence.
-- **Themes** — `light` / `dark` / `fancy` built in; define your own as a token
-  set (JSON for the CLI, an object or CSS variables for the library).
+- **Themes** — `light` / `dark` / `fancy` built in, plus **`arch` / `arch-light`**
+  — an [archify](https://github.com/tt-a1i/archify)-style look: a slate canvas,
+  monospace type, and a seven-type **semantic role** palette (`frontend`,
+  `backend`, `database`, `cloud`, `security`, `messagebus`, `external`) a node
+  opts into with `A[Web]:::frontend`. Define your own as a token set (JSON for the
+  CLI, an object or CSS variables for the library).
+- **Archify-style sequence diagrams** — participants auto-colour by a role inferred
+  from their name, with a **type sub-label**, **role-coloured lifelines**,
+  **activation bars** (`->>+` / `-->>-`, nested), **semantic message colours**
+  (request / response / cache / async / exception) and an auto-legend. Clean +
+  sketch, static + interactive.
+- **Clean routing** — edges keep a reserved gap around every node (nothing routes
+  through a shape), connect at the face nearest the far end, detour around
+  obstacles, and lane-separate parallel runs — elbow **and** curved.
 - **Sketch style** — a hand-drawn (Excalidraw-like) look via `--style sketch`:
   wobbly multi-stroke outlines, open arrowheads, and a bundled handwriting font.
   A separate axis from `--theme`, so it composes with any palette. Deterministic
@@ -277,7 +289,7 @@ vnm render <file|-> [options]
 
   -o, --output <file>       output file (default: stdout)
   -f, --format <fmt>        html | svg | png | md   (inferred from -o if omitted)
-  -t, --theme <name|path>   light | dark | fancy, or a theme .json file
+  -t, --theme <name|path>   light | dark | fancy | arch | arch-light, or a theme .json file
   -s, --style <clean|sketch> drawing style: clean (default) or hand-drawn sketch
       --strict              treat parser warnings as errors
       --layout <file>       apply a portable layout.json (node positions + sizes)

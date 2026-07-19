@@ -9,6 +9,7 @@ import type {
   PositionedNode,
   RoutedEdge,
   PositionedSubgraph,
+  Point,
 } from "../model/index.js";
 import { n } from "../geometry/index.js";
 import type { Theme, PartialTokenSet, RenderStyle } from "../theme/index.js";
@@ -88,10 +89,13 @@ export function renderSvgFromModel(
   }
 
   // Explicit z-layers (FR1), painted bottom→top so nothing legible is covered:
-  //   1 subgraph boxes → 2 edges → 3 edge labels → 4 subgraph titles → 5 nodes.
-  // Emitting all edges before any label/title means a later edge can never paint
-  // over an earlier label (issue 2) or a subgraph title (issue 1); the runtime
-  // twin (buildSvg) mirrors this order for byte-parity.
+  //   1 subgraph boxes → 2 edges → 3 edge labels → 4 subgraph titles → 5 nodes
+  //   → 6 arrowhead caps. Emitting all edges before any label/title means a later
+  // edge can never paint over an earlier label (issue 2) or a subgraph title
+  // (issue 1). Layer 6 re-draws only the arrowheads above the nodes so a head
+  // ending on/inside a node (a DB cylinder's cap, a short interior leg) is never
+  // hidden by the node fill (layer 5). The runtime twin (buildSvg) mirrors this
+  // order for byte-parity.
   for (const sg of model.subgraphs) parts.push(renderSubgraphBox(sg, theme)); // 1
   for (const edge of model.edges) parts.push(renderEdge(edge, theme, sketch)); // 2
   for (const edge of model.edges) {
@@ -99,6 +103,7 @@ export function renderSvgFromModel(
   }
   for (const sg of model.subgraphs) parts.push(renderSubgraphTitle(sg, theme)); // 4
   for (const node of model.nodes) parts.push(renderNode(node, model, theme, sketch)); // 5
+  for (const edge of model.edges) parts.push(renderEdgeArrowCaps(edge, theme, sketch)); // 6
 
   parts.push("</svg>");
   return parts.join("\n");
@@ -184,6 +189,60 @@ function renderEdge(edge: RoutedEdge, theme: Theme, sketch: boolean): string {
   // The label is emitted in its own later layer (FR1) by renderSvgFromModel, not
   // here, so a subsequent edge's path can never paint over it.
   return parts.join("");
+}
+
+/**
+ * Layer 6 — arrowhead caps. Re-draws each edge's arrowhead ABOVE the node layer
+ * so a head that lands on/inside a node (a DB cylinder's curved cap, or a short
+ * interior approach leg) is never repainted over by the node fill. A one-segment
+ * stub of the final leg carries the SAME triangle marker, so where the head
+ * already cleared the border the cap lands pixel-identically over the layer-2
+ * marker (no doubling); where it was occluded it lifts the head on top. Sketch
+ * re-emits its deterministic open-V head (same key → identical geometry).
+ * Mirrored in the runtime twin (svgEdge caps + live gArrows) — keep in lockstep.
+ */
+function renderEdgeArrowCaps(edge: RoutedEdge, theme: Theme, sketch: boolean): string {
+  const pts = edge.points;
+  const m = pts.length;
+  if (m < 2 || (!edge.arrows.end && !edge.arrows.start)) return "";
+  const t = theme.tokens;
+  const width = edge.kind === "thick" ? t.edge.thickWidth : t.edge.width;
+  if (sketch) {
+    const key = edge.from + "->" + edge.to;
+    const arr: Pt[] = pts.map((p) => [p.x, p.y]);
+    const base = ` fill="none" stroke="${t.colors.edge}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"`;
+    const out: string[] = [];
+    if (edge.arrows.end) out.push(`<path class="vnm-arrow-cap" d="${openArrowhead(arr[m - 1]!, arr[m - 2]!, t.edge.arrowSize, key + "@end")}"${base}/>`);
+    if (edge.arrows.start) out.push(`<path class="vnm-arrow-cap" d="${openArrowhead(arr[0]!, arr[1]!, t.edge.arrowSize, key + "@start")}"${base}/>`);
+    return out.join("");
+  }
+  const out: string[] = [];
+  if (edge.arrows.end) out.push(capEnd(pts[m - 2]!, pts[m - 1]!, t.edge.arrowSize, t.colors.edge, width));
+  if (edge.arrows.start) out.push(capStart(pts[0]!, pts[1]!, t.edge.arrowSize, t.colors.edge, width));
+  return out.join("");
+}
+
+/** A stub ending at the arrow `tip` (marker-end), approaching from `prev` so the
+ *  marker's `orient="auto"` matches the real edge's final leg. */
+function capEnd(prev: Point, tip: Point, arrowSize: number, color: string, width: number): string {
+  const dx = tip.x - prev.x;
+  const dy = tip.y - prev.y;
+  const mag = Math.hypot(dx, dy) || 1;
+  const len = Math.min(arrowSize + 4, mag);
+  const bx = tip.x - (dx / mag) * len;
+  const by = tip.y - (dy / mag) * len;
+  return `<path class="vnm-arrow-cap" d="M ${n(bx)} ${n(by)} L ${n(tip.x)} ${n(tip.y)}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>`;
+}
+
+/** A stub starting at the arrow `head` (marker-start), heading toward `next`. */
+function capStart(head: Point, next: Point, arrowSize: number, color: string, width: number): string {
+  const dx = next.x - head.x;
+  const dy = next.y - head.y;
+  const mag = Math.hypot(dx, dy) || 1;
+  const len = Math.min(arrowSize + 4, mag);
+  const bx = head.x + (dx / mag) * len;
+  const by = head.y + (dy / mag) * len;
+  return `<path class="vnm-arrow-cap" d="M ${n(head.x)} ${n(head.y)} L ${n(bx)} ${n(by)}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" marker-start="url(#vnm-arrow-start)"/>`;
 }
 
 /**

@@ -18,7 +18,9 @@ export function buildClassPayload(
   theme: Theme,
   opts: InteractiveOptions = {},
 ): RuntimePayload {
-  return buildPayload(layout.model, theme, opts);
+  // arrowCaps off: class relations use per-type UML markers (renderClassSvg);
+  // a generic vnm-arrow cap would draw over a diamond/triangle relation head.
+  return buildPayload(layout.model, theme, { ...opts, arrowCaps: false });
 }
 
 /** Mount an interactive (draggable, re-routing) class diagram into `el`. */
@@ -28,5 +30,5 @@ export function mountClass(
   theme: Theme,
   opts: InteractiveOptions = {},
 ): RuntimeHandle {
-  return vnmRuntime(el, buildPayload(layout.model, theme, opts));
+  return vnmRuntime(el, buildPayload(layout.model, theme, { ...opts, arrowCaps: false }));
 }

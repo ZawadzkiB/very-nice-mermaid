@@ -62,6 +62,51 @@ flowchart TD
 
 ---
 
+## Architecture · arch theme
+
+The [archify](https://github.com/tt-a1i/archify) look — a slate canvas, monospace type,
+per-type [semantic role](../themes/#semantic-node-roles) colours, and clean routing that
+keeps a reserved gap around every shape and detours around obstacles.
+
+```mermaid
+flowchart LR
+  user[User Browser]:::external
+  subgraph edge [Edge]
+    cdn[CDN / WAF]:::cloud
+    web[Web App]:::frontend
+  end
+  subgraph services [Services]
+    api[API Gateway]:::backend
+    auth[Auth Service]:::security
+    worker[Worker]:::backend
+  end
+  subgraph data [Data]
+    db[(PostgreSQL)]:::database
+    cache[(Redis)]:::database
+    bus[Kafka]:::messagebus
+  end
+  user --> cdn --> web --> api
+  api -->|verify JWT| auth
+  api --> db
+  api --> cache
+  api --> bus --> worker --> db
+```
+
+<iframe class="vnm-embed" src="{{ '/interactive/architecture-clean-arch.html' | relative_url }}?v={{ cachebust }}" title="Interactive architecture (arch)" loading="lazy"></iframe>
+
+[Open full-screen ↗]({{ '/interactive/architecture-clean-arch.html' | relative_url }}?v={{ cachebust }}){: .btn .btn-outline }
+
+<div class="vnm-thumbs" markdown="0">
+  <a href="{{ '/interactive/architecture-clean-arch.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/architecture-clean-arch.png' | relative_url }}?v={{ cachebust }}" alt="architecture clean arch"><span class="cap">clean · arch</span></a>
+  <a href="{{ '/interactive/architecture-clean-arch-light.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/architecture-clean-arch-light.png' | relative_url }}?v={{ cachebust }}" alt="architecture clean arch-light"><span class="cap">clean · arch-light</span></a>
+  <a href="{{ '/interactive/architecture-clean-dark.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/architecture-clean-dark.png' | relative_url }}?v={{ cachebust }}" alt="architecture clean dark"><span class="cap">clean · dark</span></a>
+  <a href="{{ '/interactive/architecture-clean-fancy.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/architecture-clean-fancy.png' | relative_url }}?v={{ cachebust }}" alt="architecture clean fancy"><span class="cap">clean · fancy</span></a>
+  <a href="{{ '/interactive/architecture-sketch-arch.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/architecture-sketch-arch.png' | relative_url }}?v={{ cachebust }}" alt="architecture sketch arch"><span class="cap">sketch · arch</span></a>
+  <a href="{{ '/interactive/architecture-sketch-fancy.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/architecture-sketch-fancy.png' | relative_url }}?v={{ cachebust }}" alt="architecture sketch fancy"><span class="cap">sketch · fancy</span></a>
+</div>
+
+---
+
 ## Sequence
 
 ```mermaid
@@ -87,6 +132,48 @@ sequenceDiagram
   <a href="{{ '/interactive/sequence-sketch-light.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/sequence-sketch-light.png' | relative_url }}?v={{ cachebust }}" alt="sequence sketch light"><span class="cap">sketch · light</span></a>
   <a href="{{ '/interactive/sequence-sketch-dark.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/sequence-sketch-dark.png' | relative_url }}?v={{ cachebust }}" alt="sequence sketch dark"><span class="cap">sketch · dark</span></a>
   <a href="{{ '/interactive/sequence-sketch-fancy.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/sequence-sketch-fancy.png' | relative_url }}?v={{ cachebust }}" alt="sequence sketch fancy"><span class="cap">sketch · fancy</span></a>
+</div>
+
+---
+
+## Auth flow · archify sequence
+
+Participants auto-colour by an inferred role, with a **type sub-label**, **role-coloured
+lifelines**, **activation bars** (`->>+` / `-->>-`), **semantic message colours** (request
+/ response / cache / async) and an auto-legend.
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant W as Web App
+  participant A as API Gateway
+  participant S as Auth Service
+  participant C as Redis
+  participant D as PostgreSQL
+  participant K as Kafka
+  U->>+W: click "Log in"
+  W->>+A: POST /login
+  A->>+S: verify credentials
+  S->>+D: lookup user
+  D-->>-S: user record
+  S->>S: sign JWT
+  S-->>-A: 200 + JWT
+  A->>C: cache session
+  A->>K: emit login event
+  A-->>-W: Set-Cookie: jwt
+  W-->>-U: render dashboard
+```
+
+<iframe class="vnm-embed" src="{{ '/interactive/auth-sequence-clean-arch.html' | relative_url }}?v={{ cachebust }}" title="Interactive auth-flow sequence (arch)" loading="lazy"></iframe>
+
+[Open full-screen ↗]({{ '/interactive/auth-sequence-clean-arch.html' | relative_url }}?v={{ cachebust }}){: .btn .btn-outline }
+
+<div class="vnm-thumbs" markdown="0">
+  <a href="{{ '/interactive/auth-sequence-clean-arch.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/auth-sequence-clean-arch.png' | relative_url }}?v={{ cachebust }}" alt="auth-sequence clean arch"><span class="cap">clean · arch</span></a>
+  <a href="{{ '/interactive/auth-sequence-clean-arch-light.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/auth-sequence-clean-arch-light.png' | relative_url }}?v={{ cachebust }}" alt="auth-sequence clean arch-light"><span class="cap">clean · arch-light</span></a>
+  <a href="{{ '/interactive/auth-sequence-clean-dark.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/auth-sequence-clean-dark.png' | relative_url }}?v={{ cachebust }}" alt="auth-sequence clean dark"><span class="cap">clean · dark</span></a>
+  <a href="{{ '/interactive/auth-sequence-sketch-arch.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/auth-sequence-sketch-arch.png' | relative_url }}?v={{ cachebust }}" alt="auth-sequence sketch arch"><span class="cap">sketch · arch</span></a>
+  <a href="{{ '/interactive/auth-sequence-sketch-fancy.html' | relative_url }}?v={{ cachebust }}" target="_blank"><img loading="lazy" src="{{ '/assets/auth-sequence-sketch-fancy.png' | relative_url }}?v={{ cachebust }}" alt="auth-sequence sketch fancy"><span class="cap">sketch · fancy</span></a>
 </div>
 
 ---

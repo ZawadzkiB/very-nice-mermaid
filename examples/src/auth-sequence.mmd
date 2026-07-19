@@ -1,0 +1,19 @@
+sequenceDiagram
+  participant U as User
+  participant W as Web App
+  participant A as API Gateway
+  participant S as Auth Service
+  participant C as Redis
+  participant D as PostgreSQL
+  participant K as Kafka
+  U->>+W: click "Log in"
+  W->>+A: POST /login
+  A->>+S: verify credentials
+  S->>+D: lookup user
+  D-->>-S: user record
+  S->>S: sign JWT
+  S-->>-A: 200 + JWT
+  A->>C: cache session
+  A->>K: emit login event
+  A-->>-W: Set-Cookie: jwt
+  W-->>-U: render dashboard

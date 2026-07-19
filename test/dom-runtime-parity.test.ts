@@ -762,7 +762,9 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     // getComputedStyle stub — restore it before mounting the runtime.
     (globalThis as unknown as { getComputedStyle: () => { position: string } }).getComputedStyle =
       () => ({ position: "relative" });
-    const { handle } = mountFakeH(buildPayload(lay.model, theme, { minimap: false, persist: false }));
+    // arrowCaps:false mirrors the production state mount (mountState) — renderStateSvg
+    // draws no layer-6 caps, so the runtime twin must not either (parity).
+    const { handle } = mountFakeH(buildPayload(lay.model, theme, { minimap: false, persist: false, arrowCaps: false }));
     const edgeD = (s: string): string[] =>
       [...s.matchAll(/<path\b[^>]*>/g)]
         .map((m) => m[0])
@@ -821,7 +823,9 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     // getComputedStyle stub — restore it before mounting the runtime.
     (globalThis as unknown as { getComputedStyle: () => { position: string } }).getComputedStyle =
       () => ({ position: "relative" });
-    const { handle } = mountFakeH(buildPayload(lay.model, theme, { minimap: false, persist: false }));
+    // arrowCaps:false mirrors the production state mount (mountState) — renderStateSvg
+    // draws no layer-6 caps, so the runtime twin must not either (parity).
+    const { handle } = mountFakeH(buildPayload(lay.model, theme, { minimap: false, persist: false, arrowCaps: false }));
     const staticSvg = renderStateSvg(lay, theme);
     const edgeD = (s: string): string[] =>
       [...s.matchAll(/<path\b[^>]*>/g)]

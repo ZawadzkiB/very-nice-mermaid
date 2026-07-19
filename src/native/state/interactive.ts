@@ -18,7 +18,8 @@ export function buildStatePayload(
   theme: Theme,
   opts: InteractiveOptions = {},
 ): RuntimePayload {
-  return buildPayload(layout.model, theme, opts);
+  // arrowCaps off: renderStateSvg (the static twin) draws no top-layer caps.
+  return buildPayload(layout.model, theme, { ...opts, arrowCaps: false });
 }
 
 /** Mount an interactive (draggable, re-routing) state diagram into `el`. */
@@ -28,5 +29,5 @@ export function mountState(
   theme: Theme,
   opts: InteractiveOptions = {},
 ): RuntimeHandle {
-  return vnmRuntime(el, buildPayload(layout.model, theme, opts));
+  return vnmRuntime(el, buildPayload(layout.model, theme, { ...opts, arrowCaps: false }));
 }

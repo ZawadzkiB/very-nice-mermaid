@@ -13,6 +13,9 @@ exports[`renderSvg > produces a stable, well-formed SVG for the dark theme 1`] =
 <g><polygon points="110,110 169.5,141.5 110,173 50.5,141.5" fill="#1a1f2b" stroke="#3a4152" stroke-width="1.5"/><text x="110" y="141.5" fill="#e7eaf2" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Choice</text></g>
 <g><rect x="8" y="239" width="84" height="42" rx="21" fill="#1a1f2b" stroke="#3a4152" stroke-width="1.5"/><text x="50" y="260" fill="#e7eaf2" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Done</text></g>
 <g><path d="M 132 242.72 C 132 230.08 208 230.08 208 242.72 L 208 277.28 C 208 289.92 132 289.92 132 277.28 Z" fill="#1a1f2b" stroke="#3a4152" stroke-width="1.5"/><path d="M 132 242.72 C 132 255.36 208 255.36 208 242.72" fill="none" stroke="#3a4152" stroke-width="1.5"/><text x="170" y="260" fill="#e7eaf2" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Store</text></g>
+<path class="vnm-arrow-cap" d="M 110 98 L 110 110" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 50 227 L 50 239" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 170 221 L 170 233" fill="none" stroke="#6b7488" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 </svg>"
 `;
 
@@ -29,6 +32,9 @@ exports[`renderSvg > produces a stable, well-formed SVG for the fancy theme 1`] 
 <g filter="url(#vnm-shadow)"><polygon points="119.5,127 182,162.5 119.5,198 57,162.5" fill="#151b34" stroke="#3b4a7a" stroke-width="1.5"/><text x="119.5" y="162.5" fill="#eef1ff" font-size="14" font-weight="600" text-anchor="middle" dominant-baseline="central">Choice</text></g>
 <g filter="url(#vnm-shadow)"><rect x="8" y="276" width="90" height="47" rx="23.5" fill="#151b34" stroke="#3b4a7a" stroke-width="1.5"/><text x="53" y="299.5" fill="#eef1ff" font-size="14" font-weight="600" text-anchor="middle" dominant-baseline="central">Done</text></g>
 <g filter="url(#vnm-shadow)"><path d="M 146 280 C 146 267 226 267 226 280 L 226 319 C 226 332 146 332 146 319 Z" fill="#151b34" stroke="#3b4a7a" stroke-width="1.5"/><path d="M 146 280 C 146 293 226 293 226 280" fill="none" stroke="#3b4a7a" stroke-width="1.5"/><text x="186" y="299.5" fill="#eef1ff" font-size="14" font-weight="600" text-anchor="middle" dominant-baseline="central">Store</text></g>
+<path class="vnm-arrow-cap" d="M 119.5 114 L 119.5 127" fill="none" stroke="#7d88c4" stroke-width="1.75" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 53 263 L 53 276" fill="none" stroke="#7d88c4" stroke-width="1.75" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 186 257 L 186 270" fill="none" stroke="#7d88c4" stroke-width="1.75" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 </svg>"
 `;
 
@@ -45,5 +51,8 @@ exports[`renderSvg > produces a stable, well-formed SVG for the light theme 1`] 
 <g><polygon points="110,110 169.5,141.5 110,173 50.5,141.5" fill="#ffffff" stroke="#c7cdd9" stroke-width="1.5"/><text x="110" y="141.5" fill="#1b2030" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Choice</text></g>
 <g><rect x="8" y="239" width="84" height="42" rx="21" fill="#ffffff" stroke="#c7cdd9" stroke-width="1.5"/><text x="50" y="260" fill="#1b2030" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Done</text></g>
 <g><path d="M 132 242.72 C 132 230.08 208 230.08 208 242.72 L 208 277.28 C 208 289.92 132 289.92 132 277.28 Z" fill="#ffffff" stroke="#c7cdd9" stroke-width="1.5"/><path d="M 132 242.72 C 132 255.36 208 255.36 208 242.72" fill="none" stroke="#c7cdd9" stroke-width="1.5"/><text x="170" y="260" fill="#1b2030" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Store</text></g>
+<path class="vnm-arrow-cap" d="M 110 98 L 110 110" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 50 227 L 50 239" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 170 221 L 170 233" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
 </svg>"
 `;

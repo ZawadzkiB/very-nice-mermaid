@@ -19,6 +19,27 @@ import type { Rect } from "./index.js";
 /** Message line style: `->>`/`->` → solid, `-->>`/`-->` → dashed. */
 export type SequenceArrowKind = "solid" | "dashed";
 
+/** Archify-style semantic kind of a message (drives its color): request/response/exception/cache/async. */
+export type MessageSemantic = "request" | "response" | "exception" | "cache" | "async";
+
+/** An activation span: a participant is "active" from message `startOrder` to `endOrder`. */
+export interface SequenceActivation {
+  participant: string;
+  startOrder: number;
+  endOrder: number;
+  /** Nesting depth (0 = outermost) for side-by-side stacked bars. */
+  depth: number;
+}
+
+/** A positioned activation bar (a colored rect on a lifeline). */
+export interface PositionedActivation {
+  participant: string;
+  x: number;
+  width: number;
+  startY: number;
+  endY: number;
+}
+
 /** A participant / actor column (id, display label, left-to-right order). */
 export interface SequenceParticipant {
   /** Stable id mermaid uses for `data-from`/`data-to` (an `as` alias's left side). */
@@ -48,6 +69,8 @@ export interface SequenceModel {
   kind: "sequence";
   participants: SequenceParticipant[];
   messages: SequenceMessage[];
+  /** Activation spans (from `activate`/`deactivate` or `->>+` / `-->>-`); absent when none. */
+  activations?: SequenceActivation[];
 }
 
 /** A participant with layout geometry (center-based `x`; box extents). */
@@ -56,6 +79,8 @@ export interface PositionedParticipant extends SequenceParticipant {
   x: number;
   width: number;
   height: number;
+  /** Archify-style TYPE sub-label rendered under the name (empty/absent when unrecognized). */
+  type?: string;
 }
 
 /** A message with layout geometry. */
@@ -70,6 +95,8 @@ export interface PositionedMessage extends SequenceMessage {
   loopHeight?: number;
   /** Horizontal extent of a self-message loop (only when `self`). */
   loopWidth?: number;
+  /** Archify semantic kind (color) resolved by the layout. */
+  semantic?: MessageSemantic;
 }
 
 /** The fully positioned sequence diagram every renderer consumes. */
@@ -84,6 +111,12 @@ export interface SequenceLayout {
   /** Lifelines run from `lifelineTop` (below the top boxes) to `lifelineBottom`. */
   lifelineTop: number;
   lifelineBottom: number;
+  /** Positioned activation bars (empty when the diagram has no activations). */
+  activations: PositionedActivation[];
+  /** Distinct message semantics present, in display order — drives the legend (empty → no legend). */
+  legend: MessageSemantic[];
+  /** Y of the legend row baseline (only meaningful when `legend` is non-empty). */
+  legendY: number;
   bounds: Rect;
 }
 

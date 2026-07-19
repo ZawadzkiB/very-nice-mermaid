@@ -9,7 +9,7 @@ import { extname } from "node:path";
 import { parse, ParseError } from "../parser/index.js";
 import { layout, applyPositions } from "../layout/index.js";
 import type { EdgeAnchorOverride } from "../geometry/index.js";
-import { resolveTheme, type Theme, type RenderStyle } from "../theme/index.js";
+import { resolveTheme, themes, type Theme, type RenderStyle } from "../theme/index.js";
 import { renderSvg } from "../render/svg.js";
 import { renderMarkdown } from "../render/ascii.js";
 import { renderHtml } from "../export/html.js";
@@ -34,7 +34,7 @@ import type { Diagnostic, PositionedModel } from "../model/index.js";
 
 type Format = "html" | "svg" | "png" | "md";
 
-const VERSION = "0.6.6";
+const VERSION = "0.7.0";
 
 interface RenderOpts {
   output?: string;
@@ -48,6 +48,7 @@ interface RenderOpts {
   background?: string;
   title?: string;
   bridges?: boolean;
+  persist?: boolean;
 }
 
 /** Run the CLI. Returns an exit code (0 ok, 1 error, 2 usage). */
@@ -68,7 +69,7 @@ export async function run(argv: string[]): Promise<number> {
     .description("render a diagram (native flowchart/sequence/class/state, or the mermaid.js fallback tier)")
     .option("-o, --output <file>", "output file (default: stdout)")
     .option("-f, --format <fmt>", "html | svg | png | md (inferred from -o if omitted)")
-    .option("-t, --theme <name|path>", "theme name (light|dark|fancy) or path to a theme .json", "light")
+    .option("-t, --theme <name|path>", "theme name (light|dark|fancy|arch|arch-light) or path to a theme .json", "light")
     .option("-s, --style <clean|sketch>", "drawing style: clean (default) or hand-drawn sketch (flowchart)", "clean")
     .option("--no-bridges", "disable edge-crossing bridges (default: on for clean elbow edges in flow/state/class)")
     .option("--strict", "treat parser warnings AND fallback degradations as errors")
@@ -77,6 +78,7 @@ export async function run(argv: string[]): Promise<number> {
     .option("--scale <n>", "PNG scale factor (HiDPI)")
     .option("--background <color>", "background color, or 'transparent'")
     .option("--title <title>", "HTML document title")
+    .option("--no-persist", "HTML: do not save/restore the dragged layout in localStorage (always open at the default)")
     .action(async (input: string, opts: RenderOpts) => {
       exitCode = await doRender(input, opts);
     });
@@ -219,7 +221,7 @@ async function doClassRender(
     }
     const out =
       format === "html"
-        ? renderHtml(cls.model, { theme, title: opts.title, style, bridges: opts.bridges })
+        ? renderHtml(cls.model, { theme, title: opts.title, style, bridges: opts.bridges, persist: opts.persist })
         : renderClassSvg(cls, theme, opts.background, style);
     if (opts.output) writeFileSync(opts.output, out, "utf8");
     else process.stdout.write(out.endsWith("\n") ? out : out + "\n");
@@ -268,7 +270,7 @@ async function doStateRender(
     }
     const out =
       format === "html"
-        ? renderHtml(st.model, { theme, title: opts.title, style, bridges: opts.bridges })
+        ? renderHtml(st.model, { theme, title: opts.title, style, bridges: opts.bridges, persist: opts.persist })
         : renderStateSvg(st, theme, opts.background, style);
     if (opts.output) writeFileSync(opts.output, out, "utf8");
     else process.stdout.write(out.endsWith("\n") ? out : out + "\n");
@@ -390,7 +392,7 @@ async function doNativeRender(
       return 0;
     }
     let out: string;
-    if (format === "html") out = renderHtml(positioned, { theme, title: opts.title, style, bridges: opts.bridges });
+    if (format === "html") out = renderHtml(positioned, { theme, title: opts.title, style, bridges: opts.bridges, persist: opts.persist });
     else if (format === "md") out = renderMarkdown(positioned, { theme });
     else out = renderSvg(positioned, { theme, background: opts.background, style });
     if (opts.output) writeFileSync(opts.output, out, "utf8");
@@ -506,7 +508,7 @@ function resolveFormat(explicit: string | undefined, output: string | undefined)
 
 function resolveThemeArg(value: string | undefined): Theme {
   if (!value) return resolveTheme("light");
-  const builtin = value === "light" || value === "dark" || value === "fancy";
+  const builtin = Object.prototype.hasOwnProperty.call(themes, value);
   if (!builtin && (value.endsWith(".json") || existsSync(value))) {
     const tokens = JSON.parse(readFileSync(value, "utf8"));
     return resolveTheme(tokens);

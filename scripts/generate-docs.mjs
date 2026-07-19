@@ -26,7 +26,7 @@ mkdirSync(htmlDir, { recursive: true });
 mkdirSync(pngDir, { recursive: true });
 
 const STYLES = ["clean", "sketch"];
-const THEMES = ["light", "dark", "fancy"];
+const THEMES = ["light", "dark", "fancy", "arch", "arch-light"];
 const title = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const sources = readdirSync(srcDir)
   .filter((f) => f.endsWith(".mmd"))

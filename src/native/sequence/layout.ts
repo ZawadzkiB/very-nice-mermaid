@@ -14,11 +14,14 @@ import type {
   SequenceLayout,
   PositionedParticipant,
   PositionedMessage,
+  PositionedActivation,
+  MessageSemantic,
 } from "../../model/sequence.js";
 import type { Point } from "../../model/index.js";
 import type { Theme } from "../../theme/index.js";
 import { themes } from "../../theme/index.js";
 import { contentBounds, type NodeBox } from "../../geometry/index.js";
+import { typeLabel, messageSemantic, SEMANTIC_ORDER } from "./semantics.js";
 
 export interface SequenceLayoutOptions {
   theme?: Theme;
@@ -61,7 +64,11 @@ export function layoutSequence(
   const t = theme.tokens;
   const fontSize = t.font.size;
   const lineHeight = t.font.lineHeight;
-  const boxH = lineHeight + t.spacing.nodePadY * 2;
+  // Archify: a two-line box (name + TYPE sub-label) when any participant has a recognized type.
+  const types = model.participants.map((p) => typeLabel(p.label));
+  const twoLine = types.some((ty) => ty !== "");
+  const typeFont = fontSize - 2;
+  const boxH = lineHeight * (twoLine ? 2 : 1) + t.spacing.nodePadY * 2;
   const rowPitch = Math.max(44, lineHeight * 2 + 8);
   const topGap = lineHeight + 12;
   const bottomGap = lineHeight + 8;
@@ -71,8 +78,12 @@ export function layoutSequence(
   model.participants.forEach((p, i) => order.set(p.id, i));
 
   // ---- participant box widths + horizontal positions ----
-  const widths = model.participants.map((p) =>
-    Math.max(MIN_BOX_W, textWidth(p.label, fontSize) + t.spacing.nodePadX * 2),
+  const widths = model.participants.map((p, i) =>
+    Math.max(
+      MIN_BOX_W,
+      textWidth(p.label, fontSize) + t.spacing.nodePadX * 2,
+      textWidth(types[i]!, typeFont) + t.spacing.nodePadX * 2,
+    ),
   );
 
   // widest adjacent-pair message label drives that column gap so the label fits.
@@ -107,6 +118,7 @@ export function layoutSequence(
     x: xs[i]!,
     width: widths[i]!,
     height: boxH,
+    type: types[i] || undefined,
   }));
 
   // ---- ordered messages down the lifelines ----
@@ -118,10 +130,12 @@ export function layoutSequence(
     const toI = order.get(m.to);
     if (fromI === undefined || toI === undefined) continue;
     const fromX = xs[fromI]!;
+    const semantic = messageSemantic(m.kind, m.label);
     if (m.self) {
       const toX = fromX;
       messages.push({
         ...m,
+        semantic,
         y,
         fromX,
         toX,
@@ -136,6 +150,7 @@ export function layoutSequence(
       const toX = xs[toI]!;
       messages.push({
         ...m,
+        semantic,
         y,
         fromX,
         toX,
@@ -149,6 +164,31 @@ export function layoutSequence(
 
   const lifelineBottom = lastBottom + bottomGap;
   const boxBottom = lifelineBottom + boxH / 2;
+
+  // ---- activation bars: from message order (activate) to message order (deactivate) ----
+  const ACTIVATION_W = 10;
+  const byOrder = new Map(messages.map((m) => [m.order, m]));
+  const activations: PositionedActivation[] = (model.activations ?? []).map((a) => {
+    const pi = order.get(a.participant);
+    const px = pi !== undefined ? xs[pi]! : 0;
+    const sm = byOrder.get(a.startOrder);
+    const em = byOrder.get(a.endOrder);
+    const startY = sm ? sm.y : lifelineTop;
+    const endY = em ? (em.self && em.loopHeight ? em.y + em.loopHeight : em.y) : lifelineBottom;
+    return {
+      participant: a.participant,
+      x: px + a.depth * (ACTIVATION_W - 3),
+      width: ACTIVATION_W,
+      startY,
+      endY: Math.max(endY, startY + 10),
+    };
+  });
+
+  // ---- legend of the message semantics actually used (archify) ----
+  const used = new Set(messages.map((m) => m.semantic));
+  const legend: MessageSemantic[] = SEMANTIC_ORDER.filter((s) => used.has(s));
+  const legendH = legend.length ? lineHeight + 6 : 0;
+  const legendY = boxBottom + boxH / 2 + 22 + legendH / 2;
 
   // ---- bounds over both box rows + message extents + labels ----
   const boxes: NodeBox[] = [];
@@ -170,6 +210,11 @@ export function layoutSequence(
       extra.push({ x: m.fromX + m.loopWidth, y: m.y + m.loopHeight });
     }
   }
+  // Reserve space for the legend row so it never clips.
+  if (legend.length) {
+    const legendLeft = xs[0]! - widths[0]! / 2;
+    extra.push({ x: legendLeft, y: legendY - legendH / 2 }, { x: legendLeft + legend.length * 132, y: legendY + legendH / 2 });
+  }
   const bounds = contentBounds(boxes, extra, BOUNDS_PADDING);
 
   return {
@@ -180,6 +225,9 @@ export function layoutSequence(
     boxBottom,
     lifelineTop,
     lifelineBottom,
+    activations,
+    legend,
+    legendY,
     bounds,
   };
 }

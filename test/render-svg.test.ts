@@ -127,13 +127,16 @@ describe("renderSvg", () => {
 
     it("emits every edge path before any edge label or subgraph title (FR1)", () => {
       const svg = renderSvg(DSL, { theme: "light" });
+      // Layer-6 arrowhead caps (class="vnm-arrow-cap") are re-drawn ABOVE the nodes
+      // by design; strip them so this checks the FR1 invariant for the edge TRUNKS.
+      const trunk = svg.replace(/<path class="vnm-arrow-cap"[^>]*\/>/g, "");
       // edge paths are the only fill="none" strokes here (nodes are rects)
-      const lastEdgePath = svg.lastIndexOf('fill="none"');
+      const lastEdgePath = trunk.lastIndexOf('fill="none"');
       expect(lastEdgePath).toBeGreaterThan(-1);
       // labels + the subgraph title all come AFTER the last edge → never covered
-      expect(svg.indexOf(">feed<")).toBeGreaterThan(lastEdgePath);
-      expect(svg.indexOf(">alt<")).toBeGreaterThan(lastEdgePath);
-      expect(svg.indexOf(">Engine<")).toBeGreaterThan(lastEdgePath);
+      expect(trunk.indexOf(">feed<")).toBeGreaterThan(lastEdgePath);
+      expect(trunk.indexOf(">alt<")).toBeGreaterThan(lastEdgePath);
+      expect(trunk.indexOf(">Engine<")).toBeGreaterThan(lastEdgePath);
     });
 
     it("draws the title on an opaque plate, with node groups painted last (FR2/FR1)", () => {

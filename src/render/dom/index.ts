@@ -55,7 +55,8 @@ export function mount(el: HTMLElement, dsl: MountInput, opts: MountOptions = {})
   // Already-built class/state layouts carry a flowchart PositionedModel — mount
   // them through the same vnmRuntime (full draggable nodes + live edge re-routing).
   if (isClassLayout(dsl) || isStateLayout(dsl)) {
-    return vnmRuntime(el, buildPayload(dsl.model, resolveTheme(opts.theme), opts));
+    // arrowCaps off: native class/state static twins draw no top-layer caps.
+    return vnmRuntime(el, buildPayload(dsl.model, resolveTheme(opts.theme), { ...opts, arrowCaps: false }));
   }
   // A pre-built sequence layout mounts into the pan/zoom shell; wrap so the
   // static return type stays RuntimeHandle.
