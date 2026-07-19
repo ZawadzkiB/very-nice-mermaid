@@ -18,7 +18,7 @@ runtime and no headless browser**.
 drag / resize / pan / zoom the actual diagrams right in your browser.
 
 <p align="center">
-  <img src="./assets/example-fancy.png" alt="A microservices flowchart rendered in the fancy theme" width="600">
+  <img src="./assets/example-arch.png" alt="A microservices flowchart in the arch theme, hand-drawn sketch style, coloured by semantic role" width="600">
 </p>
 
 - **Library** — parse DSL and `mount()` an **interactive** diagram (drag + resize nodes,

@@ -34,6 +34,8 @@ const HEROES = [
   { out: "example-light", src: "ci-pipeline.mmd", theme: "light", style: "clean" },
   { out: "example-fancy", src: "microservices.mmd", theme: "fancy", style: "clean" },
   { out: "example-sketch", src: "cache-lookup.mmd", theme: "light", style: "sketch" },
+  // the README hero: archify look — arch theme + hand-drawn sketch, semantic role colours.
+  { out: "example-arch", src: "arch-microservices.mmd", theme: "arch", style: "sketch" },
 ];
 
 let count = 0;
