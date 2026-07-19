@@ -25,6 +25,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
   let tokens = payload.theme.tokens;
   let edgeStyle = payload.theme.edgeStyle;
   const sketch = opt.style === "sketch";
+  const arrowCaps = opt.arrowCaps !== false;
   const SK_ROUGHNESS = 2.4;
   const SK_BOWING = 2.2;
   const SK_OUTLINE_STROKES = 2;
@@ -246,6 +247,14 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     card.appendChild(inner);
     world.appendChild(card);
     cards[nd.id] = card;
+  }
+  const capOverlay = arrowCaps ? doc.createElementNS(SVGNS, "svg") : null;
+  if (capOverlay) {
+    capOverlay.setAttribute("class", "vnm-arrow-caps");
+    capOverlay.setAttribute("width", String(contentW));
+    capOverlay.setAttribute("height", String(contentH));
+    capOverlay.setAttribute("style", "position:absolute;left:0;top:0;overflow:visible;pointer-events:none;");
+    world.appendChild(capOverlay);
   }
   const nodeShapeEls = {};
   const stateMarkerEls = {};
@@ -1088,8 +1097,160 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     }
     return out;
   }
+  const NODE_AVOID_MARGIN2 = 14;
+  const NODE_AVOID_MIN_CROSS2 = 14;
+  const NODE_AVOID_PASSES2 = 4;
+  const isOrthoT = (pts) => {
+    for (let i = 0; i + 1 < pts.length; i++) if (Math.abs(pts[i].x - pts[i + 1].x) >= 0.5 && Math.abs(pts[i].y - pts[i + 1].y) >= 0.5) return false;
+    return true;
+  };
+  const orthoPathT = (pts) => edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts);
+  function avoidNodes2(edges, pairs, nodeBoxes) {
+    if (!nodeBoxes.length) return;
+    const moveLane2 = (e, vertical, seg, target) => {
+      const p = e.points;
+      if (vertical) {
+        shiftLabelOnSeg2(e, true, seg, target);
+        p[seg.i] = { x: target, y: p[seg.i].y };
+        p[seg.i + 1] = { x: target, y: p[seg.i + 1].y };
+      } else {
+        shiftLabelOnSeg2(e, false, seg, target);
+        p[seg.i] = { x: p[seg.i].x, y: target };
+        p[seg.i + 1] = { x: p[seg.i + 1].x, y: target };
+      }
+      seg.along = target;
+    };
+    const moved2 = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      const len = p.length;
+      if (len < 4 || edgeStyle === "curved" && !isOrthoT(p)) return;
+      const ep = pairs[ei];
+      let best;
+      for (let i = 1; i + 2 < len; i++) {
+        const a = p[i];
+        const b = p[i + 1];
+        const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+        const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+        if (!isVert && !isHorz) continue;
+        const along3 = isVert ? a.x : a.y;
+        const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+        const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+        const runLen = hi - lo;
+        for (const nb of nodeBoxes) {
+          if (nb.id === ep.from || nb.id === ep.to) continue;
+          const cx0 = nb.x - nb.w / 2;
+          const cx1 = nb.x + nb.w / 2;
+          const cy0 = nb.y - nb.h / 2;
+          const cy1 = nb.y + nb.h / 2;
+          const perpLo = isVert ? cx0 : cy0;
+          const perpHi = isVert ? cx1 : cy1;
+          const parLo = isVert ? cy0 : cx0;
+          const parHi = isVert ? cy1 : cx1;
+          if (along3 <= perpLo || along3 >= perpHi) continue;
+          if (Math.min(hi, parHi) - Math.max(lo, parLo) < NODE_AVOID_MIN_CROSS2) continue;
+          const side = along3 - perpLo <= perpHi - along3 ? nAt(perpLo - NODE_AVOID_MARGIN2) : nAt(perpHi + NODE_AVOID_MARGIN2);
+          if (!best || runLen > best.runLen) best = { i, vertical: isVert, along: along3, lo, hi, side, runLen };
+        }
+      }
+      if (!best) return;
+      moveLane2(edges[ei], best.vertical, { i: best.i, along: best.along, lo: best.lo, hi: best.hi }, best.side);
+      moved2[ei] = true;
+    });
+    for (const kk in moved2) edges[Number(kk)].path = orthoPathT(edges[Number(kk)].points);
+  }
+  function detourApproaches2(edges, pairs, nodeBoxes) {
+    if (!nodeBoxes.length) return;
+    const spans = (nb) => ({ l: nb.x - nb.w / 2, r: nb.x + nb.w / 2, t: nb.y - nb.h / 2, b: nb.y + nb.h / 2 });
+    const detour = (a, pp, nb) => {
+      const s = spans(nb);
+      if (Math.abs(a.x - pp.x) < 0.5) {
+        const sideX = a.x - s.l <= s.r - a.x ? nAt(s.l - NODE_AVOID_MARGIN2) : nAt(s.r + NODE_AVOID_MARGIN2);
+        const gapY = pp.y > a.y ? nAt(s.b + NODE_AVOID_MARGIN2) : nAt(s.t - NODE_AVOID_MARGIN2);
+        return [{ x: sideX, y: a.y }, { x: sideX, y: gapY }, { x: nAt(a.x), y: gapY }];
+      }
+      const sideY = a.y - s.t <= s.b - a.y ? nAt(s.t - NODE_AVOID_MARGIN2) : nAt(s.b + NODE_AVOID_MARGIN2);
+      const gapX = pp.x > a.x ? nAt(s.r + NODE_AVOID_MARGIN2) : nAt(s.l - NODE_AVOID_MARGIN2);
+      return [{ x: a.x, y: sideY }, { x: gapX, y: sideY }, { x: gapX, y: nAt(a.y) }];
+    };
+    const pierces = (a, pp, nb) => {
+      const s = spans(nb);
+      const vert = Math.abs(a.x - pp.x) < 0.5;
+      if (!vert && Math.abs(a.y - pp.y) >= 0.5) return false;
+      const along3 = vert ? a.x : a.y;
+      const lo = vert ? Math.min(a.y, pp.y) : Math.min(a.x, pp.x);
+      const hi = vert ? Math.max(a.y, pp.y) : Math.max(a.x, pp.x);
+      const perpLo = vert ? s.l : s.t;
+      const perpHi = vert ? s.r : s.b;
+      const parLo = vert ? s.t : s.l;
+      const parHi = vert ? s.b : s.r;
+      if (along3 <= perpLo || along3 >= perpHi) return false;
+      return Math.min(hi, parHi) - Math.max(lo, parLo) >= NODE_AVOID_MIN_CROSS2;
+    };
+    const changed = {};
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      if (p.length < 2 || edgeStyle === "curved" && !isOrthoT(p)) return;
+      const ep = pairs[ei];
+      const a = p[p.length - 2];
+      const port = p[p.length - 1];
+      for (const nb of nodeBoxes) {
+        if (nb.id === ep.from || nb.id === ep.to) continue;
+        if (pierces(a, port, nb)) {
+          p.splice(p.length - 1, 0, ...detour(a, port, nb));
+          changed[ei] = true;
+          break;
+        }
+      }
+    });
+    for (const kk in changed) {
+      const e = edges[Number(kk)];
+      const sp = simplify2(e.points);
+      e.points.splice(0, e.points.length, ...sp);
+      e.path = orthoPathT(e.points);
+    }
+  }
+  function trimEndpointReentry2(edges, pairs, nodeBoxes) {
+    const boxById = {};
+    for (const b of nodeBoxes) if (b.id) boxById[b.id] = b;
+    const inside = (pt, b) => pt.x > b.x - b.w / 2 + 0.5 && pt.x < b.x + b.w / 2 - 0.5 && pt.y > b.y - b.h / 2 + 0.5 && pt.y < b.y + b.h / 2 - 0.5;
+    const cross = (inPt, outPt, b) => Math.abs(inPt.x - outPt.x) < 0.5 ? { x: nAt(inPt.x), y: nAt(outPt.y > inPt.y ? b.y + b.h / 2 : b.y - b.h / 2) } : { x: nAt(outPt.x > inPt.x ? b.x + b.w / 2 : b.x - b.w / 2), y: nAt(inPt.y) };
+    edges.forEach((e, ei) => {
+      const p = e.points;
+      if (p.length < 3 || edgeStyle === "curved" && !isOrthoT(p)) return;
+      const ep = pairs[ei];
+      const src = boxById[ep.from];
+      const tgt = boxById[ep.to];
+      let did = false;
+      if (src && inside(p[1], src)) {
+        let k = 1;
+        while (k < p.length && inside(p[k], src)) k++;
+        if (k < p.length) {
+          p.splice(0, k, cross(p[k - 1], p[k], src));
+          did = true;
+        }
+      }
+      if (tgt && p.length >= 3 && inside(p[p.length - 2], tgt)) {
+        let j = p.length - 2;
+        while (j >= 0 && inside(p[j], tgt)) j--;
+        if (j >= 0) {
+          p.splice(j + 1, p.length - 1 - j, cross(p[j + 1], p[j], tgt));
+          did = true;
+        }
+      }
+      if (did) {
+        const sp = simplify2(p);
+        p.splice(0, p.length, ...sp);
+        e.path = orthoPathT(p);
+      }
+    });
+  }
+  const avoidNodeBoxes = (boxOf) => model.nodes.map((nd) => {
+    const b = boxOf(nd.id);
+    return { id: nd.id, x: b.x, y: b.y, w: b.w, h: b.h };
+  });
   function separateLanes2(edges) {
-    if (edgeStyle !== "elbow") return;
+    if (edgeStyle !== "elbow" && edgeStyle !== "curved") return;
     const LANE_GAP2 = 26;
     const LANE_MIN_OVERLAP2 = 40;
     const LANE_PASSES2 = 8;
@@ -1146,7 +1307,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       }
       if (!changed) break;
     }
-    for (const kk in moved2) edges[Number(kk)].path = pathPoly(edges[Number(kk)].points);
+    for (const kk in moved2) edges[Number(kk)].path = orthoPathT(edges[Number(kk)].points);
   }
   function separateAntiParallelJogs2(edges, pairs) {
     if (edgeStyle !== "elbow") return;
@@ -1586,6 +1747,12 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     const ports = computePorts();
     const routed = edgeEls.map((e, i) => routeEdgePath(e.from, e.to, e.waypoints, ports[i]));
     avoidSubgraphs2(routed, edgeEls, avoidContainersFrom(subgraphWorldBox));
+    const nabL = avoidNodeBoxes((id) => ({ x: positions[id].x, y: positions[id].y, w: sizes[id].w, h: sizes[id].h }));
+    trimEndpointReentry2(routed, edgeEls, nabL);
+    for (let k = 0; k < NODE_AVOID_PASSES2; k++) {
+      avoidNodes2(routed, edgeEls, nabL);
+      detourApproaches2(routed, edgeEls, nabL);
+    }
     foldLabelShifts(routed, resolveLabelLineOffsets2(labelPlatesOf(routed), routed.map((r) => r.points)));
     separateLanes2(routed);
     separateAntiParallelJogs2(routed, edgeEls);
@@ -1618,6 +1785,13 @@ var vnmRuntime = function vnmRuntime(root, payload) {
         e.text.setAttribute("y", String(nAt(ly)));
       }
     });
+    if (capOverlay) {
+      let caps = "";
+      edgeEls.forEach((e, i) => {
+        caps += svgEdgeArrowCap(e, routed[i].points);
+      });
+      capOverlay.innerHTML = caps;
+    }
     positionEdgeHandles(ports);
   }
   function applyTransform() {
@@ -2163,6 +2337,42 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     }
     return out;
   }
+  function svgEdgeArrowCap(e, points) {
+    const m = points.length;
+    if (m < 2 || !e.arrows.end && !e.arrows.start) return "";
+    const width = e.kind === "thick" ? tokens.edge.thickWidth : tokens.edge.width;
+    if (sketch) {
+      const key = e.from + "->" + e.to;
+      const arr = points.map((p) => [p.x, p.y]);
+      const base = ' fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round"';
+      let s2 = "";
+      if (e.arrows.end) s2 += '<path class="vnm-arrow-cap" d="' + openArrowhead2(arr[m - 1], arr[m - 2], tokens.edge.arrowSize, key + "@end") + '"' + base + "/>";
+      if (e.arrows.start) s2 += '<path class="vnm-arrow-cap" d="' + openArrowhead2(arr[0], arr[1], tokens.edge.arrowSize, key + "@start") + '"' + base + "/>";
+      return s2;
+    }
+    let s = "";
+    if (e.arrows.end) s += svgCapEnd(points[m - 2], points[m - 1], width);
+    if (e.arrows.start) s += svgCapStart(points[0], points[1], width);
+    return s;
+  }
+  function svgCapEnd(prev, tip, width) {
+    const dx = tip.x - prev.x;
+    const dy = tip.y - prev.y;
+    const mag = Math.hypot(dx, dy) || 1;
+    const len = Math.min(tokens.edge.arrowSize + 4, mag);
+    const bx = tip.x - dx / mag * len;
+    const by = tip.y - dy / mag * len;
+    return '<path class="vnm-arrow-cap" d="M ' + nAt(bx) + " " + nAt(by) + " L " + nAt(tip.x) + " " + nAt(tip.y) + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>';
+  }
+  function svgCapStart(head, next, width) {
+    const dx = next.x - head.x;
+    const dy = next.y - head.y;
+    const mag = Math.hypot(dx, dy) || 1;
+    const len = Math.min(tokens.edge.arrowSize + 4, mag);
+    const bx = head.x + dx / mag * len;
+    const by = head.y + dy / mag * len;
+    return '<path class="vnm-arrow-cap" d="M ' + nAt(head.x) + " " + nAt(head.y) + " L " + nAt(bx) + " " + nAt(by) + '" fill="none" stroke="' + tokens.colors.edge + '" stroke-width="' + width + '" stroke-linecap="round" marker-start="url(#vnm-arrow-start)"/>';
+  }
   function svgPolygon(pts, common) {
     return '<polygon points="' + pts.map((p) => nAt(p[0]) + "," + nAt(p[1])).join(" ") + '" ' + common + "/>";
   }
@@ -2279,12 +2489,22 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     for (const nd of model.nodes) boxes.push(absBox(nd.id));
     const edgePathParts = [];
     const edgeLabelParts = [];
+    const edgeArrowCapParts = [];
     const allPts = [];
     const routesB = edgeEls.map((e, i) => {
       const wps = e.waypoints ? e.waypoints.map((p) => ({ x: p.x + offsetX, y: p.y + offsetY })) : void 0;
       return routeBoxes(absBox(e.from), absBox(e.to), wps, ports[i], e.from === e.to);
     });
     avoidSubgraphs2(routesB, edgeEls, avoidContainersFrom(subgraphAbsBox));
+    const nabB = avoidNodeBoxes((id) => {
+      const b2 = absBox(id);
+      return { x: b2.x, y: b2.y, w: b2.w, h: b2.h };
+    });
+    trimEndpointReentry2(routesB, edgeEls, nabB);
+    for (let k = 0; k < NODE_AVOID_PASSES2; k++) {
+      avoidNodes2(routesB, edgeEls, nabB);
+      detourApproaches2(routesB, edgeEls, nabB);
+    }
     foldLabelShifts(routesB, resolveLabelLineOffsets2(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     separateLanes2(routesB);
     separateAntiParallelJogs2(routesB, edgeEls);
@@ -2302,6 +2522,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
       const r = routesB[i];
       for (const p of r.points) allPts.push(p);
       edgePathParts.push(svgEdge(e, bridgedB[i] ?? r.path, r.points));
+      if (arrowCaps) edgeArrowCapParts.push(svgEdgeArrowCap(e, r.points));
       if (e.label) {
         edgeLabelParts.push(svgEdgeLabel(e.label, r.labelPos.x, r.labelPos.y));
       }
@@ -2323,6 +2544,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     for (const lp of edgeLabelParts) parts.push(lp);
     for (const sg of model.subgraphs) parts.push(svgSubgraphTitle(sg));
     for (const nd of model.nodes) parts.push(svgNode(nd));
+    for (const cap of edgeArrowCapParts) parts.push(cap);
     parts.push("</svg>");
     return { svg: parts.join("\n"), width: b.width, height: b.height };
   }
@@ -2403,7 +2625,7 @@ var vnmRuntime = function vnmRuntime(root, payload) {
     toSvgString
   };
 };
-var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"Animal","label":"Animal\n+int age\n+makeSound()","shape":"rect","classes":[],"x":129,"y":50.5,"width":141,"height":85},{"id":"Dog","label":"Dog\n+bark()","shape":"rect","classes":[],"x":56.5,"y":198,"width":97,"height":66},{"id":"Cat","label":"Cat\n+meow()","shape":"rect","classes":[],"x":201.5,"y":198,"width":97,"height":66}],"edges":[{"from":"Animal","to":"Dog","kind":"solid","arrows":{"start":true,"end":false},"length":2,"points":[{"x":114,"y":93},{"x":114,"y":129},{"x":56.5,"y":129},{"x":56.5,"y":165}],"path":"M 114 93 C 114 129 56.5 129 56.5 165","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}}},{"from":"Animal","to":"Cat","kind":"solid","arrows":{"start":true,"end":false},"length":2,"points":[{"x":144,"y":93},{"x":144,"y":129},{"x":201.5,"y":129},{"x":201.5,"y":165}],"path":"M 144 93 C 144 129 201.5 129 201.5 165","ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}}}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":-12,"width":282,"height":263}},"theme":{"name":"fancy","edgeStyle":"curved","tokens":{"colors":{"background":"#0b1020","surface":"#151b34","surfaceStroke":"#3b4a7a","text":"#eef1ff","textMuted":"#9fa9d6","edge":"#7d88c4","edgeLabelBg":"#0b1020","edgeLabelText":"#c8cffb","subgraphFill":"#111834","subgraphStroke":"#3b4a7a","subgraphText":"#9fa9d6","accent":"#8b6cff","minimapBg":"rgba(12,16,34,0.9)","minimapViewport":"rgba(139,108,255,0.35)","roles":{"accent":{"fill":"#2a2160","stroke":"#8b6cff","text":"#eef1ff"},"success":{"fill":"#123a2e","stroke":"#3fd39b","text":"#d6ffef"},"warn":{"fill":"#3a2f0f","stroke":"#e6c04d","text":"#fff4cf"},"danger":{"fill":"#3f1830","stroke":"#ff6bb0","text":"#ffd9ec"}}},"radii":{"node":14,"card":14,"label":6},"spacing":{"nodePadX":18,"nodePadY":14,"nodesep":48,"ranksep":72,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":19,"weight":600},"edge":{"style":"curved","width":1.75,"thickWidth":3.5,"arrowSize":9},"effects":{"nodeShadow":"0 6px 22px rgba(80,60,180,0.35)","gradient":true,"hoverLift":3}}},"cssVars":"--vnm-bg: #0b1020; --vnm-surface: #151b34; --vnm-surface-stroke: #3b4a7a; --vnm-text: #eef1ff; --vnm-text-muted: #9fa9d6; --vnm-edge: #7d88c4; --vnm-edge-label-bg: #0b1020; --vnm-edge-label-text: #c8cffb; --vnm-subgraph-fill: #111834; --vnm-subgraph-stroke: #3b4a7a; --vnm-subgraph-text: #9fa9d6; --vnm-accent: #8b6cff; --vnm-minimap-bg: rgba(12,16,34,0.9); --vnm-minimap-viewport: rgba(139,108,255,0.35); --vnm-radius: 14px; --vnm-label-radius: 6px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 600; --vnm-node-shadow: 0 6px 22px rgba(80,60,180,0.35); --vnm-hover-lift: 3px; --vnm-edge-width: 1.75px;","options":{"fitPadding":60,"persistKey":"vnm-layout:os2u9f","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true}};
+var __vnm_payload = {"model":{"direction":"TB","nodes":[{"id":"Animal","label":"Animal\n+int age\n+makeSound()","shape":"rect","classes":[],"x":129,"y":50.5,"width":141,"height":85},{"id":"Dog","label":"Dog\n+bark()","shape":"rect","classes":[],"x":56.5,"y":198,"width":97,"height":66},{"id":"Cat","label":"Cat\n+meow()","shape":"rect","classes":[],"x":201.5,"y":198,"width":97,"height":66}],"edges":[{"from":"Animal","to":"Dog","kind":"solid","arrows":{"start":true,"end":false},"length":2,"points":[{"x":114,"y":93},{"x":114,"y":129},{"x":56.5,"y":129},{"x":56.5,"y":165}],"path":"M 114 93 C 114 129 56.5 129 56.5 165","ports":{"source":{"side":"bottom","offset":-15},"target":{"side":"top","offset":0}}},{"from":"Animal","to":"Cat","kind":"solid","arrows":{"start":true,"end":false},"length":2,"points":[{"x":144,"y":93},{"x":144,"y":129},{"x":201.5,"y":129},{"x":201.5,"y":165}],"path":"M 144 93 C 144 129 201.5 129 201.5 165","ports":{"source":{"side":"bottom","offset":15},"target":{"side":"top","offset":0}}}],"subgraphs":[],"classDefs":{},"bounds":{"x":-12,"y":-12,"width":282,"height":263}},"theme":{"name":"fancy","edgeStyle":"curved","tokens":{"colors":{"background":"#0b1020","surface":"#151b34","surfaceStroke":"#3b4a7a","text":"#eef1ff","textMuted":"#9fa9d6","edge":"#7d88c4","edgeLabelBg":"#0b1020","edgeLabelText":"#c8cffb","subgraphFill":"#111834","subgraphStroke":"#3b4a7a","subgraphText":"#9fa9d6","accent":"#8b6cff","minimapBg":"rgba(12,16,34,0.9)","minimapViewport":"rgba(139,108,255,0.35)","roles":{"frontend":{"fill":"rgba(8,51,68,0.55)","stroke":"#22d3ee","text":"#e6feff"},"backend":{"fill":"rgba(6,78,59,0.55)","stroke":"#34d399","text":"#e7fff4"},"database":{"fill":"rgba(76,29,149,0.5)","stroke":"#a78bfa","text":"#f1ebff"},"cloud":{"fill":"rgba(120,53,15,0.55)","stroke":"#fbbf24","text":"#fff6e0"},"security":{"fill":"rgba(136,19,55,0.5)","stroke":"#fb7185","text":"#ffe4ec"},"messagebus":{"fill":"rgba(124,45,18,0.55)","stroke":"#fb923c","text":"#ffedd5"},"external":{"fill":"rgba(30,41,59,0.7)","stroke":"#94a3b8","text":"#e2e8f0"},"accent":{"fill":"#2a2160","stroke":"#8b6cff","text":"#eef1ff"},"success":{"fill":"#123a2e","stroke":"#3fd39b","text":"#d6ffef"},"warn":{"fill":"#3a2f0f","stroke":"#e6c04d","text":"#fff4cf"},"danger":{"fill":"#3f1830","stroke":"#ff6bb0","text":"#ffd9ec"}}},"radii":{"node":14,"card":14,"label":6},"spacing":{"nodePadX":18,"nodePadY":14,"nodesep":48,"ranksep":72,"fitPadding":60},"font":{"family":"system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif","mono":"ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace","size":14,"lineHeight":19,"weight":600},"edge":{"style":"curved","width":1.75,"thickWidth":3.5,"arrowSize":9},"effects":{"nodeShadow":"0 6px 22px rgba(80,60,180,0.35)","gradient":true,"hoverLift":3}}},"cssVars":"--vnm-bg: #0b1020; --vnm-surface: #151b34; --vnm-surface-stroke: #3b4a7a; --vnm-text: #eef1ff; --vnm-text-muted: #9fa9d6; --vnm-edge: #7d88c4; --vnm-edge-label-bg: #0b1020; --vnm-edge-label-text: #c8cffb; --vnm-subgraph-fill: #111834; --vnm-subgraph-stroke: #3b4a7a; --vnm-subgraph-text: #9fa9d6; --vnm-accent: #8b6cff; --vnm-minimap-bg: rgba(12,16,34,0.9); --vnm-minimap-viewport: rgba(139,108,255,0.35); --vnm-radius: 14px; --vnm-label-radius: 6px; --vnm-font: system-ui, -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; --vnm-mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace; --vnm-font-size: 14px; --vnm-font-weight: 600; --vnm-node-shadow: 0 6px 22px rgba(80,60,180,0.35); --vnm-hover-lift: 3px; --vnm-edge-width: 1.75px;","options":{"fitPadding":60,"persistKey":"vnm-layout:os2u9f","minimap":true,"minScale":0.2,"maxScale":4,"style":"clean","bridges":true,"arrowCaps":true}};
 vnmRuntime(document.getElementById("vnm-root"), __vnm_payload);
 </script>
 </body>
