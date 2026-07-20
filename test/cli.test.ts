@@ -214,7 +214,7 @@ describe("vnm CLI (child_process)", () => {
   });
 
   it("prints help and version", () => {
-    expect(cli(["--version"]).stdout).toContain("0.7.1");
+    expect(cli(["--version"]).stdout).toContain("0.7.2");
     expect(cli(["--help"]).stdout).toContain("render");
   });
 
@@ -299,6 +299,15 @@ describe("vnm CLI (child_process)", () => {
       expect(dark).not.toBe(fancy);
     });
 
+    it("defaults to arch-light when no --theme is given", () => {
+      const dsl = ["render", join(fixtures, "state-machine.mmd"), "-f", "svg"];
+      const dflt = cli(dsl).stdout;
+      const archLight = cli([...dsl, "--theme", "arch-light"]).stdout;
+      expect(dflt).toBe(archLight);
+      // and it is NOT the old light default
+      expect(dflt).not.toBe(cli([...dsl, "--theme", "light"]).stdout);
+    });
+
     it("accepts a custom theme .json (partial token set) and applies its colors", () => {
       const themeFile = join(tmp, "custom-theme.json");
       writeFileSync(themeFile, JSON.stringify({ colors: { edge: "#ff00ff", background: "#080816" } }));
@@ -306,8 +315,8 @@ describe("vnm CLI (child_process)", () => {
       expect(r.status).toBe(0);
       // the static SVG inlines literal colors, so the custom edge color shows up
       expect(r.stdout.toLowerCase()).toContain("ff00ff");
-      const light = cli(["render", join(fixtures, "ci-pipeline.mmd"), "-f", "svg"]).stdout;
-      expect(r.stdout).not.toBe(light);
+      const dflt = cli(["render", join(fixtures, "ci-pipeline.mmd"), "-f", "svg"]).stdout;
+      expect(r.stdout).not.toBe(dflt);
     });
 
     it("errors on a malformed theme .json", () => {

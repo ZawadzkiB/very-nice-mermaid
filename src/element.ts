@@ -14,6 +14,7 @@
  */
 
 import { mountAsync, type AnyRuntimeHandle } from "./render/dom/index.js";
+import { DEFAULT_THEME_NAME } from "./theme/index.js";
 
 export class VeryNiceMermaidElement extends HTMLElement {
   private handle: AnyRuntimeHandle | null = null;
@@ -44,7 +45,7 @@ export class VeryNiceMermaidElement extends HTMLElement {
   }
 
   private async renderDiagram(): Promise<void> {
-    const theme = this.getAttribute("theme") ?? "light";
+    const theme = this.getAttribute("theme") ?? DEFAULT_THEME_NAME;
     // Boolean `sketch` attribute → hand-drawn style (any value except "false").
     const style = this.hasAttribute("sketch") && this.getAttribute("sketch") !== "false" ? "sketch" : "clean";
     const src = this.getAttribute("src");

@@ -369,6 +369,13 @@ export const themes: Record<string, Theme> = {
   "arch-light": makeTheme("arch-light", archLightTokens),
 };
 
+/**
+ * The theme used when none is specified (CLI, library, and web component all defer to
+ * this). `arch-light` is the archify light look: a clean canvas, monospace type, semantic
+ * role colours, and coloured/legended edges - the project's signature style out of the box.
+ */
+export const DEFAULT_THEME_NAME = "arch-light";
+
 /** Deep-partial of a token set for {@link defineTheme}. */
 export type PartialTokenSet = DeepPartial<TokenSet>;
 type DeepPartial<T> = {
@@ -419,8 +426,8 @@ export function defineTheme(
 export function resolveTheme(
   input: string | Theme | PartialTokenSet | undefined,
 ): Theme {
-  if (input === undefined) return themes.light!;
-  if (typeof input === "string") return themes[input] ?? themes.light!;
+  if (input === undefined) return themes[DEFAULT_THEME_NAME]!;
+  if (typeof input === "string") return themes[input] ?? themes[DEFAULT_THEME_NAME]!;
   if ("tokens" in input && "cssVars" in input) return input as Theme;
   // treat as a partial token set (e.g. parsed from a --theme JSON file)
   return defineTheme(input as PartialTokenSet);
