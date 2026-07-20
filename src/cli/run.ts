@@ -9,7 +9,7 @@ import { extname } from "node:path";
 import { parse, ParseError } from "../parser/index.js";
 import { layout, applyPositions } from "../layout/index.js";
 import type { EdgeAnchorOverride } from "../geometry/index.js";
-import { resolveTheme, themes, type Theme, type RenderStyle } from "../theme/index.js";
+import { resolveTheme, themes, DEFAULT_THEME_NAME, type Theme, type RenderStyle } from "../theme/index.js";
 import { renderSvg } from "../render/svg.js";
 import { renderMarkdown } from "../render/ascii.js";
 import { renderHtml } from "../export/html.js";
@@ -34,7 +34,7 @@ import type { Diagnostic, PositionedModel } from "../model/index.js";
 
 type Format = "html" | "svg" | "png" | "md";
 
-const VERSION = "0.7.1";
+const VERSION = "0.7.2";
 
 interface RenderOpts {
   output?: string;
@@ -69,7 +69,7 @@ export async function run(argv: string[]): Promise<number> {
     .description("render a diagram (native flowchart/sequence/class/state, or the mermaid.js fallback tier)")
     .option("-o, --output <file>", "output file (default: stdout)")
     .option("-f, --format <fmt>", "html | svg | png | md (inferred from -o if omitted)")
-    .option("-t, --theme <name|path>", "theme name (light|dark|fancy|arch|arch-light) or path to a theme .json", "light")
+    .option("-t, --theme <name|path>", "theme name (light|dark|fancy|arch|arch-light) or path to a theme .json", DEFAULT_THEME_NAME)
     .option("-s, --style <clean|sketch>", "drawing style: clean (default) or hand-drawn sketch (flowchart)", "clean")
     .option("--no-bridges", "disable edge-crossing bridges (default: on for clean elbow edges in flow/state/class)")
     .option("--strict", "treat parser warnings AND fallback degradations as errors")
@@ -507,7 +507,7 @@ function resolveFormat(explicit: string | undefined, output: string | undefined)
 }
 
 function resolveThemeArg(value: string | undefined): Theme {
-  if (!value) return resolveTheme("light");
+  if (!value) return resolveTheme(DEFAULT_THEME_NAME);
   const builtin = Object.prototype.hasOwnProperty.call(themes, value);
   if (!builtin && (value.endsWith(".json") || existsSync(value))) {
     const tokens = JSON.parse(readFileSync(value, "utf8"));

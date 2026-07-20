@@ -99,7 +99,8 @@ describe("defineTheme deep-merges over a base", () => {
 describe("resolveTheme", () => {
   it("resolves names, objects, and raw token partials", () => {
     expect(resolveTheme("dark")).toBe(themes.dark);
-    expect(resolveTheme(undefined)).toBe(themes.light);
+    // The default theme (no name given) is arch-light - the project's signature look.
+    expect(resolveTheme(undefined)).toBe(themes["arch-light"]);
     expect(resolveTheme(themes.fancy)).toBe(themes.fancy);
     const fromJson = resolveTheme({ colors: { accent: "#123456" } });
     expect(fromJson.tokens.colors.accent).toBe("#123456");

@@ -50,7 +50,9 @@ declined-payment branch shows every message colour at once:
   — an [archify](https://github.com/tt-a1i/archify)-style look: a slate canvas,
   monospace type, and a seven-type **semantic role** palette (`frontend`,
   `backend`, `database`, `cloud`, `security`, `messagebus`, `external`) a node
-  opts into with `A[Web]:::frontend`. Define your own as a token set (JSON for the
+  opts into with `A[Web]:::frontend`. **`arch-light` is the default** - a diagram
+  with no theme set renders in the archify light look (clean canvas, semantic role
+  colours, coloured/legended edges). Define your own as a token set (JSON for the
   CLI, an object or CSS variables for the library).
 - **Archify-style sequence diagrams** — participants auto-colour by a role inferred
   from their name, with a **type sub-label**, **role-coloured lifelines**,
