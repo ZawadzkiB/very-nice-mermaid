@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1972" height="450" viewBox="-12 -18 1972 450" font-family="system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, Helvetica, Arial, sans-serif">
+<defs><marker id="vnm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#69728a"/></marker><marker id="vnm-arrow-start" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#69728a"/></marker></defs>
+<rect x="-12" y="-18" width="1972" height="450" fill="#f7f8fb"/>
+<rect x="311" y="78.5" width="412" height="92" rx="10" fill="#eef1f6" stroke="#c7cdd9" stroke-dasharray="4 4"/>
+<rect x="875" y="2" width="738" height="194" rx="10" fill="#eef1f6" stroke="#c7cdd9" stroke-dasharray="4 4"/>
+<rect x="1213.5" y="226" width="698.5" height="186" rx="10" fill="#eef1f6" stroke="#c7cdd9" stroke-dasharray="4 4"/>
+<path d="M 145 135.5 L 325 135.5" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 436 135.5 L 616 135.5" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 709 135.5 L 889 135.5" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 1017 120.5 L 1047 120.5 L 1047 59 L 1197 59" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 1017 150.5 L 1047 150.5 L 1047 159.5 M 1047 167.5 L 1047 185.5 M 1047 193.5 L 1047 224 L 1659 224 L 1659 311.5 L 1749 311.5 L 1749 330 L 1779 330" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 938 156.5 L 938 163.5 L 1167 163.5 L 1167 185.5 M 1167 193.5 L 1167 220 M 1167 228 L 1167 289 L 1227.5 289" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 968 156.5 L 968 159.5 M 968 167.5 L 968 189.5 L 1213.5 189.5 L 1213.5 220 M 1213.5 228 L 1213.5 285 M 1213.5 293 L 1213.5 330 L 1250.5 330 L 1250.5 356" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 1303.5 377 L 1541.5 377 L 1541.5 228 M 1541.5 220 L 1541.5 182" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path d="M 1599 161 L 1940 161 L 1940 333 L 1898 333" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<rect x="1050" y="79.75" width="90" height="20" rx="4" fill="#f7f8fb"/><text x="1095" y="89.75" fill="#3a4152" font-size="13" text-anchor="middle" dominant-baseline="central">verify JWT</text>
+<rect x="318" y="84.5" width="41.2" height="17" rx="4" fill="#eef1f6"/><text x="323" y="96.5" fill="#5c6478" font-size="13" font-weight="600">Edge</text>
+<rect x="882" y="8" width="72.4" height="17" rx="4" fill="#eef1f6"/><text x="887" y="20" fill="#5c6478" font-size="13" font-weight="600">Services</text>
+<rect x="1220.5" y="232" width="41.2" height="17" rx="4" fill="#eef1f6"/><text x="1225.5" y="244" fill="#5c6478" font-size="13" font-weight="600">Data</text>
+<g><rect x="8" y="114.5" width="137" height="42" rx="6" fill="rgba(148,163,184,0.2)" stroke="#64748b" stroke-width="1.5"/><text x="76.5" y="135.5" fill="#334155" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">User Browser</text></g>
+<g><rect x="325" y="114.5" width="111" height="42" rx="6" fill="rgba(251,191,36,0.2)" stroke="#d97706" stroke-width="1.5"/><text x="380.5" y="135.5" fill="#92400e" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">CDN / WAF</text></g>
+<g><rect x="616" y="114.5" width="93" height="42" rx="6" fill="rgba(34,211,238,0.15)" stroke="#0891b2" stroke-width="1.5"/><text x="662.5" y="135.5" fill="#0e4a5b" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Web App</text></g>
+<g><rect x="889" y="114.5" width="128" height="42" rx="6" fill="rgba(52,211,153,0.18)" stroke="#059669" stroke-width="1.5"/><text x="953" y="135.5" fill="#065f46" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">API Gateway</text></g>
+<g><rect x="1197" y="38" width="137" height="42" rx="6" fill="rgba(251,113,133,0.15)" stroke="#e11d48" stroke-width="1.5"/><text x="1265.5" y="59" fill="#9f1239" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Auth Service</text></g>
+<g><rect x="1514" y="140" width="85" height="42" rx="6" fill="rgba(52,211,153,0.18)" stroke="#059669" stroke-width="1.5"/><text x="1556.5" y="161" fill="#065f46" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Worker</text></g>
+<g><path d="M 1779 312.72 C 1779 300.08 1898 300.08 1898 312.72 L 1898 347.28 C 1898 359.92 1779 359.92 1779 347.28 Z" fill="rgba(167,139,250,0.2)" stroke="#7c3aed" stroke-width="1.5"/><path d="M 1779 312.72 C 1779 325.36 1898 325.36 1898 312.72" fill="none" stroke="#7c3aed" stroke-width="1.5"/><text x="1838.5" y="330" fill="#5b21b6" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">PostgreSQL</text></g>
+<g><path d="M 1227.5 271.72 C 1227.5 259.08 1303.5 259.08 1303.5 271.72 L 1303.5 306.28 C 1303.5 318.92 1227.5 318.92 1227.5 306.28 Z" fill="rgba(167,139,250,0.2)" stroke="#7c3aed" stroke-width="1.5"/><path d="M 1227.5 271.72 C 1227.5 284.36 1303.5 284.36 1303.5 271.72" fill="none" stroke="#7c3aed" stroke-width="1.5"/><text x="1265.5" y="289" fill="#5b21b6" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Redis</text></g>
+<g><rect x="1227.5" y="356" width="76" height="42" rx="6" fill="rgba(251,146,60,0.15)" stroke="#ea580c" stroke-width="1.5"/><text x="1265.5" y="377" fill="#9a3412" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central">Kafka</text></g>
+<path class="vnm-arrow-cap" d="M 313 135.5 L 325 135.5" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 604 135.5 L 616 135.5" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 877 135.5 L 889 135.5" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 1185 59 L 1197 59" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 1767 330 L 1779 330" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 1215.5 289 L 1227.5 289" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 1250.5 344 L 1250.5 356" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 1541.5 194 L 1541.5 182" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+<path class="vnm-arrow-cap" d="M 1910 333 L 1898 333" fill="none" stroke="#69728a" stroke-width="1.5" stroke-linecap="round" marker-end="url(#vnm-arrow)"/>
+</svg>
