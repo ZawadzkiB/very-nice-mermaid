@@ -103,7 +103,7 @@ describe("link length spans ranks like mermaid (v0.7.3)", () => {
     expect(gap("---")).toBe(gap("-->"));
     expect(gap("===")).toBe(gap("==>"));
     expect(gap("-.-")).toBe(gap("-.->"));
-    expect(gap("-- text ---")).toBe(gap("-->"));
+    expect(gap("-- text ---")).toBe(gap("-- text -->"));
   });
   it("each extra line character adds one rank", () => {
     const one = gap("-->");
@@ -117,6 +117,91 @@ describe("link length spans ranks like mermaid (v0.7.3)", () => {
   it("caps the span at 10 ranks", () => {
     expect(gap("-".repeat(11) + ">")).toBeGreaterThan(gap("-".repeat(10) + ">"));
     expect(gap("-".repeat(20) + ">")).toBe(gap("-".repeat(11) + ">"));
+  });
+});
+
+// v0.7.3 bug 5 - edge labels get layout room. mermaid 11.16.0 sizes each edge label before
+// dagre runs (rendering-util insertEdgeLabel sets edge.width / edge.height from the label
+// bbox, then recursiveRender calls layout(graph)) with labelpos "c" (flowDb.getData), so a
+// label's rank-axis extent widens the gap between the ranks it sits between.
+describe("edge labels get room between ranks (v0.7.3)", () => {
+  const theme = themes.light!;
+  const plateOf = (e: { label?: string; labelPos?: { x: number; y: number } }) => {
+    const s = labelPlateSize(e.label, theme)!;
+    return { x: e.labelPos!.x, y: e.labelPos!.y, width: s.w, height: s.h };
+  };
+  const ends = (pos: ReturnType<typeof layout>, from: string, to: string) => ({
+    a: pos.nodes.find((n) => n.id === from)!,
+    b: pos.nodes.find((n) => n.id === to)!,
+    e: pos.edges.find((ed) => ed.from === from && ed.to === to)!,
+  });
+  const noPlateOnANode = (pos: ReturnType<typeof layout>) => {
+    for (const e of pos.edges.filter((ed) => ed.label)) {
+      const plate = plateOf(e) as unknown as PositionedNode;
+      for (const n of pos.nodes) expect(overlaps(plate, n), `${e.from}->${e.to} label on ${n.id}`).toBe(false);
+    }
+  };
+
+  it("a tall TB label widens its rank gap to fit, between the two nodes", () => {
+    const pos = layout(
+      parse('flowchart TB\n A[Client] -->|"line one<br>line two<br>line three<br>line four"| B[Server]'),
+      { theme },
+    );
+    const { a, b, e } = ends(pos, "A", "B");
+    const gap = b.y - b.height / 2 - (a.y + a.height / 2);
+    expect(gap).toBeGreaterThanOrEqual(plateOf(e).height + theme.tokens.spacing.ranksep / 2);
+    noPlateOnANode(pos);
+  });
+
+  it("a long LR label widens its rank gap to fit", () => {
+    const pos = layout(parse("flowchart LR\n A[Client] -->|a rather long edge label here| B[Server]"), { theme });
+    const { a, b, e } = ends(pos, "A", "B");
+    const gap = b.x - b.width / 2 - (a.x + a.width / 2);
+    expect(gap).toBeGreaterThanOrEqual(plateOf(e).width + theme.tokens.spacing.ranksep / 2);
+    noPlateOnANode(pos);
+  });
+
+  /** Does the plate's centre sit on one of the edge's segments? */
+  const onOwnLine = (e: { points: Array<{ x: number; y: number }> }, p: { x: number; y: number }) =>
+    e.points.some((a, i) => {
+      const b = e.points[i + 1];
+      if (!b) return false;
+      const inX = p.x >= Math.min(a.x, b.x) - 0.5 && p.x <= Math.max(a.x, b.x) + 0.5;
+      const inY = p.y >= Math.min(a.y, b.y) - 0.5 && p.y <= Math.max(a.y, b.y) + 0.5;
+      return inX && inY && (Math.abs(a.x - b.x) < 0.5 || Math.abs(a.y - b.y) < 0.5);
+    });
+
+  it("multi-line labels on a diamond's two elbow branches overlap no node and stay on their edge", () => {
+    const pos = layout(
+      parse(
+        'flowchart TB\n A[Start] --> B{Choice}\n B -->|"yes, go on<br>with it"| C[Done]\n B -->|"no, stop<br>right here<br>now"| D[Store]',
+      ),
+      { theme },
+    );
+    noPlateOnANode(pos);
+    // the 3-line label cannot be lifted above its jog without touching the diamond, so it
+    // stays centred on its own line, in the room dagre reserved for it (labelpos "c")
+    const bd = ends(pos, "B", "D").e;
+    expect(onOwnLine(bd, plateOf(bd))).toBe(true);
+  });
+
+  it("a long LR label on an elbow stays on its edge, inside the rank gap", () => {
+    const pos = layout(
+      parse('flowchart LR\n A[Start] -->|"a fairly long label on an LR edge"| B[End]\n A --> C[Other]'),
+      { theme },
+    );
+    const { a, b, e } = ends(pos, "A", "B");
+    const plate = plateOf(e);
+    expect(plate.x - plate.width / 2).toBeGreaterThan(a.x + a.width / 2);
+    expect(plate.x + plate.width / 2).toBeLessThan(b.x - b.width / 2);
+    expect(onOwnLine(e, plate)).toBe(true);
+    noPlateOnANode(pos);
+  });
+
+  it("leaves unlabelled edges exactly as before", () => {
+    const pos = layout(parse("flowchart TB\n A --> B --> C\n A --> C"), { theme });
+    const { a, b } = ends(pos, "A", "B");
+    expect(b.y - a.y).toBe(a.height / 2 + theme.tokens.spacing.ranksep + b.height / 2);
   });
 });
 

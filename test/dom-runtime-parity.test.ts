@@ -1087,6 +1087,36 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     }
   });
 
+  // ---- v0.7.3 labels use the room layout reserves (dagre labelpos "c"): a label that cannot be
+  // lifted off its elbow without landing on a node stays ON its line (resolveLabelLineOffsets'
+  // node check). Both fixtures genuinely fire it (sanity: the label centre sits on its own
+  // line), so the runtime twin must reproduce it in Save-SVG, before and after a drag.
+  it("a label too big to lift off its elbow stays on its line, in the twin too (v0.7.3)", () => {
+    const fixtures: Array<[string, string, string]> = [
+      ['flowchart LR\n A[Start] -->|"a fairly long label on an LR edge"| B[End]\n A --> C[Other]', "A", "B"],
+      ['flowchart TB\n A[Start] --> B{Decide}\n B -->|"first<br/>second<br/>third"| C[Left]\n B -->|"alpha<br/>beta<br/>gamma"| D[Right]', "B", "D"],
+    ];
+    for (const [dsl, from, to] of fixtures) {
+      const { model, theme } = prepare(dsl, { theme: "light" });
+      const e = model.edges.find((ed) => ed.from === from && ed.to === to)!;
+      const onLine = e.points.some((a, i) => {
+        const b = e.points[i + 1];
+        if (!b) return false;
+        const p = e.labelPos!;
+        return (
+          p.x >= Math.min(a.x, b.x) - 0.5 && p.x <= Math.max(a.x, b.x) + 0.5 &&
+          p.y >= Math.min(a.y, b.y) - 0.5 && p.y <= Math.max(a.y, b.y) + 0.5
+        );
+      });
+      expect(onLine).toBe(true);
+      const { handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+      expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+      const t = model.nodes.find((nd) => nd.id === to)!;
+      handle.importLayout({ version: 1, positions: { [to]: { x: t.x + 30, y: t.y + 10 } } });
+      expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+    }
+  });
+
   // ---- v0.6.6 avoidSubgraphs under a live DRAG (FR5, REV-002): dragging re-runs the live pass
   // on the moved container boxes. Prove it stays deterministic (a repeated identical edit is
   // byte-identical) and that the live re-route byte-matches the static applyPositions() of the

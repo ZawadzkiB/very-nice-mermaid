@@ -466,11 +466,18 @@ function homeSegment(points: ReadonlyArray<Point>, cubic: boolean): [Point, Poin
  * (`resolveLabelLineOffsets` in src/render/dom/runtime.ts) produce byte-identical
  * shifts. Returns a shift `{x,y}` per input index; the caller folds it into `labelPos`.
  * Keep the two in lockstep.
+ *
+ * v0.7.3: a label stays ON its line (zero shift) when the lifted plate would sit on a
+ * node box while the line position clears every node by `LABEL_NODE_PAD`. Layout
+ * reserves each label's room centred on its line (dagre labelpos "c", as mermaid), so
+ * a label too big to lift beside an elbow's jog reads as mermaid's on-line label
+ * instead of being pushed away from its edge by the node de-collision.
  */
 export function resolveLabelLineOffsets(
   plates: ReadonlyArray<PlateRect | undefined>,
   polylines: ReadonlyArray<ReadonlyArray<Point>>,
   cubics: ReadonlyArray<boolean>,
+  nodeBoxes: ReadonlyArray<NodeBox> = [],
 ): Point[] {
   return plates.map((p, i) => {
     if (!p) return { x: 0, y: 0 };
@@ -480,8 +487,20 @@ export function resolveLabelLineOffsets(
     // Clear the plate off the line by the plate dimension FACING it: height for a
     // horizontal segment (lift up), width for a vertical one (shift right).
     const dist = (horizontal ? p.h : p.w) / 2 + LABEL_LINE_GAP;
-    return horizontal ? { x: 0, y: -dist } : { x: dist, y: 0 };
+    const shift = horizontal ? { x: 0, y: -dist } : { x: dist, y: 0 };
+    const lifted = { x: p.x + shift.x, y: p.y + shift.y, w: p.w, h: p.h };
+    if (plateOnNode(lifted, nodeBoxes, 0) && !plateOnNode(p, nodeBoxes, LABEL_NODE_PAD)) return { x: 0, y: 0 };
+    return shift;
   });
+}
+
+/** Does plate `p` overlap a node box grown by `pad` on every side? */
+function plateOnNode(p: PlateRect, nodeBoxes: ReadonlyArray<NodeBox>, pad: number): boolean {
+  return nodeBoxes.some(
+    (nb) =>
+      (p.w + nb.width) / 2 + pad - Math.abs(p.x - nb.x) > 0 &&
+      (p.h + nb.height) / 2 + pad - Math.abs(p.y - nb.y) > 0,
+  );
 }
 
 /**

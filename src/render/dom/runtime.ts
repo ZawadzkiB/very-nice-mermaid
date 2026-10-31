@@ -2097,10 +2097,17 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   // is the one geometry.labelPoint centres the label on (curved 4-pt → mid-curve tangent;
   // else the interior midpoint segment). Run FIRST (before lanes), so the de-collision
   // passes below de-collide the offset (drawn) plates. Byte-identical to the static twin.
+  // v0.7.3: when the lifted plate would sit on a node box but the line position clears
+  // every node by LABEL_NODE_PAD (=10), skip the lift: the label stays on its line (labelpos "c").
   function resolveLabelLineOffsets(
     plates: Array<{ x: number; y: number; w: number; h: number } | undefined>,
     polylines: Pt[][],
+    nodeBoxes: Array<{ x: number; y: number; w: number; h: number }>,
   ): Pt[] {
+    const onNode = (p: { x: number; y: number; w: number; h: number }, pad: number): boolean =>
+      nodeBoxes.some(
+        (nb) => (p.w + nb.w) / 2 + pad - Math.abs(p.x - nb.x) > 0 && (p.h + nb.h) / 2 + pad - Math.abs(p.y - nb.y) > 0,
+      );
     return plates.map((p, i) => {
       if (!p) return { x: 0, y: 0 };
       const pts = polylines[i] ?? [];
@@ -2128,7 +2135,10 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       // Clear the plate off the line by the dimension FACING it: height (horizontal
       // segment → up) or width (vertical segment → right).
       const dist = (horizontal ? p.h : p.w) / 2 + 3;
-      return horizontal ? { x: 0, y: -dist } : { x: dist, y: 0 };
+      const shift = horizontal ? { x: 0, y: -dist } : { x: dist, y: 0 };
+      const lifted = { x: p.x + shift.x, y: p.y + shift.y, w: p.w, h: p.h };
+      if (onNode(lifted, 0) && !onNode(p, 10)) return { x: 0, y: 0 };
+      return shift;
     });
   }
   // Whether crossing bridges are baked into the clean path (FR7 / D4): ON for
@@ -2322,7 +2332,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     for (let k = 0; k < NODE_AVOID_PASSES; k++) { avoidNodes(routed, edgeEls, nabL); detourApproaches(routed, edgeEls, nabL); }
     // v0.6.4 (option d): lift each label off its line FIRST so the line stays continuous
     // and the de-collision passes below de-collide the offset (drawn) plates.
-    foldLabelShifts(routed, resolveLabelLineOffsets(labelPlatesOf(routed), routed.map((r) => r.points)));
+    const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id]!.x, y: positions[nd.id]!.y, w: sizes[nd.id]!.w, h: sizes[nd.id]!.h }));
+    foldLabelShifts(routed, resolveLabelLineOffsets(labelPlatesOf(routed), routed.map((r) => r.points), nodeBoxesL));
     // FR9: lane-separate FIRST (mutates points/path/labelPos), matching finishEdges.
     separateLanes(routed);
     // v0.6.2: de-cramp a collinear anti-parallel elbow pair the lane gate skips.
@@ -2336,7 +2347,6 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // label-vs-edge (UAT-round): slide any label off a foreign edge's crossing line.
     foldLabelShifts(routed, resolveLabelEdgeCollisions(labelPlatesOf(routed), routed.map((r) => r.points)));
     // label-vs-node (UAT-1): push any label off a node box (live world coords).
-    const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id]!.x, y: positions[nd.id]!.y, w: sizes[nd.id]!.w, h: sizes[nd.id]!.h }));
     foldLabelShifts(routed, resolveLabelNodeCollisions(labelPlatesOf(routed), nodeBoxesL));
     // v0.6.4: final label-label pass — node de-collision can repack an offset label into
     // a neighbour, so re-separate labels last (matches finishEdges).
@@ -3296,7 +3306,11 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     for (let k = 0; k < NODE_AVOID_PASSES; k++) { avoidNodes(routesB, edgeEls, nabB); detourApproaches(routesB, edgeEls, nabB); }
     // v0.6.4 (option d): lift each label off its line FIRST so the line stays continuous
     // and the de-collision passes below de-collide the offset (drawn) plates (parity).
-    foldLabelShifts(routesB, resolveLabelLineOffsets(labelPlatesOf(routesB), routesB.map((r) => r.points)));
+    const nodeBoxesB = model.nodes.map((nd) => {
+      const b = absBox(nd.id);
+      return { x: b.x, y: b.y, w: b.w, h: b.h };
+    });
+    foldLabelShifts(routesB, resolveLabelLineOffsets(labelPlatesOf(routesB), routesB.map((r) => r.points), nodeBoxesB));
     // FR9: lane-separate FIRST (mutates points/path/labelPos), matching finishEdges,
     // so Save-SVG byte-matches the static layout()'s re-laned routes (parity).
     separateLanes(routesB);
@@ -3311,10 +3325,6 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // label-vs-edge (UAT-round): slide any label off a foreign edge's crossing line.
     foldLabelShifts(routesB, resolveLabelEdgeCollisions(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     // label-vs-node (UAT-1): push any label off a node box (absolute coords).
-    const nodeBoxesB = model.nodes.map((nd) => {
-      const b = absBox(nd.id);
-      return { x: b.x, y: b.y, w: b.w, h: b.h };
-    });
     foldLabelShifts(routesB, resolveLabelNodeCollisions(labelPlatesOf(routesB), nodeBoxesB));
     // v0.6.4: final label-label pass — node de-collision can repack an offset label into
     // a neighbour, so re-separate labels last (matches finishEdges).
