@@ -287,6 +287,54 @@ describe("link length counts like mermaid (v0.7.3)", () => {
   });
 });
 
+// v0.7.3 bugs 2 + 6 - edge labels and link operators read like mermaid 11.16.0. The flow
+// lexer (dist/mermaid.js, flow.jison rules) lexes a `"` inside edge text as a string (STR),
+// so a quoted label loses its quotes and may hold `.`, `=`, `|` or `--`; the line style
+// comes from the link tokens only (flowDb.destructStartLink / destructEndLink); and a
+// middle-label link opens with exactly two line characters (START_LINK `[xo<]?--`,
+// `[xo<]?==`, `[xo<]?-.`), so `---` is always a whole link (LINK `[xo<]?--+[-xo>]`).
+describe("edge labels and operators read like mermaid (v0.7.3)", () => {
+  const edge = (src: string) => {
+    const m = parse(`flowchart TD\n ${src}`);
+    expect(m.warnings).toEqual([]);
+    expect(m.edges).toHaveLength(1);
+    return m.edges[0]!;
+  };
+  it("drops the quotes around a middle or pipe label", () => {
+    expect(edge('A -- "label" --> B').label).toBe("label");
+    expect(edge('A -->|"label"| B').label).toBe("label");
+    expect(edge('A == "hot" ==> B').label).toBe("hot");
+    expect(edge('A -. "lazy" .-> B').label).toBe("lazy");
+    expect(edge('A -->|" spaced "| B').label).toBe("spaced");
+  });
+  it("keeps link characters that sit inside a quoted label", () => {
+    expect(edge('A -- "a -- b" --> B').label).toBe("a -- b");
+    expect(edge('A -->|"a | b"| B').label).toBe("a | b");
+  });
+  it("takes the line style from the operators, not from the label text", () => {
+    const quoted = edge('A -- "a.b" --> B');
+    expect(quoted.kind).toBe("solid");
+    expect(quoted.label).toBe("a.b");
+    expect(edge("A -- a.b --> B").kind).toBe("solid");
+    expect(edge("A -- x = y --> B").kind).toBe("solid");
+    expect(edge('A -- "x" --- B').kind).toBe("open");
+    expect(edge('A == "x.y" ==> B').kind).toBe("thick");
+    expect(edge('A -. "a=b" .-> B').kind).toBe("dotted");
+  });
+  it("reads `A --- B --- C` as a chain of two open links", () => {
+    const solid = parse("flowchart TD\n P --- Q --- R");
+    expect(solid.edges.map((e) => [e.from, e.to, e.kind, e.label])).toEqual([
+      ["P", "Q", "open", undefined],
+      ["Q", "R", "open", undefined],
+    ]);
+    const thick = parse("flowchart TD\n S === T === U");
+    expect(thick.edges.map((e) => [e.from, e.to, e.kind])).toEqual([
+      ["S", "T", "thick"],
+      ["T", "U", "thick"],
+    ]);
+  });
+});
+
 describe("corpus fixtures parse cleanly (lenient)", () => {
   const files = readdirSync(fixturesDir).filter((f) => f.endsWith(".mmd"));
   it("has a real corpus", () => {

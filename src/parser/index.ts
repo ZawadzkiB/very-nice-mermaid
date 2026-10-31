@@ -589,19 +589,22 @@ function parseStyleProps(
  */
 export function matchLink(rest: string): LinkMatch | null {
   // Middle-label forms first (more specific): start marker, opening line, label,
-  // closing line, end marker.
+  // closing line, end marker. As in mermaid's flow lexer, the opening is exactly two
+  // line characters (START_LINK `--`, `==`, `-.`), so `A --- B --- C` stays a chain of
+  // whole links, and a quoted label is one string that may hold `--`, `.` or `=`.
   const mid =
-    /^([<xo])?(={2,})[ \t]+(.+?)[ \t]+(={2,})([>xo])?/.exec(rest) ??
-    /^([<xo])?(-\.+)[ \t]+(.+?)[ \t]+(\.+-)([>xo])?/.exec(rest) ??
-    /^([<xo])?(-{2,})[ \t]+(.+?)[ \t]+(-{2,})([>xo])?/.exec(rest);
+    /^([<xo])?(==)[ \t]+("[^"]*"|.+?)[ \t]+(={2,})([>xo])?/.exec(rest) ??
+    /^([<xo])?(-\.+)[ \t]+("[^"]*"|.+?)[ \t]+(\.+-)([>xo])?/.exec(rest) ??
+    /^([<xo])?(--)[ \t]+("[^"]*"|.+?)[ \t]+(-{2,})([>xo])?/.exec(rest);
   let m: RegExpExecArray | null = mid;
   let label: string | undefined;
   let lineStyle: "solid" | "dotted" | "thick";
   /** The operator that closes the link; mermaid reads the link length from it. */
   let closing: string;
   if (m) {
-    label = normalizeLabel(m[3]!);
-    lineStyle = m[0]!.includes("=") ? "thick" : m[0]!.includes(".") ? "dotted" : "solid";
+    label = unquote(m[3]!.trim());
+    // From the operators only: the label text may contain `.` or `=`.
+    lineStyle = m[2] === "==" ? "thick" : m[2] === "--" ? "solid" : "dotted";
     closing = m[4]! + (m[5] ?? "");
   } else {
     m =
@@ -621,10 +624,11 @@ export function matchLink(rest: string): LinkMatch | null {
     end: endMarker === ">" || endMarker === "x" || endMarker === "o",
   };
 
-  // trailing |label| (wins over a middle label if both somehow appear)
-  const pipe = /^[ \t]*\|([^|]*)\|/.exec(rest.slice(consumed));
+  // trailing |label| (wins over a middle label if both somehow appear); a quoted
+  // label may hold `|`, and its quotes are dropped like mermaid's STR token
+  const pipe = /^[ \t]*\|("[^"]*"|[^|]*)\|/.exec(rest.slice(consumed));
   if (pipe) {
-    label = normalizeLabel(pipe[1]!);
+    label = unquote(pipe[1]!.trim());
     consumed += pipe[0].length;
   }
 
