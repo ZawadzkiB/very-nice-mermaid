@@ -335,6 +335,49 @@ describe("edge labels and operators read like mermaid (v0.7.3)", () => {
   });
 });
 
+// v0.7.3 bug 3 - entity codes in labels. mermaid docs (flowchart "Entity codes to escape
+// characters"): `#quot;` style codes, "Numbers given are base 10 ... HTML character names
+// are also supported". mermaid 11.16.0 mermaidAPI.encodeEntities protects every `#\w+;`
+// before parsing (so its `;` is no statement separator, except the trailing `;` of a
+// style / classDef line) and the label shows the decoded character; labels are HTML, so
+// `&lt;` style references show decoded too.
+describe("entity codes in labels decode like mermaid (v0.7.3)", () => {
+  const nodeLabel = (src: string) => {
+    const m = parse(`flowchart TD\n ${src}`);
+    expect(m.warnings).toEqual([]);
+    return m.nodes[0]!.label;
+  };
+  it("decodes mermaid codes in node labels, quoted or not", () => {
+    expect(nodeLabel('A["#lt;astl-player#gt;"]')).toBe("<astl-player>");
+    expect(nodeLabel("A[#quot;hi#quot; #amp; #60; #9829;]")).toBe('"hi" & < ♥');
+    expect(nodeLabel("A(#copy; #hellip; #rarr; #nbsp;x)")).toBe("© … →  x");
+  });
+  it("decodes HTML references in node labels", () => {
+    expect(nodeLabel('A["&lt;tag&gt; &amp; &quot;q&quot;"]')).toBe('<tag> & "q"');
+    expect(nodeLabel("A[&#60; &#x3C; &copy; &apos;]")).toBe("< < © '");
+  });
+  it("decodes edge labels after their quotes are dropped", () => {
+    const m = parse('flowchart TD\n A -->|#lt;b#gt;| B\n B -- "#quot;q#quot;" --> C\n C -- a #amp; b --> D');
+    expect(m.warnings).toEqual([]);
+    expect(m.edges.map((e) => e.label)).toEqual(["<b>", '"q"', "a & b"]);
+  });
+  it("decodes subgraph titles", () => {
+    const m = parse('flowchart TD\n subgraph S["#lt;x#gt;"]\n A\n end\n subgraph "a #amp; b"\n B\n end');
+    expect(m.subgraphs.map((s) => s.title)).toEqual(["<x>", "a & b"]);
+  });
+  it("leaves unknown names, non-characters and an encoded `<br>` as written", () => {
+    expect(nodeLabel('A["#notanentity; &bogus; #0; #55296;"]')).toBe("#notanentity; &bogus; #0; #55296;");
+    expect(nodeLabel('A["a#lt;br#gt;b"]')).toBe("a<br>b");
+  });
+  it("still splits statements on `;`, and keeps a style line's `#rgb;` a colour", () => {
+    const m = parse("flowchart TD\n A[#lt;b#gt;] --> B; B --> C\n style A fill:#f9f;");
+    expect(m.warnings).toEqual([]);
+    expect(m.edges.map((e) => `${e.from}${e.to}`)).toEqual(["AB", "BC"]);
+    expect(m.nodes[0]!.label).toBe("<b>");
+    expect(m.nodes[0]!.style).toMatchObject({ fill: "#f9f" });
+  });
+});
+
 describe("corpus fixtures parse cleanly (lenient)", () => {
   const files = readdirSync(fixturesDir).filter((f) => f.endsWith(".mmd"));
   it("has a real corpus", () => {

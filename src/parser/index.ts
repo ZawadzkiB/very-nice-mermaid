@@ -19,6 +19,7 @@ import type {
   Subgraph,
 } from "../model/index.js";
 import { isSafeColor } from "../render/style.js";
+import { decodeEntities, isNamedEntity } from "./entities.js";
 
 export interface ParseOptions {
   /** Promote every warning to an error and throw {@link ParseError}. */
@@ -216,7 +217,7 @@ export function parse(dsl: string, opts: ParseOptions = {}): DiagramModel {
       title = unquote(m[2]!.trim());
     } else if ((m = /^"(.*)"$/.exec(body))) {
       id = `subGraph${subgraphCounter++}`;
-      title = m[1]!;
+      title = decodeEntities(m[1]!);
     } else if (/^[A-Za-z0-9_]+$/.test(body)) {
       id = body;
       title = body;
@@ -457,7 +458,7 @@ function collectStatements(
     for (let c = 0; c <= cleaned.length; c++) {
       const ch = cleaned[c];
       if (ch === '"') inStr = !inStr;
-      if ((ch === ";" && !inStr) || c === cleaned.length) {
+      if ((ch === ";" && !inStr && !endsInEntity(cleaned.slice(start, c))) || c === cleaned.length) {
         const seg = cleaned.slice(start, c);
         if (seg.trim() !== "") out.push({ text: seg, line: lineNo, col: start + 1 });
         start = c + 1;
@@ -465,6 +466,19 @@ function collectStatements(
     }
   }
   return out;
+}
+
+/**
+ * Does a `;` right after `seg` close an entity code (`#lt;`, `#60;`, `&amp;`) instead
+ * of ending the statement? mermaid's encodeEntities protects every `#\w+;` before it
+ * parses, except the trailing `;` of a style / classDef line (`fill:#f9f;` is a
+ * colour); `&name;` counts only for a name the label decoder knows.
+ */
+function endsInEntity(seg: string): boolean {
+  if (/^\s*(?:style|classDef|linkStyle)\b/.test(seg)) return false;
+  const m = /(?:#\w+|&(#[xX][0-9A-Fa-f]+|#\d+|[A-Za-z][A-Za-z0-9]*))$/.exec(seg);
+  if (!m) return false;
+  return m[1] === undefined || m[1].startsWith("#") || isNamedEntity(m[1]);
 }
 
 /** Remove a trailing `%% …` line comment, respecting double-quoted strings. */
@@ -478,9 +492,12 @@ function stripComment(line: string): string {
   return line;
 }
 
-/** `<br/>` → newline; strip surrounding quotes handled by caller. */
+/**
+ * `<br/>` → newline, trim, then decode entity codes (after the `<br>` pass, so an
+ * encoded `#lt;br#gt;` stays text); strip surrounding quotes handled by caller.
+ */
 function normalizeLabel(label: string): string {
-  return label.replace(/<br\s*\/?>/gi, "\n").trim();
+  return decodeEntities(label.replace(/<br\s*\/?>/gi, "\n").trim());
 }
 
 function unquote(s: string): string {
