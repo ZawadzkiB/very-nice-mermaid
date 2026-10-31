@@ -27,6 +27,7 @@ import { isClassLayout, type ClassLayout } from "../model/class.js";
 import { renderClassSvg } from "../native/class/svg.js";
 import { isStateLayout, type StateLayout } from "../model/state.js";
 import { renderStateSvg } from "../native/state/svg.js";
+import { diagramA11y, type DiagramA11y } from "./a11y.js";
 
 export interface SvgRenderOptions {
   theme?: string | Theme | PartialTokenSet;
@@ -78,13 +79,16 @@ export function renderSvgFromModel(
   const legendH = legend.length ? t.font.lineHeight + 20 : 0;
   const totalH = b.height + legendH;
 
+  // accTitle / accDescr: aria wiring on the root, <title> / <desc> as its first children.
+  const a11y = diagramA11y(model);
   parts.push(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${n(b.width)}" height="${n(
       totalH,
     )}" viewBox="${n(b.x)} ${n(b.y)} ${n(b.width)} ${n(totalH)}" font-family="${escAttr(
       sketch ? SKETCH_FONT_FAMILY : t.font.family,
-    )}">`,
+    )}"${a11yAttrs(a11y)}>`,
   );
+  parts.push(...a11yElements(a11y));
 
   parts.push(defs(theme, sketch));
 
@@ -551,6 +555,23 @@ function nodeText(node: PositionedNode, color: string, theme: Theme): string {
         }" font-weight="${t.font.weight}" text-anchor="middle" dominant-baseline="central">${esc(line)}</text>`,
     )
     .join("");
+}
+
+/** aria-labelledby / aria-describedby on the root svg (mermaid accessibility.ts). */
+function a11yAttrs(a: DiagramA11y | undefined): string {
+  if (!a) return "";
+  return (
+    (a.title !== undefined ? ` aria-labelledby="${a.titleId}"` : "") +
+    (a.desc !== undefined ? ` aria-describedby="${a.descId}"` : "")
+  );
+}
+
+/** `<title>` then `<desc>`, the root svg's first children. */
+function a11yElements(a: DiagramA11y | undefined): string[] {
+  const out: string[] = [];
+  if (a?.title !== undefined) out.push(`<title id="${a.titleId}">${esc(a.title)}</title>`);
+  if (a?.desc !== undefined) out.push(`<desc id="${a.descId}">${esc(a.desc)}</desc>`);
+  return out;
 }
 
 function esc(s: string): string {

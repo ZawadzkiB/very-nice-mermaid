@@ -1061,6 +1061,166 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     expect(XMLValidator.validate(got)).toBe(true);
   });
 
+  // ---- v0.7.3 accTitle / accDescr: the live svg and Save-SVG (buildSvg twin) carry the same
+  // <title> / <desc> + aria-labelledby / aria-describedby as renderSvg (mermaid 11.16.0
+  // accessibility.ts addSVGa11yTitleDescription), in clean AND sketch.
+  it("accTitle / accDescr: the live svg and toSvgString() carry renderSvg's <title> / <desc> (v0.7.3)", () => {
+    const { model, theme } = prepare(
+      "flowchart TD\n accTitle: Order <flow>\n accDescr {\n  Cart & checkout.\n  Then pay.\n }\n A -->|go| B",
+      { theme: "light" },
+    );
+    for (const style of ["clean", "sketch"] as const) {
+      const { root, handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false, style }));
+      const got = handle.toSvgString();
+      expect(got).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme, undefined, style));
+      expect(got).toContain('<title id="chart-title-vnm-');
+      expect(XMLValidator.validate(got)).toBe(true);
+      const svg = walk(root).find((e) => e.tagName === "svg" && e.getAttribute("class") === "vnm-edges")!;
+      const [title, desc] = svg.kids;
+      expect(title!.tagName).toBe("title");
+      expect(title!.textContent).toBe("Order <flow>");
+      expect(svg.getAttribute("aria-labelledby")).toBe(title!.getAttribute("id"));
+      expect(desc!.tagName).toBe("desc");
+      expect(desc!.textContent).toBe("Cart & checkout.\nThen pay.");
+      expect(svg.getAttribute("aria-describedby")).toBe(desc!.getAttribute("id"));
+      expect(got).toContain(`aria-labelledby="${title!.getAttribute("id")}"`);
+    }
+  });
+
+  // ---- v0.7.3 labels use the room layout reserves (dagre labelpos "c"): a label that cannot be
+  // lifted off its elbow without landing on a node stays ON its line (resolveLabelLineOffsets'
+  // node check). Both fixtures genuinely fire it (sanity: the label centre sits on its own
+  // line), so the runtime twin must reproduce it in Save-SVG, before and after a drag.
+  it("a label too big to lift off its elbow stays on its line, in the twin too (v0.7.3)", () => {
+    const fixtures: Array<[string, string, string]> = [
+      ['flowchart LR\n A[Start] -->|"a fairly long label on an LR edge"| B[End]\n A --> C[Other]', "A", "B"],
+      ['flowchart TB\n A[Start] --> B{Decide}\n B -->|"first<br/>second<br/>third"| C[Left]\n B -->|"alpha<br/>beta<br/>gamma"| D[Right]', "B", "D"],
+    ];
+    for (const [dsl, from, to] of fixtures) {
+      const { model, theme } = prepare(dsl, { theme: "light" });
+      const e = model.edges.find((ed) => ed.from === from && ed.to === to)!;
+      const onLine = e.points.some((a, i) => {
+        const b = e.points[i + 1];
+        if (!b) return false;
+        const p = e.labelPos!;
+        return (
+          p.x >= Math.min(a.x, b.x) - 0.5 && p.x <= Math.max(a.x, b.x) + 0.5 &&
+          p.y >= Math.min(a.y, b.y) - 0.5 && p.y <= Math.max(a.y, b.y) + 0.5
+        );
+      });
+      expect(onLine).toBe(true);
+      const { handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+      expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+      const t = model.nodes.find((nd) => nd.id === to)!;
+      handle.importLayout({ version: 1, positions: { [to]: { x: t.x + 30, y: t.y + 10 } } });
+      expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+    }
+  });
+
+  // ---- v0.7.3 bug 7: a short Z-step next to an anchor. Astrolabe's contracts fence fires both
+  // fixes: computePerimeterPorts' alignPorts lines up a short edge's two ports
+  // (ComponentManifest --- PlayerElementApi) and straightenAnchorJogs slides a long edge's column
+  // onto its port (Engine --- AnswerKey). The twin (computePorts + its straightenAnchorJogs)
+  // must reproduce both live, in Save-SVG, and after a drag.
+  it("alignPorts + straightenAnchorJogs: the twin removes the short steps too (v0.7.3)", () => {
+    const dsl = [
+      "flowchart TD",
+      '  manifest["ComponentManifest<br/>(data, one per type)"]',
+      '  elementApi["PlayerElementApi<br/>(player side)"]',
+      '  descriptor["EditorDescriptor<br/>(authoring side)"]',
+      '  definition["ComponentDefinition<br/>(engine side)"]',
+      '  checker["Checker<br/>(local or HTTP: grading protocol)"]',
+      "  manifest --- definition",
+      "  manifest --- elementApi",
+      "  manifest --- descriptor",
+      "  definition --- engine",
+      "  engine --- key[AnswerKey]",
+      "  elementApi ---- player",
+      "  engine -->|view| player",
+      "  descriptor --- adapter[EditorAdapter]",
+      "  adapter --> player",
+      "  player --- checker",
+      "  checker -->|grade| key",
+    ].join("\n");
+    for (const themeName of ["light", "arch-light"] as const) {
+      const { model, theme } = prepare(dsl, { theme: themeName });
+      const edge = (from: string, to: string) => model.edges.find((e) => e.from === from && e.to === to)!;
+      const nodeX = (id: string) => model.nodes.find((nd) => nd.id === id)!.x;
+      if (themeName === "light") {
+        // fired (short edge): one straight segment, off PlayerElementApi's centre line
+        const short = edge("manifest", "elementApi");
+        expect(short.points).toHaveLength(2);
+        expect(short.points[0]!.x).toBe(short.points[1]!.x);
+        expect(short.points[1]!.x).not.toBe(nodeX("elementApi"));
+        // fired (long edge): dagre's column is off the port, and the edge still leaves straight down
+        const long = edge("engine", "key");
+        expect(long.waypoints![0]!.x).not.toBe(long.points[0]!.x);
+        expect(long.points[1]!.x).toBe(long.points[0]!.x);
+      } else {
+        // fired (long edge on its source's column): straight, entering player off its centre
+        const column = edge("elementApi", "player");
+        expect(column.waypoints!.length).toBeGreaterThan(0);
+        expect(column.points).toHaveLength(2);
+        expect(column.points[1]!.x).not.toBe(nodeX("player"));
+      }
+      const { root, handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+      expect(edgePaths(root)).toEqual(expectedPaths(model, worldBoxes(model), theme));
+      expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+      const api = model.nodes.find((nd) => nd.id === "elementApi")!;
+      handle.importLayout({ version: 1, positions: { elementApi: { x: api.x + 6, y: api.y } } });
+      expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+    }
+  });
+
+  it("separateNestedJogs: the twin pulls the nested jog pair apart too (v0.7.3)", () => {
+    // fixtures/arch-microservices.mmd (the README hero): gw -> catalog's first jog ends on
+    // gw -> cart's port, on the same track. Elbow (arch-light) and curved (fancy) both fire.
+    const dsl = [
+      "flowchart TB",
+      "  client[Web client]:::frontend",
+      "  subgraph gateway [Gateway]",
+      "    gw{{API gateway}}:::backend",
+      "  end",
+      "  subgraph services [Core services]",
+      "    direction LR",
+      "    auth[Auth service]:::security",
+      "    catalog[Catalog service]:::backend",
+      "    cart[Cart service]:::backend",
+      "  end",
+      "  subgraph data [Data]",
+      "    direction LR",
+      "    authdb[(Auth DB)]:::database",
+      "    catdb[(Catalog DB)]:::database",
+      "    cache[(Redis cache)]:::database",
+      "    orders[Order service]:::backend",
+      "    queue[[Event queue]]:::messagebus",
+      "  end",
+      "  client -->|GET /shop| gw",
+      "  gw -->|verify JWT| auth",
+      "  gw -->|route| catalog",
+      "  gw -->|route| cart",
+      "  auth -->|query| authdb",
+      "  catalog -->|read| catdb",
+      "  cart -.->|cache lookup| cache",
+      "  cart ==>|checkout| orders",
+      "  orders -->|publish event| queue",
+      "  auth -.->|401 denied| gw",
+    ].join("\n");
+    for (const themeName of ["arch-light", "fancy"] as const) {
+      const { model, theme } = prepare(dsl, { theme: themeName });
+      const jog = (to: string) => model.edges.find((e) => e.from === "gw" && e.to === to)!.points;
+      // fired: catalog's jog left the shared track and sits below cart's, which turns first
+      expect(jog("catalog")[1]!.y).toBeGreaterThan(jog("cart")[1]!.y);
+      expect(jog("catalog")[2]!.x).toBeGreaterThan(jog("cart")[0]!.x); // still nested: the order is what keeps them apart
+      const { root, handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+      expect(edgePaths(root)).toEqual(expectedPaths(model, worldBoxes(model), theme));
+      expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+      const cat = model.nodes.find((nd) => nd.id === "catalog")!;
+      handle.importLayout({ version: 1, positions: { catalog: { x: cat.x + 6, y: cat.y } } });
+      expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+    }
+  });
+
   // ---- v0.6.6 avoidSubgraphs under a live DRAG (FR5, REV-002): dragging re-runs the live pass
   // on the moved container boxes. Prove it stays deterministic (a repeated identical edit is
   // byte-identical) and that the live re-route byte-matches the static applyPositions() of the

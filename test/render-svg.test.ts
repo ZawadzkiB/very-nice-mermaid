@@ -76,6 +76,43 @@ describe("renderSvg", () => {
     expect(svg).toContain(" C "); // bezier path segment
   });
 
+  // v0.7.3 bug 4 - mermaid 11.16.0 accessibility.ts addSVGa11yTitleDescription: `<title>`
+  // then `<desc>` as the svg's first children, ids `chart-title-<id>` / `chart-desc-<id>`,
+  // referenced from the root by aria-labelledby / aria-describedby; each only when set.
+  describe("accTitle / accDescr as <title> / <desc> (v0.7.3)", () => {
+    const A11Y = "flowchart TD\n accTitle: Order flow\n accDescr {\n  Cart goes to checkout.\n  Then a & b < c.\n }\n A --> B";
+    it("emits <title> and <desc> first, wired by aria-labelledby / aria-describedby", () => {
+      const svg = renderSvg(A11Y, { theme: "light" });
+      const root = /^<svg[^>]*>/.exec(svg)![0];
+      const labelledby = /aria-labelledby="([^"]+)"/.exec(root)![1]!;
+      const describedby = /aria-describedby="([^"]+)"/.exec(root)![1]!;
+      expect(labelledby).toMatch(/^chart-title-vnm-[0-9a-z]+$/);
+      expect(describedby).toBe(labelledby.replace("chart-title-", "chart-desc-"));
+      expect(svg.slice(root.length)).toMatch(
+        new RegExp(
+          `^\\n<title id="${labelledby}">Order flow</title>\\n` +
+            `<desc id="${describedby}">Cart goes to checkout.\\nThen a &amp; b &lt; c.</desc>\\n<defs>`,
+        ),
+      );
+      expect(() => new XMLParser().parse(svg)).not.toThrow();
+    });
+    it("gives two diagrams different ids, and one diagram the same ids every time", () => {
+      const id = (dsl: string) => /aria-labelledby="([^"]+)"/.exec(renderSvg(dsl, { theme: "light" }))![1];
+      expect(id(A11Y)).toBe(id(A11Y));
+      expect(id(A11Y)).toBe(/aria-labelledby="([^"]+)"/.exec(renderSvg(A11Y, { theme: "dark" }))![1]);
+      expect(id(A11Y)).not.toBe(id(A11Y.replace("A --> B", "A --> C")));
+      expect(id("flowchart TD\n accTitle: Same\n A")).not.toBe(id("flowchart TD\n accTitle: Same\n B"));
+    });
+    it("emits only what is set, and nothing without them", () => {
+      const titleOnly = renderSvg("flowchart TD\n accTitle: T\n A", { theme: "light" });
+      expect(titleOnly).toContain("aria-labelledby=");
+      expect(titleOnly).not.toContain("aria-describedby=");
+      expect(titleOnly).not.toContain("<desc");
+      const plain = renderSvg("flowchart TD\n A --> B", { theme: "light" });
+      expect(plain).not.toMatch(/aria-|<title|<desc/);
+    });
+  });
+
   it("escapes XML-special characters in labels", () => {
     const svg = renderSvg('flowchart TD\n A["a & b < c"] --> B', { theme: "light" });
     expect(svg).toContain("a &amp; b &lt; c");

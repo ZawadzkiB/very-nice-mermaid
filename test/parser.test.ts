@@ -250,6 +250,186 @@ describe("matchLink unit", () => {
   });
 });
 
+// v0.7.3 bug 1 - link length counts like mermaid. mermaid 11.16.0 flowDb.destructEndLink
+// drops the closing character and counts the rest: `-->`, `---`, `==>`, `===`, `-.->`, `-.-`
+// are all length 1, each extra `-` / `=` / `.` adds one; a `-- text -->` link takes its
+// length from the closing operator (destructLink(_str, _startStr) reads the END token).
+// vnm keeps its unit (`-->` = 2), so `length` is mermaid's length + 1.
+describe("link length counts like mermaid (v0.7.3)", () => {
+  const len = (op: string) => matchLink(op)!.length;
+  it("`---` and `===` are as long as `-->` and `==>`", () => {
+    expect(len("-->")).toBe(2);
+    expect(len("---")).toBe(2);
+    expect(len("==>")).toBe(2);
+    expect(len("===")).toBe(2);
+    expect(len("<-->")).toBe(2);
+    expect(len("x--x")).toBe(2);
+  });
+  it("each extra line character adds one", () => {
+    expect(len("--->")).toBe(3);
+    expect(len("----")).toBe(3);
+    expect(len("---->")).toBe(4);
+    expect(len("====")).toBe(3);
+    expect(len("o---o")).toBe(3);
+  });
+  it("dotted links count their dots", () => {
+    expect(len("-.->")).toBe(2);
+    expect(len("-.-")).toBe(2);
+    expect(len("-..->")).toBe(3);
+    expect(len("-..-")).toBe(3);
+  });
+  it("a middle-label link takes its length from the closing operator", () => {
+    expect(len("-- text ---")).toBe(2);
+    expect(len("-- text -->")).toBe(2);
+    expect(len("-- text --->")).toBe(3);
+    expect(len("== t ===>")).toBe(3);
+    expect(len("-. t ..->")).toBe(3);
+  });
+});
+
+// v0.7.3 bugs 2 + 6 - edge labels and link operators read like mermaid 11.16.0. The flow
+// lexer (dist/mermaid.js, flow.jison rules) lexes a `"` inside edge text as a string (STR),
+// so a quoted label loses its quotes and may hold `.`, `=`, `|` or `--`; the line style
+// comes from the link tokens only (flowDb.destructStartLink / destructEndLink); and a
+// middle-label link opens with exactly two line characters (START_LINK `[xo<]?--`,
+// `[xo<]?==`, `[xo<]?-.`), so `---` is always a whole link (LINK `[xo<]?--+[-xo>]`).
+describe("edge labels and operators read like mermaid (v0.7.3)", () => {
+  const edge = (src: string) => {
+    const m = parse(`flowchart TD\n ${src}`);
+    expect(m.warnings).toEqual([]);
+    expect(m.edges).toHaveLength(1);
+    return m.edges[0]!;
+  };
+  it("drops the quotes around a middle or pipe label", () => {
+    expect(edge('A -- "label" --> B').label).toBe("label");
+    expect(edge('A -->|"label"| B').label).toBe("label");
+    expect(edge('A == "hot" ==> B').label).toBe("hot");
+    expect(edge('A -. "lazy" .-> B').label).toBe("lazy");
+    expect(edge('A -->|" spaced "| B').label).toBe("spaced");
+  });
+  it("keeps link characters that sit inside a quoted label", () => {
+    expect(edge('A -- "a -- b" --> B').label).toBe("a -- b");
+    expect(edge('A -->|"a | b"| B').label).toBe("a | b");
+  });
+  it("takes the line style from the operators, not from the label text", () => {
+    const quoted = edge('A -- "a.b" --> B');
+    expect(quoted.kind).toBe("solid");
+    expect(quoted.label).toBe("a.b");
+    expect(edge("A -- a.b --> B").kind).toBe("solid");
+    expect(edge("A -- x = y --> B").kind).toBe("solid");
+    expect(edge('A -- "x" --- B').kind).toBe("open");
+    expect(edge('A == "x.y" ==> B').kind).toBe("thick");
+    expect(edge('A -. "a=b" .-> B').kind).toBe("dotted");
+  });
+  it("reads `A --- B --- C` as a chain of two open links", () => {
+    const solid = parse("flowchart TD\n P --- Q --- R");
+    expect(solid.edges.map((e) => [e.from, e.to, e.kind, e.label])).toEqual([
+      ["P", "Q", "open", undefined],
+      ["Q", "R", "open", undefined],
+    ]);
+    const thick = parse("flowchart TD\n S === T === U");
+    expect(thick.edges.map((e) => [e.from, e.to, e.kind])).toEqual([
+      ["S", "T", "thick"],
+      ["T", "U", "thick"],
+    ]);
+  });
+});
+
+// v0.7.3 bug 3 - entity codes in labels. mermaid docs (flowchart "Entity codes to escape
+// characters"): `#quot;` style codes, "Numbers given are base 10 ... HTML character names
+// are also supported". mermaid 11.16.0 mermaidAPI.encodeEntities protects every `#\w+;`
+// before parsing (so its `;` is no statement separator, except the trailing `;` of a
+// style / classDef line) and the label shows the decoded character; labels are HTML, so
+// `&lt;` style references show decoded too.
+describe("entity codes in labels decode like mermaid (v0.7.3)", () => {
+  const nodeLabel = (src: string) => {
+    const m = parse(`flowchart TD\n ${src}`);
+    expect(m.warnings).toEqual([]);
+    return m.nodes[0]!.label;
+  };
+  it("decodes mermaid codes in node labels, quoted or not", () => {
+    expect(nodeLabel('A["#lt;astl-player#gt;"]')).toBe("<astl-player>");
+    expect(nodeLabel("A[#quot;hi#quot; #amp; #60; #9829;]")).toBe('"hi" & < ♥');
+    expect(nodeLabel("A(#copy; #hellip; #rarr; #nbsp;x)")).toBe("© … →  x");
+  });
+  it("decodes HTML references in node labels", () => {
+    expect(nodeLabel('A["&lt;tag&gt; &amp; &quot;q&quot;"]')).toBe('<tag> & "q"');
+    expect(nodeLabel("A[&#60; &#x3C; &copy; &apos;]")).toBe("< < © '");
+  });
+  it("decodes edge labels after their quotes are dropped", () => {
+    const m = parse('flowchart TD\n A -->|#lt;b#gt;| B\n B -- "#quot;q#quot;" --> C\n C -- a #amp; b --> D');
+    expect(m.warnings).toEqual([]);
+    expect(m.edges.map((e) => e.label)).toEqual(["<b>", '"q"', "a & b"]);
+  });
+  it("decodes subgraph titles", () => {
+    const m = parse('flowchart TD\n subgraph S["#lt;x#gt;"]\n A\n end\n subgraph "a #amp; b"\n B\n end');
+    expect(m.subgraphs.map((s) => s.title)).toEqual(["<x>", "a & b"]);
+  });
+  it("leaves unknown names, non-characters and an encoded `<br>` as written", () => {
+    expect(nodeLabel('A["#notanentity; &bogus; #0; #55296;"]')).toBe("#notanentity; &bogus; #0; #55296;");
+    expect(nodeLabel('A["a#lt;br#gt;b"]')).toBe("a<br>b");
+  });
+  it("still splits statements on `;`, and keeps a style line's `#rgb;` a colour", () => {
+    const m = parse("flowchart TD\n A[#lt;b#gt;] --> B; B --> C\n style A fill:#f9f;");
+    expect(m.warnings).toEqual([]);
+    expect(m.edges.map((e) => `${e.from}${e.to}`)).toEqual(["AB", "BC"]);
+    expect(m.nodes[0]!.label).toBe("<b>");
+    expect(m.nodes[0]!.style).toMatchObject({ fill: "#f9f" });
+  });
+});
+
+// v0.7.3 bug 4 - accessible title / description. mermaid 11.16.0 flow lexer: `accTitle\s*:\s*`
+// and `accDescr\s*:\s*` take the rest of the line, `accDescr\s*\{\s*` reads up to the first
+// `}`; the grammar trims the value, setAccTitle drops leading whitespace and
+// setAccDescription folds `\n\s+` to `\n` (commonDb). The last one wins.
+describe("accTitle / accDescr (v0.7.3)", () => {
+  it("reads a one-line title and description without making nodes of them", () => {
+    const m = parse("flowchart TD\n accTitle:   Big   title  \n accDescr: One line.\n A --> B");
+    expect(m.warnings).toEqual([]);
+    expect(m.accTitle).toBe("Big   title");
+    expect(m.accDescr).toBe("One line.");
+    expect(m.nodes.map((n) => n.id)).toEqual(["A", "B"]);
+  });
+  it("reads an `accDescr { ... }` block, folding the indentation of each line", () => {
+    const m = parse(
+      ["flowchart LR", "  accDescr {", "    first line", "       second line", "    third", "  }", "  A --> B"].join("\n"),
+    );
+    expect(m.warnings).toEqual([]);
+    expect(m.accDescr).toBe("first line\nsecond line\nthird");
+    expect(m.edges).toHaveLength(1);
+  });
+  it("reads a one-line block and parses what follows its `}`", () => {
+    const m = parse("flowchart TD\n accDescr { short } A --> B");
+    expect(m.warnings).toEqual([]);
+    expect(m.accDescr).toBe("short");
+    expect(m.edges.map((e) => `${e.from}${e.to}`)).toEqual(["AB"]);
+  });
+  it("keeps `;` and `%%` in the value, and decodes entity codes", () => {
+    const m = parse("flowchart TD\n accTitle: a; b %% c #lt;x#gt;\n A --> B");
+    expect(m.accTitle).toBe("a; b %% c <x>");
+    expect(m.nodes).toHaveLength(2);
+  });
+  it("lets the last one win, and treats an empty value as absent", () => {
+    const m = parse("flowchart TD\n accTitle: first\n accTitle: second\n accDescr: one\n accDescr {\n two\n }\n A");
+    expect(m.accTitle).toBe("second");
+    expect(m.accDescr).toBe("two");
+    const empty = parse("flowchart TD\n accTitle:\n accDescr: \n A");
+    expect("accTitle" in empty).toBe(false);
+    expect("accDescr" in empty).toBe(false);
+  });
+  it("leaves a diagram without them unchanged (no keys)", () => {
+    const m = parse("flowchart TD\n A --> B");
+    expect("accTitle" in m).toBe(false);
+    expect("accDescr" in m).toBe(false);
+  });
+  it("warns on an unterminated block and reads the rest as its description", () => {
+    const m = parse("flowchart TD\n A --> B\n accDescr {\n   never closed\n C --> D");
+    expect(m.warnings.map((w) => [w.code, w.line])).toEqual([["unterminated-acc-descr", 3]]);
+    expect(m.accDescr).toBe("never closed\nC --> D");
+    expect(m.edges).toHaveLength(1);
+  });
+});
+
 describe("corpus fixtures parse cleanly (lenient)", () => {
   const files = readdirSync(fixturesDir).filter((f) => f.endsWith(".mmd"));
   it("has a real corpus", () => {

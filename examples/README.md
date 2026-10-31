@@ -4,6 +4,66 @@
 > Every diagram type rendered in each `--style` (clean / sketch) and theme (light / dark).
 > Regenerated on each run so the gallery always matches the current renderer.
 
+## Architecture
+
+```mermaid
+flowchart LR
+  user[User Browser]:::external
+  subgraph edge [Edge]
+    cdn[CDN / WAF]:::cloud
+    web[Web App]:::frontend
+  end
+  subgraph services [Services]
+    api[API Gateway]:::backend
+    auth[Auth Service]:::security
+    worker[Worker]:::backend
+  end
+  subgraph data [Data]
+    db[(PostgreSQL)]:::database
+    cache[(Redis)]:::database
+    bus[Kafka]:::messagebus
+  end
+  user --> cdn --> web --> api
+  api -->|verify JWT| auth
+  api --> db
+  api --> cache
+  api --> bus --> worker --> db
+```
+
+| | Clean | Sketch |
+|---|---|---|
+| **Light** | ![architecture clean light](./png/architecture-clean-light.png) | ![architecture sketch light](./png/architecture-sketch-light.png) |
+| **Dark** | ![architecture clean dark](./png/architecture-clean-dark.png) | ![architecture sketch dark](./png/architecture-sketch-dark.png) |
+
+## Auth-sequence
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant W as Web App
+  participant A as API Gateway
+  participant S as Auth Service
+  participant C as Redis
+  participant D as PostgreSQL
+  participant K as Kafka
+  U->>+W: click "Log in"
+  W->>+A: POST /login
+  A->>+S: verify credentials
+  S->>+D: lookup user
+  D-->>-S: user record
+  S->>S: sign JWT
+  S-->>-A: 200 + JWT
+  A->>C: cache session
+  A->>K: emit login event
+  A-->>-W: Set-Cookie: jwt
+  W-->>-U: render dashboard
+```
+
+| | Clean | Sketch |
+|---|---|---|
+| **Light** | ![auth-sequence clean light](./png/auth-sequence-clean-light.png) | ![auth-sequence sketch light](./png/auth-sequence-sketch-light.png) |
+| **Dark** | ![auth-sequence clean dark](./png/auth-sequence-clean-dark.png) | ![auth-sequence sketch dark](./png/auth-sequence-sketch-dark.png) |
+
 ## Class
 
 ```mermaid
@@ -40,6 +100,35 @@ flowchart TD
 |---|---|---|
 | **Light** | ![flowchart clean light](./png/flowchart-clean-light.png) | ![flowchart sketch light](./png/flowchart-sketch-light.png) |
 | **Dark** | ![flowchart clean dark](./png/flowchart-clean-dark.png) | ![flowchart sketch dark](./png/flowchart-sketch-dark.png) |
+
+## Order-checkout
+
+```mermaid
+sequenceDiagram
+  participant U as Customer
+  participant S as Web Storefront
+  participant A as API Gateway
+  participant O as Order Service
+  participant P as Payment Service
+  participant C as Redis
+  participant K as Kafka
+  U->>+S: place order
+  S->>+A: POST /checkout
+  A->>+O: create order
+  O->>C: check stock cache
+  C-->>O: cache miss
+  O->>+P: charge card
+  P-->>-O: 403 declined
+  O->>K: emit order event
+  O-->>-A: 402 payment required
+  A-->>-S: show retry
+  S-->>-U: retry payment
+```
+
+| | Clean | Sketch |
+|---|---|---|
+| **Light** | ![order-checkout clean light](./png/order-checkout-clean-light.png) | ![order-checkout sketch light](./png/order-checkout-sketch-light.png) |
+| **Dark** | ![order-checkout clean dark](./png/order-checkout-clean-dark.png) | ![order-checkout sketch dark](./png/order-checkout-sketch-dark.png) |
 
 ## Sequence
 

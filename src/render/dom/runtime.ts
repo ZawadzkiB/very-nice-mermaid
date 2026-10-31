@@ -14,6 +14,7 @@
 
 import type { SerializedModel, StyleDef } from "../../model/index.js";
 import type { EdgeStyle, TokenSet, RenderStyle } from "../../theme/index.js";
+import type { DiagramA11y } from "../a11y.js";
 
 export interface RuntimeTheme {
   name: string;
@@ -53,6 +54,11 @@ export interface RuntimePayload {
    * `.toString()`-serialized and cannot import `sketch-font.ts`.
    */
   sketch?: { fontFace: string; fontFamily: string };
+  /**
+   * Accessible title / description (accTitle / accDescr) with their ids, from
+   * `diagramA11y` (the runtime can't import it); absent when the diagram has neither.
+   */
+  a11y?: DiagramA11y;
 }
 
 export interface LayoutData {
@@ -213,6 +219,23 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   svg.setAttribute("width", String(contentW));
   svg.setAttribute("height", String(contentH));
   svg.setAttribute("style", "position:absolute;left:0;top:0;overflow:visible;pointer-events:none;");
+  // accTitle / accDescr: <title> / <desc> as the first children, wired by aria-labelledby /
+  // aria-describedby. Mirrors src/render/svg.ts (mermaid accessibility.ts).
+  const a11y = payload.a11y;
+  if (a11y && a11y.title !== undefined) {
+    const el = doc.createElementNS(SVGNS, "title");
+    el.setAttribute("id", a11y.titleId);
+    el.textContent = a11y.title;
+    svg.appendChild(el);
+    svg.setAttribute("aria-labelledby", a11y.titleId);
+  }
+  if (a11y && a11y.desc !== undefined) {
+    const el = doc.createElementNS(SVGNS, "desc");
+    el.setAttribute("id", a11y.descId);
+    el.textContent = a11y.desc;
+    svg.appendChild(el);
+    svg.setAttribute("aria-describedby", a11y.descId);
+  }
   const defs = doc.createElementNS(SVGNS, "defs");
   // orient="auto" + a mirrored start marker (see src/render/svg.ts defs()): keep
   // both marker ids/geometry in lockstep with the static SVG so the interactive
@@ -1121,6 +1144,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // choose each end's border side by the direction to the other node, then
     // group endpoints by (node, border-side) and spread any 2+ onto channels
     const groups: Record<string, Array<{ i: number; role: "source" | "target"; along: number }>> = {};
+    const steps: Record<string, number> = {}; // node|side → spread step (a lone port: PORT_STEP)
+    const deskewed: Record<string, boolean> = {}; // i|role ends the de-skewer moved on purpose
     edgeEls.forEach((e, i) => {
       const from = boxOf(e.from);
       const to = boxOf(e.to);
@@ -1166,6 +1191,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       // border uses the border-filling step that lands the extreme anchors on
       // anchorBound (borderLen/2 − PORT_MARGIN, PORT_MARGIN = 6).
       const step = Math.min(30, (borderLen - 2 * 6) / (k - 1));
+      steps[key] = step;
       recs.forEach((r, slot) => {
         res[r.i]![r.role].offset = (slot - (k - 1) / 2) * step;
       });
@@ -1198,6 +1224,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       if ((axisIsX ? box.w : box.h) / 2 - 6 < tol) return;
       const rec = ra[0]!;
       res[rec.i]![rec.role].offset = Math.sign(dA) * tol;
+      deskewed[rec.i + "|" + rec.role] = true;
     };
     const skNodes: Record<string, boolean> = {};
     for (const key in groups) skNodes[key.slice(0, key.lastIndexOf("|"))] = true;
@@ -1205,6 +1232,42 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       deskewer(nodeId, "top", "bottom");
       deskewer(nodeId, "left", "right");
     }
+    // v0.7.3 (bug 7) - mirrors geometry.alignPorts(): line up the two ports of a short edge
+    // (sides facing each other; kept bends, if any, all within WAYPOINT_SNAP (=2) of the line
+    // it slides onto) when they are less than a third of the side's step apart: slide the
+    // target onto the source's line, else the source onto the target's. Pinned (FR7) and
+    // de-skewed ends never move; a slide past anchorBound is skipped.
+    const facing: Record<string, string> = { top: "bottom", bottom: "top", left: "right", right: "left" };
+    const slide = (nodeId: string, end: Anchor, toward: Pt): boolean => {
+      const box = boxOf(nodeId);
+      const horiz = end.side === "top" || end.side === "bottom";
+      const at = anchor(box, end.side, end.offset);
+      const gap = horiz ? toward.x - at.x : toward.y - at.y;
+      if (nAt(gap) === 0 || Math.abs(gap) >= (steps[nodeId + "|" + end.side] ?? 30) / 3) return false;
+      const offset = horiz ? toward.x - box.x : toward.y - box.y;
+      if (Math.abs(offset) > anchorBound(box.shape || "rect", horiz, box.w / 2, box.h / 2)) return false;
+      end.offset = offset;
+      return true;
+    };
+    const free = (i: number, role: "source" | "target"): boolean => {
+      const ov = anchorsOv[i];
+      return !(ov && ov[role]) && !deskewed[i + "|" + role];
+    };
+    edgeEls.forEach((e, i) => {
+      const from = boxOf(e.from);
+      const to = boxOf(e.to);
+      if (from.x === to.x && from.y === to.y) return; // self-loop
+      const r = res[i]!;
+      if (facing[r.source.side] !== r.target.side) return;
+      const a = anchor(from, r.source.side, r.source.offset);
+      const b = anchor(to, r.target.side, r.target.offset);
+      const horiz = r.source.side === "top" || r.source.side === "bottom";
+      const wp = e.waypoints || [];
+      const onLine = (q: Pt): boolean => wp.every((w) => Math.abs(horiz ? w.x - q.x : w.y - q.y) <= 2);
+      if (!(free(i, "target") && onLine(a) && slide(e.to, r.target, a)) && free(i, "source") && onLine(b)) {
+        slide(e.from, r.source, b);
+      }
+    });
     // stagger labels of edges that share a node pair so their plates don't clip
     const pairs: Record<string, number[]> = {};
     edgeEls.forEach((e, i) => {
@@ -1521,6 +1584,42 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     return true;
   };
   const orthoPathT = (pts: Pt[]): string => (edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts));
+  // mirrors geometry.straightenAnchorJogs() (v0.7.3, bug 7): when a long edge steps less than
+  // ANCHOR_JOG_MAX (= PORT_STEP / 3 = 10) sideways right after its source leg (or right before
+  // its target's) and the legs on both sides run the same way (a Z), slide the interior run
+  // after the step onto the anchor's line (moveLane + shiftLabelOnSeg), then simplify. Runs
+  // after avoidSubgraphs + trimEndpointReentry, before the node-avoid passes, matching
+  // finishEdges. Orthogonal routes only. Keep in lockstep with the static pass.
+  function straightenAnchorJogs(edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>): void {
+    edges.forEach((e) => {
+      const p = e.points;
+      if (edgeStyle === "curved" && !isOrthoT(p)) return;
+      let did = false;
+      for (const atSource of [true, false]) {
+        const len = p.length;
+        if (len < 5) break;
+        const i = atSource ? 2 : len - 4;
+        const [a, b, c, d] = atSource ? [p[0]!, p[1]!, p[2]!, p[3]!] : [p[len - 1]!, p[len - 2]!, p[len - 3]!, p[len - 4]!];
+        const vertical = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) >= 0.5;
+        if (!vertical && !(Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) >= 0.5)) continue;
+        const step = vertical ? c.x - b.x : c.y - b.y;
+        const zShape = vertical
+          ? Math.abs(c.y - b.y) < 0.5 && Math.abs(c.x - d.x) < 0.5 && Math.sign(b.y - a.y) === Math.sign(d.y - c.y)
+          : Math.abs(c.x - b.x) < 0.5 && Math.abs(c.y - d.y) < 0.5 && Math.sign(b.x - a.x) === Math.sign(d.x - c.x);
+        if (!zShape || nAt(step) === 0 || Math.abs(step) >= 30 / 3) continue;
+        const along = vertical ? c.x : c.y;
+        const target = vertical ? b.x : b.y;
+        const seg: LaneSeg = { edge: 0, i, along, lo: vertical ? Math.min(c.y, d.y) : Math.min(c.x, d.x), hi: vertical ? Math.max(c.y, d.y) : Math.max(c.x, d.x) };
+        shiftLabelOnSeg(e, vertical, seg, target);
+        p[i] = vertical ? { x: target, y: p[i]!.y } : { x: p[i]!.x, y: target };
+        p[i + 1] = vertical ? { x: target, y: p[i + 1]!.y } : { x: p[i + 1]!.x, y: target };
+        const sp = simplify(p);
+        p.splice(0, p.length, ...sp);
+        did = true;
+      }
+      if (did) e.path = orthoPathT(p);
+    });
+  }
   function avoidNodes(
     edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>,
     pairs: Array<{ from: string; to: string }>,
@@ -1896,6 +1995,83 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     }
     for (const kk in moved) edges[Number(kk)]!.path = pathPoly(edges[Number(kk)]!.points);
   }
+  // mirrors geometry.separateNestedJogs() (v0.7.3): exactly two border-adjacent jogs
+  // on one node side share a track and the stub of one lands inside the other's span,
+  // so the two lines merge. The inner jog keeps the track (it turns first) and the
+  // outer one moves JOG_GAP=26 away from the node, unless the far leg is shorter than
+  // 2 * JOG_GAP. Same buckets as separateConvergentJogs (insertion order), NEST_TOUCH=2,
+  // nAt == n, orthoPathT == orthoPath. Elbow and curved; keep in lockstep with the
+  // static pass.
+  function separateNestedJogs(
+    edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>,
+    pairs: Array<{ from: string; to: string }>,
+  ): void {
+    if (edgeStyle !== "elbow" && edgeStyle !== "curved") return;
+    const JOG_GAP = 26;
+    const NEST_TOUCH = 2;
+    type Rec = { edge: number; seg: LaneSeg; vertical: boolean; toward: number; stub: number; room: number };
+    const jogOf = (p: Pt[], role: "source" | "target"): Omit<Rec, "edge"> | null => {
+      const len = p.length;
+      if (len < 4) return null;
+      const i = role === "target" ? len - 3 : 1;
+      const a = p[i]!;
+      const b = p[i + 1]!;
+      const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+      const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+      if (!isVert && !isHorz) return null;
+      const along = isVert ? a.x : a.y;
+      const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+      const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+      const near = role === "target" ? b : a;
+      const far = role === "target" ? a : b;
+      const anchor = role === "target" ? p[len - 1]! : p[0]!;
+      const next = role === "target" ? p[i - 1]! : p[i + 2]!;
+      const toward = isVert ? Math.sign(anchor.x - near.x) : Math.sign(anchor.y - near.y);
+      const stub = isVert ? near.y : near.x;
+      const room = (isVert ? next.x - far.x : next.y - far.y) * -toward;
+      return { seg: { edge: 0, i, along, lo, hi }, vertical: isVert, toward, stub, room };
+    };
+    const buckets: Record<string, Rec[]> = {};
+    edges.forEach((e, idx) => {
+      const ep = pairs[idx]!;
+      const roles: Array<["source" | "target", string]> = [["source", ep.from], ["target", ep.to]];
+      for (const [role, node] of roles) {
+        const j = jogOf(e.points, role);
+        if (!j || j.toward === 0) continue;
+        const key = node + "|" + (j.vertical ? "V" : "H") + "|" + j.toward + "|" + nAt(j.seg.along);
+        const rec: Rec = { edge: idx, seg: { edge: idx, i: j.seg.i, along: j.seg.along, lo: j.seg.lo, hi: j.seg.hi }, vertical: j.vertical, toward: j.toward, stub: j.stub, room: j.room };
+        (buckets[key] || (buckets[key] = [])).push(rec);
+      }
+    });
+    const moved: Record<number, boolean> = {};
+    for (const key in buckets) {
+      const recs = buckets[key]!;
+      if (recs.length !== 2) continue;
+      const x = recs[0]!;
+      const y = recs[1]!;
+      if (x.edge === y.edge || moved[x.edge] || moved[y.edge]) continue;
+      if (Math.min(x.seg.hi, y.seg.hi) - Math.max(x.seg.lo, y.seg.lo) < -NEST_TOUCH) continue;
+      const inside = (s: number, r: Rec): boolean => s > r.seg.lo - NEST_TOUCH && s < r.seg.hi + NEST_TOUCH;
+      const xIn = inside(x.stub, y);
+      if (xIn === inside(y.stub, x)) continue;
+      const outer = xIn ? y : x;
+      if (outer.room < 2 * JOG_GAP) continue;
+      const target = nAt(outer.seg.along - outer.toward * JOG_GAP);
+      const e = edges[outer.edge]!;
+      const p = e.points;
+      if (outer.vertical) {
+        shiftLabelOnSeg(e, true, outer.seg, target);
+        p[outer.seg.i] = { x: target, y: p[outer.seg.i]!.y };
+        p[outer.seg.i + 1] = { x: target, y: p[outer.seg.i + 1]!.y };
+      } else {
+        shiftLabelOnSeg(e, false, outer.seg, target);
+        p[outer.seg.i] = { x: p[outer.seg.i]!.x, y: target };
+        p[outer.seg.i + 1] = { x: p[outer.seg.i + 1]!.x, y: target };
+      }
+      moved[outer.edge] = true;
+    }
+    for (const kk in moved) edges[Number(kk)]!.path = orthoPathT(edges[Number(kk)]!.points);
+  }
   // mirrors geometry.resolveLabelNodeCollisions() (UAT-1): push any edge-label
   // plate that overlaps a NODE box off it by the smallest move (least-penetration
   // axis, away from the node centre; centred tie → +y then +x). Nodes are fixed
@@ -2074,10 +2250,17 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   // is the one geometry.labelPoint centres the label on (curved 4-pt → mid-curve tangent;
   // else the interior midpoint segment). Run FIRST (before lanes), so the de-collision
   // passes below de-collide the offset (drawn) plates. Byte-identical to the static twin.
+  // v0.7.3: when the lifted plate would sit on a node box but the line position clears
+  // every node by LABEL_NODE_PAD (=10), skip the lift: the label stays on its line (labelpos "c").
   function resolveLabelLineOffsets(
     plates: Array<{ x: number; y: number; w: number; h: number } | undefined>,
     polylines: Pt[][],
+    nodeBoxes: Array<{ x: number; y: number; w: number; h: number }>,
   ): Pt[] {
+    const onNode = (p: { x: number; y: number; w: number; h: number }, pad: number): boolean =>
+      nodeBoxes.some(
+        (nb) => (p.w + nb.w) / 2 + pad - Math.abs(p.x - nb.x) > 0 && (p.h + nb.h) / 2 + pad - Math.abs(p.y - nb.y) > 0,
+      );
     return plates.map((p, i) => {
       if (!p) return { x: 0, y: 0 };
       const pts = polylines[i] ?? [];
@@ -2105,7 +2288,10 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       // Clear the plate off the line by the dimension FACING it: height (horizontal
       // segment → up) or width (vertical segment → right).
       const dist = (horizontal ? p.h : p.w) / 2 + 3;
-      return horizontal ? { x: 0, y: -dist } : { x: dist, y: 0 };
+      const shift = horizontal ? { x: 0, y: -dist } : { x: dist, y: 0 };
+      const lifted = { x: p.x + shift.x, y: p.y + shift.y, w: p.w, h: p.h };
+      if (onNode(lifted, 0) && !onNode(p, 10)) return { x: 0, y: 0 };
+      return shift;
     });
   }
   // Whether crossing bridges are baked into the clean path (FR7 / D4): ON for
@@ -2296,16 +2482,20 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // R1/R2 (mirror finishEdges): clamp endpoint re-entry, then push interior/approach node pierces out.
     const nabL = avoidNodeBoxes((id) => ({ x: positions[id]!.x, y: positions[id]!.y, w: sizes[id]!.w, h: sizes[id]!.h }));
     trimEndpointReentry(routed, edgeEls, nabL);
+    straightenAnchorJogs(routed); // v0.7.3 (bug 7) - mirror finishEdges
     for (let k = 0; k < NODE_AVOID_PASSES; k++) { avoidNodes(routed, edgeEls, nabL); detourApproaches(routed, edgeEls, nabL); }
     // v0.6.4 (option d): lift each label off its line FIRST so the line stays continuous
     // and the de-collision passes below de-collide the offset (drawn) plates.
-    foldLabelShifts(routed, resolveLabelLineOffsets(labelPlatesOf(routed), routed.map((r) => r.points)));
+    const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id]!.x, y: positions[nd.id]!.y, w: sizes[nd.id]!.w, h: sizes[nd.id]!.h }));
+    foldLabelShifts(routed, resolveLabelLineOffsets(labelPlatesOf(routed), routed.map((r) => r.points), nodeBoxesL));
     // FR9: lane-separate FIRST (mutates points/path/labelPos), matching finishEdges.
     separateLanes(routed);
     // v0.6.2: de-cramp a collinear anti-parallel elbow pair the lane gate skips.
     separateAntiParallelJogs(routed, edgeEls);
     // v0.6.5: de-tangle a ≥3-edge convergence bundle at one node side (defect #1).
     separateConvergentJogs(routed, edgeEls);
+    // v0.7.3: pull apart a nested jog pair on one node side (mirror finishEdges).
+    separateNestedJogs(routed, edgeEls);
     // FR6: de-collide label plates, folding the shift back into labelPos so the
     // label-vs-node pass sees the moved plate (uses the same rounded-centre
     // resolver as buildSvg → the live view matches the exported SVG).
@@ -2313,7 +2503,6 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // label-vs-edge (UAT-round): slide any label off a foreign edge's crossing line.
     foldLabelShifts(routed, resolveLabelEdgeCollisions(labelPlatesOf(routed), routed.map((r) => r.points)));
     // label-vs-node (UAT-1): push any label off a node box (live world coords).
-    const nodeBoxesL = model.nodes.map((nd) => ({ x: positions[nd.id]!.x, y: positions[nd.id]!.y, w: sizes[nd.id]!.w, h: sizes[nd.id]!.h }));
     foldLabelShifts(routed, resolveLabelNodeCollisions(labelPlatesOf(routed), nodeBoxesL));
     // v0.6.4: final label-label pass — node de-collision can repack an offset label into
     // a neighbour, so re-separate labels last (matches finishEdges).
@@ -3270,10 +3459,15 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // R1/R2 (mirror finishEdges): clamp endpoint re-entry, then push interior/approach node pierces out.
     const nabB = avoidNodeBoxes((id) => { const b = absBox(id); return { x: b.x, y: b.y, w: b.w, h: b.h }; });
     trimEndpointReentry(routesB, edgeEls, nabB);
+    straightenAnchorJogs(routesB); // v0.7.3 (bug 7) - mirror finishEdges
     for (let k = 0; k < NODE_AVOID_PASSES; k++) { avoidNodes(routesB, edgeEls, nabB); detourApproaches(routesB, edgeEls, nabB); }
     // v0.6.4 (option d): lift each label off its line FIRST so the line stays continuous
     // and the de-collision passes below de-collide the offset (drawn) plates (parity).
-    foldLabelShifts(routesB, resolveLabelLineOffsets(labelPlatesOf(routesB), routesB.map((r) => r.points)));
+    const nodeBoxesB = model.nodes.map((nd) => {
+      const b = absBox(nd.id);
+      return { x: b.x, y: b.y, w: b.w, h: b.h };
+    });
+    foldLabelShifts(routesB, resolveLabelLineOffsets(labelPlatesOf(routesB), routesB.map((r) => r.points), nodeBoxesB));
     // FR9: lane-separate FIRST (mutates points/path/labelPos), matching finishEdges,
     // so Save-SVG byte-matches the static layout()'s re-laned routes (parity).
     separateLanes(routesB);
@@ -3281,6 +3475,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     separateAntiParallelJogs(routesB, edgeEls);
     // v0.6.5: de-tangle a ≥3-edge convergence bundle at one node side (defect #1).
     separateConvergentJogs(routesB, edgeEls);
+    // v0.7.3: pull apart a nested jog pair on one node side (mirror finishEdges).
+    separateNestedJogs(routesB, edgeEls);
     // FR6: de-collide label plates from the ROUNDED routed midpoints (== the value
     // the sink emits), folding each shift into labelPos so the shift byte-matches
     // the static layout()'s and the label-vs-node pass reads the moved plate.
@@ -3288,10 +3484,6 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // label-vs-edge (UAT-round): slide any label off a foreign edge's crossing line.
     foldLabelShifts(routesB, resolveLabelEdgeCollisions(labelPlatesOf(routesB), routesB.map((r) => r.points)));
     // label-vs-node (UAT-1): push any label off a node box (absolute coords).
-    const nodeBoxesB = model.nodes.map((nd) => {
-      const b = absBox(nd.id);
-      return { x: b.x, y: b.y, w: b.w, h: b.h };
-    });
     foldLabelShifts(routesB, resolveLabelNodeCollisions(labelPlatesOf(routesB), nodeBoxesB));
     // v0.6.4: final label-label pass — node de-collision can repack an offset label into
     // a neighbour, so re-separate labels last (matches finishEdges).
@@ -3322,8 +3514,14 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     parts.push(
       '<svg xmlns="http://www.w3.org/2000/svg" width="' + nAt(b.width) + '" height="' + nAt(totalH) +
         '" viewBox="' + nAt(b.x) + " " + nAt(b.y) + " " + nAt(b.width) + " " + nAt(totalH) +
-        '" font-family="' + xmlAttr(sketch && payload.sketch ? payload.sketch.fontFamily : tokens.font.family) + '">',
+        '" font-family="' + xmlAttr(sketch && payload.sketch ? payload.sketch.fontFamily : tokens.font.family) + '"' +
+        (a11y && a11y.title !== undefined ? ' aria-labelledby="' + a11y.titleId + '"' : "") +
+        (a11y && a11y.desc !== undefined ? ' aria-describedby="' + a11y.descId + '"' : "") +
+        ">",
     );
+    // accTitle / accDescr (mirrors src/render/svg.ts a11yElements)
+    if (a11y && a11y.title !== undefined) parts.push('<title id="' + a11y.titleId + '">' + xmlEsc(a11y.title) + "</title>");
+    if (a11y && a11y.desc !== undefined) parts.push('<desc id="' + a11y.descId + '">' + xmlEsc(a11y.desc) + "</desc>");
     parts.push(svgDefs());
     parts.push(
       '<rect x="' + nAt(b.x) + '" y="' + nAt(b.y) + '" width="' + nAt(b.width) + '" height="' + nAt(totalH) +

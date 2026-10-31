@@ -7,6 +7,7 @@ import { serializeModel, type PositionedModel } from "../../model/index.js";
 import type { Theme, RenderStyle } from "../../theme/index.js";
 import type { RuntimePayload } from "./runtime.js";
 import { SKETCH_FONT_FAMILY, sketchFontFaceCss } from "../sketch-font.js";
+import { diagramA11y } from "../a11y.js";
 
 export interface InteractiveOptions {
   /** Persist layout to localStorage: `true` (auto key), a string key, or `false`. */
@@ -71,5 +72,7 @@ export function buildPayload(
     },
   };
   if (sketch) payload.sketch = { fontFace: sketchFontFaceCss(), fontFamily: SKETCH_FONT_FAMILY };
+  const a11y = diagramA11y(model);
+  if (a11y) payload.a11y = a11y;
   return payload;
 }

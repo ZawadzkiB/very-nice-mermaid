@@ -89,6 +89,231 @@ describe("layout respects direction", () => {
   });
 });
 
+// v0.7.3 bug 1 - mermaid 11.16.0 flowDb.getData hands dagre `minlen: edge.length`, where
+// destructEndLink counts the link without its closing character (`---` = `-->` = 1) and
+// addSingleLink caps the length at 10.
+describe("link length spans ranks like mermaid (v0.7.3)", () => {
+  const gap = (op: string) => {
+    const pos = layout(parse(`flowchart TD\n A ${op} B`));
+    const a = pos.nodes.find((n) => n.id === "A")!;
+    const b = pos.nodes.find((n) => n.id === "B")!;
+    return b.y - a.y;
+  };
+  it("`---`, `===` and `-.-` span the same ranks as `-->`, `==>` and `-.->`", () => {
+    expect(gap("---")).toBe(gap("-->"));
+    expect(gap("===")).toBe(gap("==>"));
+    expect(gap("-.-")).toBe(gap("-.->"));
+    expect(gap("-- text ---")).toBe(gap("-- text -->"));
+  });
+  it("each extra line character adds one rank", () => {
+    const one = gap("-->");
+    const two = gap("--->");
+    const three = gap("---->");
+    expect(two).toBeGreaterThan(one);
+    expect(three - two).toBe(two - one);
+    expect(gap("----")).toBe(two);
+    expect(gap("-..->")).toBe(two);
+  });
+  it("caps the span at 10 ranks", () => {
+    expect(gap("-".repeat(11) + ">")).toBeGreaterThan(gap("-".repeat(10) + ">"));
+    expect(gap("-".repeat(20) + ">")).toBe(gap("-".repeat(11) + ">"));
+  });
+});
+
+// v0.7.3 bug 5 - edge labels get layout room. mermaid 11.16.0 sizes each edge label before
+// dagre runs (rendering-util insertEdgeLabel sets edge.width / edge.height from the label
+// bbox, then recursiveRender calls layout(graph)) with labelpos "c" (flowDb.getData), so a
+// label's rank-axis extent widens the gap between the ranks it sits between.
+describe("edge labels get room between ranks (v0.7.3)", () => {
+  const theme = themes.light!;
+  const plateOf = (e: { label?: string; labelPos?: { x: number; y: number } }) => {
+    const s = labelPlateSize(e.label, theme)!;
+    return { x: e.labelPos!.x, y: e.labelPos!.y, width: s.w, height: s.h };
+  };
+  const ends = (pos: ReturnType<typeof layout>, from: string, to: string) => ({
+    a: pos.nodes.find((n) => n.id === from)!,
+    b: pos.nodes.find((n) => n.id === to)!,
+    e: pos.edges.find((ed) => ed.from === from && ed.to === to)!,
+  });
+  const noPlateOnANode = (pos: ReturnType<typeof layout>) => {
+    for (const e of pos.edges.filter((ed) => ed.label)) {
+      const plate = plateOf(e) as unknown as PositionedNode;
+      for (const n of pos.nodes) expect(overlaps(plate, n), `${e.from}->${e.to} label on ${n.id}`).toBe(false);
+    }
+  };
+
+  it("a tall TB label widens its rank gap to fit, between the two nodes", () => {
+    const pos = layout(
+      parse('flowchart TB\n A[Client] -->|"line one<br>line two<br>line three<br>line four"| B[Server]'),
+      { theme },
+    );
+    const { a, b, e } = ends(pos, "A", "B");
+    const gap = b.y - b.height / 2 - (a.y + a.height / 2);
+    expect(gap).toBeGreaterThanOrEqual(plateOf(e).height + theme.tokens.spacing.ranksep / 2);
+    noPlateOnANode(pos);
+  });
+
+  it("a long LR label widens its rank gap to fit", () => {
+    const pos = layout(parse("flowchart LR\n A[Client] -->|a rather long edge label here| B[Server]"), { theme });
+    const { a, b, e } = ends(pos, "A", "B");
+    const gap = b.x - b.width / 2 - (a.x + a.width / 2);
+    expect(gap).toBeGreaterThanOrEqual(plateOf(e).width + theme.tokens.spacing.ranksep / 2);
+    noPlateOnANode(pos);
+  });
+
+  /** Does the plate's centre sit on one of the edge's segments? */
+  const onOwnLine = (e: { points: Array<{ x: number; y: number }> }, p: { x: number; y: number }) =>
+    e.points.some((a, i) => {
+      const b = e.points[i + 1];
+      if (!b) return false;
+      const inX = p.x >= Math.min(a.x, b.x) - 0.5 && p.x <= Math.max(a.x, b.x) + 0.5;
+      const inY = p.y >= Math.min(a.y, b.y) - 0.5 && p.y <= Math.max(a.y, b.y) + 0.5;
+      return inX && inY && (Math.abs(a.x - b.x) < 0.5 || Math.abs(a.y - b.y) < 0.5);
+    });
+
+  it("multi-line labels on a diamond's two elbow branches overlap no node and stay on their edge", () => {
+    const pos = layout(
+      parse(
+        'flowchart TB\n A[Start] --> B{Choice}\n B -->|"yes, go on<br>with it"| C[Done]\n B -->|"no, stop<br>right here<br>now"| D[Store]',
+      ),
+      { theme },
+    );
+    noPlateOnANode(pos);
+    // the 3-line label cannot be lifted above its jog without touching the diamond, so it
+    // stays centred on its own line, in the room dagre reserved for it (labelpos "c")
+    const bd = ends(pos, "B", "D").e;
+    expect(onOwnLine(bd, plateOf(bd))).toBe(true);
+  });
+
+  it("a long LR label on an elbow stays on its edge, inside the rank gap", () => {
+    const pos = layout(
+      parse('flowchart LR\n A[Start] -->|"a fairly long label on an LR edge"| B[End]\n A --> C[Other]'),
+      { theme },
+    );
+    const { a, b, e } = ends(pos, "A", "B");
+    const plate = plateOf(e);
+    expect(plate.x - plate.width / 2).toBeGreaterThan(a.x + a.width / 2);
+    expect(plate.x + plate.width / 2).toBeLessThan(b.x - b.width / 2);
+    expect(onOwnLine(e, plate)).toBe(true);
+    noPlateOnANode(pos);
+  });
+
+  it("leaves unlabelled edges exactly as before", () => {
+    const pos = layout(parse("flowchart TB\n A --> B --> C\n A --> C"), { theme });
+    const { a, b } = ends(pos, "A", "B");
+    expect(b.y - a.y).toBe(a.height / 2 + theme.tokens.spacing.ranksep + b.height / 2);
+  });
+});
+
+// v0.7.3 bug 7 - a short Z-jog where an edge leaves or enters a box: the port spreader put the
+// anchor a few px off where the edge actually heads (dagre's column for a long edge, or the other
+// end's anchor for a short one), and the elbow router joined the two with a tiny step.
+describe("no short jog where an edge leaves or enters a box (v0.7.3)", () => {
+  /** Interior segments shorter than `max` whose neighbours run the same way: a Z-step, not a turn. */
+  const shortJogs = (pos: ReturnType<typeof layout>, max = 15) =>
+    pos.edges.flatMap((e) =>
+      e.points.slice(1, -2).flatMap((b, s) => {
+        const [a, c, d] = [e.points[s]!, e.points[s + 2]!, e.points[s + 3]!];
+        const len = Math.hypot(c.x - b.x, c.y - b.y);
+        const same = Math.sign(b.x - a.x) === Math.sign(d.x - c.x) && Math.sign(b.y - a.y) === Math.sign(d.y - c.y);
+        return len > 0 && len < max && same ? [`${e.from}->${e.to} ${len.toFixed(2)}px`] : [];
+      }),
+    );
+  // Astrolabe's contracts.md fence: Engine has two edges leaving its bottom, and ComponentManifest three.
+  const CONTRACTS = [
+    "flowchart TD",
+    '  manifest["ComponentManifest<br/>(data, one per type)"]',
+    '  definition["ComponentDefinition<br/>(engine side)"]',
+    '  elementApi["PlayerElementApi<br/>(player side)"]',
+    '  descriptor["EditorDescriptor<br/>(authoring side)"]',
+    '  engine["Engine"]',
+    '  player["#lt;astl-player#gt;"]',
+    '  adapter["EditorAdapter<br/>(your WYSIWYG)"]',
+    '  key["AnswerKey"]',
+    '  checker["Checker<br/>(local or HTTP: grading protocol)"]',
+    "  manifest --- definition",
+    "  manifest --- elementApi",
+    "  manifest --- descriptor",
+    "  definition --- engine",
+    "  engine --- key",
+    "  elementApi ---- player",
+    "  engine -->|view| player",
+    "  descriptor --- adapter",
+    "  adapter --> player",
+    "  player --- checker",
+    "  checker -->|grade| key",
+  ].join("\n");
+
+  it("Engine -> AnswerKey leaves Engine straight down its own column", () => {
+    const pos = layout(parse(CONTRACTS));
+    expect(shortJogs(pos)).toEqual([]);
+    const e = pos.edges.find((ed) => ed.from === "engine" && ed.to === "key")!;
+    expect(e.points[1]!.x).toBe(e.points[0]!.x);
+    expect(e.points[1]!.y - e.points[0]!.y).toBeGreaterThan(100);
+  });
+
+  it("a short edge whose ends are a few px apart is drawn straight", () => {
+    const pos = layout(parse(CONTRACTS));
+    const e = pos.edges.find((ed) => ed.from === "manifest" && ed.to === "elementApi")!;
+    expect(e.points).toHaveLength(2);
+    expect(e.points[0]!.x).toBe(e.points[1]!.x);
+    const lr = layout(parse(readFileSync(join(here, "..", "docs", "pipeline.mmd"), "utf8")));
+    expect(shortJogs(lr)).toEqual([]);
+    const scan = lr.edges.find((ed) => ed.from === "test" && ed.to === "scan")!;
+    expect(scan.points).toHaveLength(2);
+    expect(scan.points[0]!.y).toBe(scan.points[1]!.y);
+  });
+
+  it("no edge of the fence runs through a box that is not its own end", () => {
+    expect(edgeThroughNodeCount(layout(parse(CONTRACTS)))).toBe(0);
+  });
+
+  it("keeps a real elbow (an offset of a third of a port step or more)", () => {
+    const pos = layout(parse("flowchart TD\n A[Wide source node] --> B[B]\n A --> C[C]"));
+    for (const e of pos.edges) expect(e.points.length).toBeGreaterThan(2);
+  });
+});
+
+describe("two edges on one node side never merge into one line (v0.7.3)", () => {
+  /** Axis-aligned segments of DIFFERENT edges on one track that overlap or touch: they read as one line. */
+  const merges = (pos: ReturnType<typeof layout>) => {
+    const runs = pos.edges.map((e) =>
+      e.points.slice(0, -1).flatMap((a, i) => {
+        const b = e.points[i + 1]!;
+        if (Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 0.5) return [{ v: true, at: a.x, lo: Math.min(a.y, b.y), hi: Math.max(a.y, b.y) }];
+        if (Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 0.5) return [{ v: false, at: a.y, lo: Math.min(a.x, b.x), hi: Math.max(a.x, b.x) }];
+        return [];
+      }),
+    );
+    const out: string[] = [];
+    runs.forEach((ra, i) =>
+      runs.slice(i + 1).forEach((rb, k) => {
+        for (const a of ra)
+          for (const b of rb)
+            if (a.v === b.v && Math.abs(a.at - b.at) < 1 && Math.min(a.hi, b.hi) - Math.max(a.lo, b.lo) >= -1)
+              out.push(`${pos.edges[i]!.from}->${pos.edges[i]!.to} & ${pos.edges[i + 1 + k]!.from}->${pos.edges[i + 1 + k]!.to}`);
+      }),
+    );
+    return out;
+  };
+
+  // The README hero: gw -> catalog's jog used to end on gw -> cart's port and run on as one bar.
+  const hero = readFileSync(join(fixturesDir, "arch-microservices.mmd"), "utf8");
+  for (const name of ["light", "dark", "fancy", "arch", "arch-light"]) {
+    it(`arch-microservices.mmd (${name})`, () => {
+      const pos = layout(parse(hero), { theme: themes[name]! });
+      expect(merges(pos)).toEqual([]);
+      const jogY = (to: string) => pos.edges.find((e) => e.from === "gw" && e.to === to)!.points[1]!.y;
+      expect(jogY("catalog")).toBeGreaterThan(jogY("cart")); // the inner jog (cart) turns first: no crossing
+    });
+  }
+
+  it("examples/src/architecture.mmd (fancy): API -> Auth and API -> PostgreSQL no longer share their first jog", () => {
+    const src = readFileSync(join(here, "..", "examples", "src", "architecture.mmd"), "utf8");
+    expect(merges(layout(parse(src), { theme: themes.fancy! }))).toEqual([]);
+  });
+});
+
 describe("layout produces non-overlapping nodes", () => {
   const files = readdirSync(fixturesDir).filter((f) => f.endsWith(".mmd"));
   for (const file of files) {

@@ -84,7 +84,11 @@ export interface DiagramEdge {
   kind: EdgeKind;
   label?: string;
   arrows: ArrowEnds;
-  /** Number of line characters (`--` = 2). Feeds layout rank spacing. */
+  /**
+   * Link length in line characters, counted like mermaid: the closing character is
+   * not counted, so `-->`, `---`, `==>`, `===`, `-.->` and `-.-` are all 2 and each
+   * extra `-`, `=` or `.` adds one. An edge spans `length - 1` ranks (at most 10).
+   */
   length: number;
 }
 
@@ -105,6 +109,10 @@ export interface DiagramModel {
   subgraphs: Subgraph[];
   classDefs: Map<string, StyleDef>;
   warnings: Diagnostic[];
+  /** `accTitle:` - the accessible title (SVG `<title>`). Absent when not set. */
+  accTitle?: string;
+  /** `accDescr:` / `accDescr { ... }` - the accessible description (SVG `<desc>`). */
+  accDescr?: string;
 }
 
 /** A 2D point. */
@@ -188,6 +196,10 @@ export interface PositionedModel {
   subgraphs: PositionedSubgraph[];
   classDefs: Map<string, StyleDef>;
   bounds: Rect;
+  /** See {@link DiagramModel.accTitle}. */
+  accTitle?: string;
+  /** See {@link DiagramModel.accDescr}. */
+  accDescr?: string;
 }
 
 /** JSON-friendly shape of a {@link PositionedModel} (classDefs as an object). */
@@ -198,32 +210,51 @@ export interface SerializedModel {
   subgraphs: PositionedSubgraph[];
   classDefs: Record<string, StyleDef>;
   bounds: Rect;
+  accTitle?: string;
+  accDescr?: string;
+}
+
+/** Copy `accTitle` / `accDescr` only when set, so a diagram without them is unchanged. */
+export function withAcc<T extends object>(
+  target: T,
+  source: { accTitle?: string; accDescr?: string },
+): T & { accTitle?: string; accDescr?: string } {
+  const out: T & { accTitle?: string; accDescr?: string } = target;
+  if (source.accTitle !== undefined) out.accTitle = source.accTitle;
+  if (source.accDescr !== undefined) out.accDescr = source.accDescr;
+  return out;
 }
 
 /** Convert a {@link PositionedModel} to a plain JSON-safe object. */
 export function serializeModel(model: PositionedModel): SerializedModel {
   const classDefs: Record<string, StyleDef> = {};
   for (const [name, def] of model.classDefs) classDefs[name] = def;
-  return {
-    direction: model.direction,
-    nodes: model.nodes,
-    edges: model.edges,
-    subgraphs: model.subgraphs,
-    classDefs,
-    bounds: model.bounds,
-  };
+  return withAcc(
+    {
+      direction: model.direction,
+      nodes: model.nodes,
+      edges: model.edges,
+      subgraphs: model.subgraphs,
+      classDefs,
+      bounds: model.bounds,
+    },
+    model,
+  );
 }
 
 /** Rebuild a {@link PositionedModel} from its serialized form. */
 export function deserializeModel(data: SerializedModel): PositionedModel {
-  return {
-    direction: data.direction,
-    nodes: data.nodes,
-    edges: data.edges,
-    subgraphs: data.subgraphs,
-    classDefs: new Map(Object.entries(data.classDefs)),
-    bounds: data.bounds,
-  };
+  return withAcc(
+    {
+      direction: data.direction,
+      nodes: data.nodes,
+      edges: data.edges,
+      subgraphs: data.subgraphs,
+      classDefs: new Map(Object.entries(data.classDefs)),
+      bounds: data.bounds,
+    },
+    data,
+  );
 }
 
 /** Type guard: does this value already carry layout geometry? */

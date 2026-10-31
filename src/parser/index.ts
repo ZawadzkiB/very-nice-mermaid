@@ -19,6 +19,7 @@ import type {
   Subgraph,
 } from "../model/index.js";
 import { isSafeColor } from "../render/style.js";
+import { decodeEntities, isNamedEntity } from "./entities.js";
 
 export interface ParseOptions {
   /** Promote every warning to an error and throw {@link ParseError}. */
@@ -48,6 +49,8 @@ interface Statement {
   line: number;
   /** 1-based column of `text[0]` within its physical line. */
   col: number;
+  /** An `accTitle` / `accDescr` value (raw `text`), not a graph statement. */
+  acc?: "title" | "descr";
 }
 
 /** Ordered shape openers: longer (2-char) delimiters are tested first. */
@@ -181,6 +184,7 @@ export function parse(dsl: string, opts: ParseOptions = {}): DiagramModel {
   // ---- nested helpers (share the closures above) ----
 
   function parseStatement(stmt: Statement): void {
+    if (stmt.acc) return setAcc(stmt);
     const text = stmt.text.trim();
     if (text === "") return;
     const leadCol = stmt.col + (stmt.text.length - stmt.text.trimStart().length);
@@ -203,6 +207,20 @@ export function parse(dsl: string, opts: ParseOptions = {}): DiagramModel {
     parseChain(stmt);
   }
 
+  /**
+   * `accTitle` / `accDescr` (mermaid 11.16.0 flow grammar + commonDb): the value is
+   * trimmed, a description folds `\n\s+` to `\n`, entity codes decode, the last one
+   * wins and an empty one clears it.
+   */
+  function setAcc(stmt: Statement): void {
+    let value = stmt.text.trim();
+    if (stmt.acc === "descr") value = value.replace(/\n\s+/g, "\n");
+    value = decodeEntities(value);
+    const key = stmt.acc === "title" ? "accTitle" : "accDescr";
+    if (value) model[key] = value;
+    else delete model[key];
+  }
+
   function openSubgraph(rest: string, stmt: Statement, col: number): void {
     const body = rest.trim();
     let id: string;
@@ -216,7 +234,7 @@ export function parse(dsl: string, opts: ParseOptions = {}): DiagramModel {
       title = unquote(m[2]!.trim());
     } else if ((m = /^"(.*)"$/.exec(body))) {
       id = `subGraph${subgraphCounter++}`;
-      title = m[1]!;
+      title = decodeEntities(m[1]!);
     } else if (/^[A-Za-z0-9_]+$/.test(body)) {
       id = body;
       title = body;
@@ -442,6 +460,20 @@ function collectStatements(
 ): Statement[] {
   const out: Statement[] = [];
   const lines = dsl.split(/\r\n|\r|\n/);
+  /** Split one (comment-free) line on `;` outside quotes; `base` = 0-based column of `text[0]`. */
+  const pushStatements = (text: string, lineNo: number, base: number) => {
+    let start = 0;
+    let inStr = false;
+    for (let c = 0; c <= text.length; c++) {
+      const ch = text[c];
+      if (ch === '"') inStr = !inStr;
+      if ((ch === ";" && !inStr && !endsInEntity(text.slice(start, c))) || c === text.length) {
+        const seg = text.slice(start, c);
+        if (seg.trim() !== "") out.push({ text: seg, line: lineNo, col: base + start + 1 });
+        start = c + 1;
+      }
+    }
+  };
   for (let l = 0; l < lines.length; l++) {
     const raw = lines[l]!;
     const lineNo = l + 1;
@@ -450,21 +482,59 @@ function collectStatements(
       diag("ignored-directive", "`%%{…}%%` init directive ignored", lineNo, at);
       continue;
     }
-    const cleaned = stripComment(raw);
-    // split on `;` (statement separator) outside of quotes
-    let start = 0;
-    let inStr = false;
-    for (let c = 0; c <= cleaned.length; c++) {
-      const ch = cleaned[c];
-      if (ch === '"') inStr = !inStr;
-      if ((ch === ";" && !inStr) || c === cleaned.length) {
-        const seg = cleaned.slice(start, c);
-        if (seg.trim() !== "") out.push({ text: seg, line: lineNo, col: start + 1 });
-        start = c + 1;
+    // Accessibility statements (mermaid's flow lexer): `accTitle:` / `accDescr:` take the
+    // rest of the line as is (`;` and `%%` included); `accDescr {` runs to the first `}`.
+    const acc = /^(\s*)(?:(accTitle)\s*:|accDescr\s*(:|\{))\s*/.exec(raw);
+    if (acc) {
+      const col = acc[1]!.length + 1;
+      const rest = raw.slice(acc[0].length);
+      if (acc[3] !== "{") {
+        out.push({ text: rest, line: lineNo, col, acc: acc[2] ? "title" : "descr" });
+        continue;
       }
+      const body = [rest];
+      let end = l;
+      let close = rest.indexOf("}");
+      while (close === -1 && end + 1 < lines.length) {
+        end++;
+        body.push(lines[end]!);
+        close = lines[end]!.indexOf("}");
+      }
+      if (close === -1) {
+        diag(
+          "unterminated-acc-descr",
+          "`accDescr {` block is missing its `}`; the rest of the diagram was read as its description",
+          lineNo,
+          col,
+        );
+        out.push({ text: body.join("\n"), line: lineNo, col, acc: "descr" });
+        break;
+      }
+      const last = body[body.length - 1]!;
+      body[body.length - 1] = last.slice(0, close);
+      out.push({ text: body.join("\n"), line: lineNo, col, acc: "descr" });
+      // whatever follows the `}` on its line is parsed as usual
+      const base = end === l ? acc[0].length : 0;
+      pushStatements(stripComment(last.slice(close + 1)), end + 1, base + close + 1);
+      l = end;
+      continue;
     }
+    pushStatements(stripComment(raw), lineNo, 0);
   }
   return out;
+}
+
+/**
+ * Does a `;` right after `seg` close an entity code (`#lt;`, `#60;`, `&amp;`) instead
+ * of ending the statement? mermaid's encodeEntities protects every `#\w+;` before it
+ * parses, except the trailing `;` of a style / classDef line (`fill:#f9f;` is a
+ * colour); `&name;` counts only for a name the label decoder knows.
+ */
+function endsInEntity(seg: string): boolean {
+  if (/^\s*(?:style|classDef|linkStyle)\b/.test(seg)) return false;
+  const m = /(?:#\w+|&(#[xX][0-9A-Fa-f]+|#\d+|[A-Za-z][A-Za-z0-9]*))$/.exec(seg);
+  if (!m) return false;
+  return m[1] === undefined || m[1].startsWith("#") || isNamedEntity(m[1]);
 }
 
 /** Remove a trailing `%% …` line comment, respecting double-quoted strings. */
@@ -478,9 +548,12 @@ function stripComment(line: string): string {
   return line;
 }
 
-/** `<br/>` → newline; strip surrounding quotes handled by caller. */
+/**
+ * `<br/>` → newline, trim, then decode entity codes (after the `<br>` pass, so an
+ * encoded `#lt;br#gt;` stays text); strip surrounding quotes handled by caller.
+ */
 function normalizeLabel(label: string): string {
-  return label.replace(/<br\s*\/?>/gi, "\n").trim();
+  return decodeEntities(label.replace(/<br\s*\/?>/gi, "\n").trim());
 }
 
 function unquote(s: string): string {
@@ -588,17 +661,24 @@ function parseStyleProps(
  * form, and a trailing `|label|`.
  */
 export function matchLink(rest: string): LinkMatch | null {
-  // Middle-label forms first (more specific).
+  // Middle-label forms first (more specific): start marker, opening line, label,
+  // closing line, end marker. As in mermaid's flow lexer, the opening is exactly two
+  // line characters (START_LINK `--`, `==`, `-.`), so `A --- B --- C` stays a chain of
+  // whole links, and a quoted label is one string that may hold `--`, `.` or `=`.
   const mid =
-    /^([<xo])?={2,}[ \t]+(.+?)[ \t]+={2,}([>xo])?/.exec(rest) ??
-    /^([<xo])?-\.+[ \t]+(.+?)[ \t]+\.+-([>xo])?/.exec(rest) ??
-    /^([<xo])?-{2,}[ \t]+(.+?)[ \t]+-{2,}([>xo])?/.exec(rest);
+    /^([<xo])?(==)[ \t]+("[^"]*"|.+?)[ \t]+(={2,})([>xo])?/.exec(rest) ??
+    /^([<xo])?(-\.+)[ \t]+("[^"]*"|.+?)[ \t]+(\.+-)([>xo])?/.exec(rest) ??
+    /^([<xo])?(--)[ \t]+("[^"]*"|.+?)[ \t]+(-{2,})([>xo])?/.exec(rest);
   let m: RegExpExecArray | null = mid;
   let label: string | undefined;
   let lineStyle: "solid" | "dotted" | "thick";
+  /** The operator that closes the link; mermaid reads the link length from it. */
+  let closing: string;
   if (m) {
-    label = normalizeLabel(m[2]!);
-    lineStyle = m[0]!.includes("=") ? "thick" : m[0]!.includes(".") ? "dotted" : "solid";
+    label = unquote(m[3]!.trim());
+    // From the operators only: the label text may contain `.` or `=`.
+    lineStyle = m[2] === "==" ? "thick" : m[2] === "--" ? "solid" : "dotted";
+    closing = m[4]! + (m[5] ?? "");
   } else {
     m =
       /^([<xo])?-\.+-([>xo])?/.exec(rest) ??
@@ -606,6 +686,7 @@ export function matchLink(rest: string): LinkMatch | null {
       /^([<xo])?-{2,}([>xo])?/.exec(rest);
     if (!m) return null;
     lineStyle = m[0]!.includes("=") ? "thick" : m[0]!.includes(".") ? "dotted" : "solid";
+    closing = m[0]!;
   }
 
   let consumed = m[0]!.length;
@@ -616,15 +697,15 @@ export function matchLink(rest: string): LinkMatch | null {
     end: endMarker === ">" || endMarker === "x" || endMarker === "o",
   };
 
-  // trailing |label| (wins over a middle label if both somehow appear)
-  const pipe = /^[ \t]*\|([^|]*)\|/.exec(rest.slice(consumed));
+  // trailing |label| (wins over a middle label if both somehow appear); a quoted
+  // label may hold `|`, and its quotes are dropped like mermaid's STR token
+  const pipe = /^[ \t]*\|("[^"]*"|[^|]*)\|/.exec(rest.slice(consumed));
   if (pipe) {
-    label = normalizeLabel(pipe[1]!);
+    label = unquote(pipe[1]!.trim());
     consumed += pipe[0].length;
   }
 
-  const lineChars = m[0]!.replace(/[<>xo]/g, "");
-  const length = lineChars.replace(/[^-=]/g, "").length || 2;
+  const length = linkLength(closing);
 
   let kind: EdgeKind;
   if (lineStyle === "dotted") kind = "dotted";
@@ -634,4 +715,20 @@ export function matchLink(rest: string): LinkMatch | null {
   const out: LinkMatch = { consumed, kind, arrows, length };
   if (label !== undefined) out.label = label;
   return out;
+}
+
+/**
+ * Link length in vnm's unit (`-->` = 2), counted the way mermaid 11.16.0 does in
+ * `flowDb.destructEndLink`: the closing character (`>`, `x`, `o`, or the last line
+ * character of an open link) is not counted, so `-->`, `---`, `==>`, `===`, `-.->`
+ * and `-.-` are all mermaid length 1 and each extra `-`, `=` or `.` adds one; a
+ * dotted link counts its dots. vnm stores mermaid's length + 1.
+ */
+function linkLength(op: string): number {
+  const marked = /[>xo]$/.test(op);
+  let line = op.replace(/^[<xo]/, "").replace(/[>xo]$/, "");
+  if (!marked) line = line.slice(0, -1);
+  const dots = line.split(".").length - 1;
+  const mermaidLength = dots > 0 ? dots : line.length - 1;
+  return Math.max(1, mermaidLength) + 1;
 }

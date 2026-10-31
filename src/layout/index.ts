@@ -15,6 +15,7 @@ import type {
   Direction,
   Point,
 } from "../model/index.js";
+import { withAcc } from "../model/index.js";
 import { themes, type Theme } from "../theme/index.js";
 import {
   contentBounds,
@@ -30,10 +31,12 @@ import {
   separateLanes,
   separateAntiParallelJogs,
   separateConvergentJogs,
+  separateNestedJogs,
   avoidSubgraphs,
   avoidNodes,
   detourApproaches,
   trimEndpointReentry,
+  straightenAnchorJogs,
   NODE_AVOID_PASSES,
   type NodeBox,
   type AvoidContainer,
@@ -79,11 +82,13 @@ export function finishEdges(
 ): void {
   avoidSubgraphs(edges, subgraphs ?? [], theme.edgeStyle); // v0.6.6 (D1=A) — FIRST: pull a trunk piercing a foreign container outside it + re-enter near its endpoint (defect #3); separateLanes below then re-lanes any new outside-lane overlap
   if (nodeBoxes) trimEndpointReentry(edges, nodeBoxes, theme.edgeStyle, pinned); // R2 — clamp an endpoint approach that threads back through its own box (Worker/PostgreSQL re-entry); never re-anchors a user-pinned port
+  straightenAnchorJogs(edges, theme.edgeStyle); // v0.7.3 (bug 7) - slide a long edge's column onto its port when it steps only a few px sideways next to the anchor; after avoidSubgraphs (the step is its hinge), before the node-avoid passes
   if (nodeBoxes) for (let k = 0; k < NODE_AVOID_PASSES; k++) { avoidNodes(edges, nodeBoxes, theme.edgeStyle); detourApproaches(edges, nodeBoxes, theme.edgeStyle); } // R1 — reserved space: push any interior trunk (avoidNodes) or endpoint-approach leg (detourApproaches) piercing a NON-endpoint node outside it; repeat so a detour that then hits another node also clears (idempotent → extra passes no-op)
-  offsetLabelsOffLine(edges, theme); // v0.6.4 (option d) — lift each label off its line FIRST so the line stays continuous; de-collision below then runs on the offset centres
+  offsetLabelsOffLine(edges, theme, nodeBoxes ?? []); // v0.6.4 (option d) - lift each label off its line FIRST so the line stays continuous; de-collision below then runs on the offset centres (v0.7.3: not onto a node when its line position is clear)
   separateLanes(edges, theme.edgeStyle); // FR9 — give each merged run its own lane (compact, local)
   separateAntiParallelJogs(edges, theme.edgeStyle); // v0.6.2 — de-cramp a collinear anti-parallel elbow pair the lane gate skips
   separateConvergentJogs(edges, theme.edgeStyle); // v0.6.5 — de-tangle a ≥3-edge convergence bundle at one node side (defect #1)
+  separateNestedJogs(edges, theme.edgeStyle); // v0.7.3 - two jogs on one node side sharing a track, one stub inside the other's span: turn the inner one first so they no longer merge
   deCollideLabels(edges, theme);
   deCollideLabelsFromEdges(edges, theme); // UAT-round: off other edges' crossing lines
   if (nodeBoxes) deCollideLabelsFromNodes(edges, theme, nodeBoxes); // UAT-1: off any node box
@@ -98,7 +103,7 @@ export function finishEdges(
  * *offset* plates (the actually-drawn positions). Mirrored byte-for-byte in the runtime
  * twin, on the *rounded* plate centre — same parity contract as {@link deCollideLabels}.
  */
-function offsetLabelsOffLine(edges: RoutedEdge[], theme: Theme): void {
+function offsetLabelsOffLine(edges: RoutedEdge[], theme: Theme, nodeBoxes: ReadonlyArray<NodeBox>): void {
   const plates: Array<PlateRect | undefined> = edges.map((e) => {
     if (!e.label || !e.labelPos) return undefined;
     const s = labelPlateSize(e.label, theme)!;
@@ -112,6 +117,7 @@ function offsetLabelsOffLine(edges: RoutedEdge[], theme: Theme): void {
     // and centres via labelPoint("elbow"), so its home segment is the interior mid segment
     // (REV-001). Mirrored in the runtime twin's per-edge cubic test.
     edges.map((e) => theme.edgeStyle === "curved" && (e.waypoints?.length ?? 0) === 0),
+    nodeBoxes,
   );
   edges.forEach((e, i) => {
     const sh = shifts[i]!;
@@ -254,8 +260,15 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
 
   model.edges.forEach((edge, i) => {
     if (!g.hasNode(edge.from) || !g.hasNode(edge.to)) return;
-    const minlen = Math.min(4, Math.max(1, Math.round(edge.length / 2)));
-    g.setEdge(edge.from, edge.to, { minlen, weight: 1 }, `e${i}`);
+    // mermaid 11.16.0 hands dagre `minlen: edge.length` (flowDb.getData), capped at 10
+    // (flowDb.addSingleLink); vnm's length is mermaid's + 1 (see DiagramEdge.length).
+    const minlen = Math.min(10, Math.max(1, edge.length - 1));
+    // mermaid sizes each edge label before dagre runs (insertEdgeLabel sets edge.width /
+    // height from the label bbox) with labelpos "c" (flowDb.getData), so the ranks make
+    // room for it. Same plate size the renderers draw.
+    const plate = labelPlateSize(edge.label, theme);
+    const label = plate ? { width: plate.w, height: plate.h, labelpos: "c" } : {};
+    g.setEdge(edge.from, edge.to, { minlen, weight: 1, ...label }, `e${i}`);
   });
 
   dagre.layout(g);
@@ -359,14 +372,17 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
     BOUNDS_PADDING,
   );
 
-  return {
-    direction: model.direction,
-    nodes: positionedNodes,
-    edges,
-    subgraphs: positionedSubgraphs,
-    classDefs: model.classDefs,
-    bounds,
-  };
+  return withAcc(
+    {
+      direction: model.direction,
+      nodes: positionedNodes,
+      edges,
+      subgraphs: positionedSubgraphs,
+      classDefs: model.classDefs,
+      bounds,
+    },
+    model,
+  );
 }
 
 /**

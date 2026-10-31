@@ -19,7 +19,9 @@ import {
   separateLanes,
   separateAntiParallelJogs,
   separateConvergentJogs,
+  separateNestedJogs,
   avoidSubgraphs,
+  straightenAnchorJogs,
   SUBGRAPH_AVOID_MARGIN,
   subgraphBox,
   SUBGRAPH_TITLE_BAND,
@@ -816,6 +818,238 @@ describe("computePerimeterPorts de-skewers a lone-in / lone-out collinear pass-t
   it("leaves a lone-top-only node (no opposing bottom edge) untouched", () => {
     const ports = computePerimeterPorts([{ from: "A", to: "M" }], boxes());
     expect(ports[0]!.target.offset).toBe(0);
+  });
+});
+
+describe("computePerimeterPorts lines a port up with where its edge heads (v0.7.3)", () => {
+  // S (3 ports on its bottom, 30 apart) above T1 / T2 / T3; T2 sits 2.65 px left of S's centre.
+  const S: NodeBox = { x: 333.15, y: 38, width: 206, height: 60 };
+  const boxes = (t2x = 330.5): Map<string, NodeBox> =>
+    new Map<string, NodeBox>([
+      ["S", S],
+      ["T1", { x: 106.5, y: 158, width: 197, height: 60 }],
+      ["T2", { x: t2x, y: 158, width: 171, height: 60 }],
+      ["T3", { x: 541.5, y: 158, width: 171, height: 60 }],
+    ]);
+  const fan = [
+    { from: "S", to: "T1" },
+    { from: "S", to: "T2" },
+    { from: "S", to: "T3" },
+  ];
+
+  it("slides a lone target port onto its source's line when they are a few px apart", () => {
+    const ports = computePerimeterPorts(fan, boxes());
+    expect(ports[1]!.source.offset).toBe(0); // the source keeps its spread slot
+    expect(ports[1]!.target.offset).toBeCloseTo(2.65, 9); // the target moves to x = 333.15
+    expect(sidePoint(boxes().get("T2")!, "top", ports[1]!.target.offset).x).toBeCloseTo(333.15, 9);
+    // the far-off fan members keep their real elbows
+    expect(ports[0]!.target.offset).toBe(0);
+    expect(ports[2]!.target.offset).toBe(0);
+  });
+
+  it("keeps a jog of a third of the port step or more (a real elbow)", () => {
+    expect(computePerimeterPorts(fan, boxes(333.15 - 10.5))[1]!.target.offset).toBe(0);
+    expect(computePerimeterPorts(fan, boxes(333.15 - 9.5))[1]!.target.offset).toBeCloseTo(9.5, 9);
+  });
+
+  it("leaves a long edge's ports on their slots (straightenAnchorJogs moves its column instead)", () => {
+    const b = new Map<string, NodeBox>([
+      ["E", { x: 106.5, y: 278, width: 85, height: 42 }],
+      ["K", { x: 218.5, y: 651, width: 111, height: 42 }],
+      ["P", { x: 330.5, y: 409, width: 145, height: 42 }],
+    ]);
+    const column = [
+      { x: 86.6, y: 348 },
+      { x: 86.6, y: 590 },
+    ];
+    const ports = computePerimeterPorts([{ from: "E", to: "K" }, { from: "E", to: "P" }], b, undefined, undefined, [column, []]);
+    expect([ports[0]!.source.offset, ports[1]!.source.offset]).toEqual([-15, 15]);
+  });
+
+  it("treats a long edge whose dagre bends all sit on its source's line like a short one", () => {
+    // contracts.md in arch-light: PlayerElementApi ---- player runs down its own column, and
+    // player's top port (the middle of three) sits 1.05 px off it.
+    const b = new Map<string, NodeBox>([
+      ["A", { x: 319.55, y: 162, width: 161, height: 60 }],
+      ["P", { x: 318.5, y: 421, width: 137, height: 42 }],
+    ]);
+    const onColumn = [
+      { x: 319.55, y: 224 },
+      { x: 319.55, y: 358 },
+    ];
+    expect(computePerimeterPorts([{ from: "A", to: "P" }], b, undefined, undefined, [onColumn])[0]!.target.offset).toBeCloseTo(1.05, 9);
+    const offColumn = onColumn.map((q) => ({ x: q.x - 6, y: q.y })); // straightenAnchorJogs' case
+    expect(computePerimeterPorts([{ from: "A", to: "P" }], b, undefined, undefined, [offColumn])[0]!.target.offset).toBe(0);
+  });
+
+  it("never slides a pinned end; slides the free end instead", () => {
+    const pinTarget = [undefined, { target: { side: "top" as const, offset: 0 } }, undefined];
+    const ports = computePerimeterPorts(fan, boxes(), undefined, pinTarget);
+    expect(ports[1]!.target.offset).toBe(0);
+    expect(ports[1]!.source.offset).toBeCloseTo(-2.65, 9);
+    const pinBoth = [undefined, { source: { side: "bottom" as const, offset: 0 }, target: { side: "top" as const, offset: 0 } }, undefined];
+    const fixed = computePerimeterPorts(fan, boxes(), undefined, pinBoth);
+    expect([fixed[1]!.source.offset, fixed[1]!.target.offset]).toEqual([0, 0]);
+  });
+});
+
+describe("straightenAnchorJogs (v0.7.3)", () => {
+  // Astrolabe's contracts.md: Engine --- AnswerKey leaves Engine's port at x=91.5, steps 4.9 px
+  // left onto dagre's column at x=86.6, runs down, then turns right into AnswerKey.
+  const engineKey = () => ({
+    points: [
+      { x: 91.5, y: 299 },
+      { x: 91.5, y: 348 },
+      { x: 86.6, y: 348 },
+      { x: 86.6, y: 590 },
+      { x: 203.5, y: 590 },
+      { x: 203.5, y: 630 },
+    ],
+    path: "",
+    labelPos: { x: 86.6, y: 469 } as { x: number; y: number } | undefined,
+  });
+
+  it("slides the column onto the source port's line; the next corner just stretches", () => {
+    const e = engineKey();
+    straightenAnchorJogs([e], "elbow");
+    expect(e.points).toEqual([
+      { x: 91.5, y: 299 },
+      { x: 91.5, y: 590 },
+      { x: 203.5, y: 590 },
+      { x: 203.5, y: 630 },
+    ]);
+    expect(e.path).toBe(toPath(e.points, "elbow"));
+    expect(e.labelPos).toEqual({ x: 91.5, y: 469 }); // a label on the column rides along
+  });
+
+  it("does the same at the target end", () => {
+    const e = engineKey();
+    e.points = e.points.map((pt) => ({ x: pt.x, y: 929 - pt.y })).reverse(); // mirror: the step is now before the target leg
+    e.labelPos = undefined;
+    straightenAnchorJogs([e], "elbow");
+    expect(e.points).toEqual([
+      { x: 203.5, y: 299 },
+      { x: 203.5, y: 339 },
+      { x: 91.5, y: 339 },
+      { x: 91.5, y: 630 },
+    ]);
+  });
+
+  it("keeps a real step (a third of the port step or more), a U-turn, and a short 4-point elbow", () => {
+    const wide = engineKey();
+    wide.points[2]!.x = wide.points[3]!.x = 81.5; // a 10 px step
+    const u = engineKey();
+    u.points = [
+      { x: 91.5, y: 299 },
+      { x: 91.5, y: 348 },
+      { x: 86.6, y: 348 },
+      { x: 86.6, y: 320 },
+      { x: 40, y: 320 },
+    ]; // the leg after the step turns back up
+    const short = { points: [{ x: 10, y: 0 }, { x: 10, y: 30 }, { x: 14, y: 30 }, { x: 14, y: 60 }], path: "" };
+    const before = JSON.stringify([wide, u, short]);
+    straightenAnchorJogs([wide, u, short], "elbow");
+    expect(JSON.stringify([wide, u, short])).toBe(before);
+  });
+
+  it("is idempotent, and leaves a cubic curved edge alone", () => {
+    const e = engineKey();
+    straightenAnchorJogs([e], "elbow");
+    const once = JSON.stringify(e);
+    straightenAnchorJogs([e], "elbow");
+    expect(JSON.stringify(e)).toBe(once);
+    const cubic = { points: [{ x: 0, y: 0 }, { x: 0, y: 40 }, { x: 4, y: 60 }, { x: 4, y: 100 }, { x: 50, y: 120 }], path: "" };
+    const curvedBefore = JSON.stringify(cubic);
+    straightenAnchorJogs([cubic], "curved");
+    expect(JSON.stringify(cubic)).toBe(curvedBefore);
+  });
+});
+
+describe("separateNestedJogs (v0.7.3)", () => {
+  // fixtures/arch-microservices.mmd (arch-light): gw -> catalog steps right along y = 336 to a
+  // column 1.5 px past the port of gw -> cart, whose jog runs on along the same y. One bar.
+  type E = { from: string; to: string; points: Array<{ x: number; y: number }>; path: string; labelPos?: { x: number; y: number } };
+  const pair = (): E[] => [
+    {
+      from: "gw",
+      to: "catalog",
+      points: [
+        { x: 287.75, y: 304 },
+        { x: 287.75, y: 336 },
+        { x: 319.25, y: 336 },
+        { x: 319.25, y: 516 },
+      ],
+      path: "",
+      labelPos: { x: 289.25, y: 323 },
+    },
+    {
+      from: "gw",
+      to: "cart",
+      points: [
+        { x: 317.75, y: 304 },
+        { x: 317.75, y: 336 },
+        { x: 578.75, y: 336 },
+        { x: 578.75, y: 516 },
+      ],
+      path: "",
+    },
+  ];
+
+  it("moves the jog that holds the other's stub one JOG_GAP away from the node", () => {
+    const [catalog, cart] = pair() as [E, E];
+    separateNestedJogs([catalog, cart], "elbow");
+    expect(catalog.points).toEqual([
+      { x: 287.75, y: 304 },
+      { x: 287.75, y: 362 },
+      { x: 319.25, y: 362 },
+      { x: 319.25, y: 516 },
+    ]);
+    expect(catalog.path).toBe(toPath(catalog.points, "elbow"));
+    expect(catalog.labelPos).toEqual({ x: 289.25, y: 349 }); // a label on the moved jog rides along
+    expect(cart.points).toEqual(pair()[1]!.points); // the inner jog keeps the track: it turns first
+    expect(cart.path).toBe("");
+  });
+
+  it("does the same on a target side with vertical jogs (LR)", () => {
+    // the avoidSubgraphs LR parity fixture: MCP -> RULES and CONSOLE -> RULES enter RULES's left side
+    const mcp: E = { from: "MCP", to: "RULES", points: [{ x: 357, y: 59 }, { x: 524, y: 59 }, { x: 524, y: 156.5 }, { x: 554, y: 156.5 }], path: "" };
+    const con: E = { from: "CONSOLE", to: "RULES", points: [{ x: 374, y: 141 }, { x: 524, y: 141 }, { x: 524, y: 166.5 }, { x: 554, y: 166.5 }], path: "" };
+    separateNestedJogs([mcp, con], "elbow");
+    expect(mcp.path).toBe("");
+    expect(con.points).toEqual([
+      { x: 374, y: 141 },
+      { x: 498, y: 141 },
+      { x: 498, y: 166.5 },
+      { x: 554, y: 166.5 },
+    ]);
+  });
+
+  it("leaves apart, crossed, three-edge and short-legged pairs alone", () => {
+    const apart = pair();
+    apart[0]!.points[2]!.x = apart[0]!.points[3]!.x = 312; // ends 5.75 px before the cart stub
+    const crossed = pair();
+    crossed[1]!.points = [{ x: 300, y: 304 }, { x: 300, y: 336 }, { x: 280, y: 336 }, { x: 280, y: 516 }]; // each stub inside the other's span
+    const three = [...pair(), { from: "gw", to: "auth", points: [{ x: 257.75, y: 304 }, { x: 257.75, y: 336 }, { x: 200, y: 336 }, { x: 200, y: 516 }], path: "" }];
+    const short = pair();
+    short[0]!.points[3]!.y = 380; // catalog's far leg is 44 px, under 2 * JOG_GAP
+    for (const edges of [apart, crossed, three, short]) {
+      const before = JSON.stringify(edges);
+      separateNestedJogs(edges, "elbow");
+      expect(JSON.stringify(edges)).toBe(before);
+    }
+  });
+
+  it("is idempotent and treats a curved (rounded orthogonal) route the same way", () => {
+    const edges = pair();
+    separateNestedJogs(edges, "elbow");
+    expect(edges[0]!.points[1]!.y).toBe(362);
+    const once = JSON.stringify(edges);
+    separateNestedJogs(edges, "elbow");
+    expect(JSON.stringify(edges)).toBe(once);
+    const curved = pair();
+    separateNestedJogs(curved, "curved");
+    expect(curved[0]!.points).toEqual(edges[0]!.points);
+    expect(curved[0]!.path).not.toBe(toPath(curved[0]!.points, "elbow")); // rounded corners
   });
 });
 
