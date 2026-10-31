@@ -1311,6 +1311,89 @@ export function separateConvergentJogs(
   for (const ei of moved) edges[ei]!.path = toPath(edges[ei]!.points, "elbow");
 }
 
+/** Two collinear jogs whose spans overlap, or end this close (px), read as one line. */
+const NEST_TOUCH = 2;
+
+/**
+ * **v0.7.3 - pull apart a nested jog pair at one node side.** Exactly two edges leave
+ * (or enter) the same node side and their border-adjacent jogs share one track, with
+ * the stub of one landing inside the other's jog: `gw -> catalog` steps right along
+ * `y = 336` to a column that is 1.5 px past the port of `gw -> cart`, whose jog runs on
+ * at the same `y`. The two lines merge into one bar with a crossing-like knot.
+ * {@link separateLanes} skips them (they overlap by less than {@link LANE_MIN_OVERLAP})
+ * and {@link separateConvergentJogs} needs three edges and orders by the far end, which
+ * here would cross the lines. The pair has one crossing-free order: the jog whose stub
+ * sits inside the other's span turns first (nearer the border); the other moves
+ * {@link JOG_GAP} away from the node. Skipped when neither or both stubs sit inside
+ * (the order cannot avoid a crossing) or when the far leg is too short to give way.
+ * Reads only axis-aligned runs, so it serves elbow and curved (rounded orthogonal)
+ * routes alike. Deterministic, idempotent (the moved jog is off the shared track), and
+ * mirrored byte-for-byte in the runtime twin. Mutates `points` / `path` / `labelPos`.
+ */
+export function separateNestedJogs(
+  edges: Array<{ from: string; to: string; points: Point[]; path?: string; labelPos?: Point }>,
+  style: EdgeStyle,
+): void {
+  interface Rec {
+    edge: number;
+    seg: LaneSeg;
+    vertical: boolean;
+    toward: number; // sign of the step from the jog back to the border
+    stub: number; // parallel-axis coord where the anchor's stub meets the jog
+    room: number; // length of the leg leaving the jog away from the border
+  }
+  // The same border-adjacent jog as separateConvergentJogs: a source's FIRST interior
+  // run, a target's LAST one.
+  const jogOf = (p: Point[], role: "source" | "target"): Omit<Rec, "edge"> | null => {
+    const len = p.length;
+    if (len < 4) return null;
+    const i = role === "target" ? len - 3 : 1;
+    const a = p[i]!;
+    const b = p[i + 1]!;
+    const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+    const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+    if (!isVert && !isHorz) return null;
+    const along = isVert ? a.x : a.y;
+    const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+    const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+    const near = role === "target" ? b : a; // the corner joined to the anchor's stub
+    const far = role === "target" ? a : b;
+    const anchor = role === "target" ? p[len - 1]! : p[0]!;
+    const next = role === "target" ? p[i - 1]! : p[i + 2]!;
+    const toward = isVert ? Math.sign(anchor.x - near.x) : Math.sign(anchor.y - near.y);
+    const stub = isVert ? near.y : near.x;
+    const room = (isVert ? next.x - far.x : next.y - far.y) * -toward;
+    return { seg: { edge: 0, i, along, lo, hi }, vertical: isVert, toward, stub, room };
+  };
+  const buckets = new Map<string, Rec[]>();
+  edges.forEach((e, idx) => {
+    for (const [role, node] of [
+      ["source", e.from],
+      ["target", e.to],
+    ] as const) {
+      const j = jogOf(e.points, role);
+      if (!j || j.toward === 0) continue;
+      const key = node + "|" + (j.vertical ? "V" : "H") + "|" + j.toward + "|" + n(j.seg.along);
+      (buckets.get(key) ?? buckets.set(key, []).get(key)!).push({ ...j, seg: { ...j.seg, edge: idx }, edge: idx });
+    }
+  });
+  const moved = new Set<number>();
+  for (const recs of buckets.values()) {
+    if (recs.length !== 2) continue; // three or more belong to separateConvergentJogs
+    const [x, y] = recs as [Rec, Rec];
+    if (x.edge === y.edge || moved.has(x.edge) || moved.has(y.edge)) continue;
+    if (Math.min(x.seg.hi, y.seg.hi) - Math.max(x.seg.lo, y.seg.lo) < -NEST_TOUCH) continue;
+    const inside = (s: number, r: Rec) => s > r.seg.lo - NEST_TOUCH && s < r.seg.hi + NEST_TOUCH;
+    const xIn = inside(x.stub, y);
+    if (xIn === inside(y.stub, x)) continue; // no crossing-free order
+    const outer = xIn ? y : x;
+    if (outer.room < 2 * JOG_GAP) continue; // the far leg must keep a readable length
+    moveLane(edges[outer.edge]!, outer.vertical, outer.seg, n(outer.seg.along - outer.toward * JOG_GAP));
+    moved.add(outer.edge);
+  }
+  for (const ei of moved) edges[ei]!.path = orthoPath(edges[ei]!.points, style);
+}
+
 /**
  * v0.6.6 — margin (px) past the crossed container's nearest side that a re-routed trunk is
  * pushed (defect #3). Comparable to {@link LANE_GAP}/{@link JOG_GAP} so the pushed-out trunk

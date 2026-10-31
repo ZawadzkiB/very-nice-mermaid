@@ -1172,6 +1172,55 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     }
   });
 
+  it("separateNestedJogs: the twin pulls the nested jog pair apart too (v0.7.3)", () => {
+    // fixtures/arch-microservices.mmd (the README hero): gw -> catalog's first jog ends on
+    // gw -> cart's port, on the same track. Elbow (arch-light) and curved (fancy) both fire.
+    const dsl = [
+      "flowchart TB",
+      "  client[Web client]:::frontend",
+      "  subgraph gateway [Gateway]",
+      "    gw{{API gateway}}:::backend",
+      "  end",
+      "  subgraph services [Core services]",
+      "    direction LR",
+      "    auth[Auth service]:::security",
+      "    catalog[Catalog service]:::backend",
+      "    cart[Cart service]:::backend",
+      "  end",
+      "  subgraph data [Data]",
+      "    direction LR",
+      "    authdb[(Auth DB)]:::database",
+      "    catdb[(Catalog DB)]:::database",
+      "    cache[(Redis cache)]:::database",
+      "    orders[Order service]:::backend",
+      "    queue[[Event queue]]:::messagebus",
+      "  end",
+      "  client -->|GET /shop| gw",
+      "  gw -->|verify JWT| auth",
+      "  gw -->|route| catalog",
+      "  gw -->|route| cart",
+      "  auth -->|query| authdb",
+      "  catalog -->|read| catdb",
+      "  cart -.->|cache lookup| cache",
+      "  cart ==>|checkout| orders",
+      "  orders -->|publish event| queue",
+      "  auth -.->|401 denied| gw",
+    ].join("\n");
+    for (const themeName of ["arch-light", "fancy"] as const) {
+      const { model, theme } = prepare(dsl, { theme: themeName });
+      const jog = (to: string) => model.edges.find((e) => e.from === "gw" && e.to === to)!.points;
+      // fired: catalog's jog left the shared track and sits below cart's, which turns first
+      expect(jog("catalog")[1]!.y).toBeGreaterThan(jog("cart")[1]!.y);
+      expect(jog("catalog")[2]!.x).toBeGreaterThan(jog("cart")[0]!.x); // still nested: the order is what keeps them apart
+      const { root, handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+      expect(edgePaths(root)).toEqual(expectedPaths(model, worldBoxes(model), theme));
+      expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+      const cat = model.nodes.find((nd) => nd.id === "catalog")!;
+      handle.importLayout({ version: 1, positions: { catalog: { x: cat.x + 6, y: cat.y } } });
+      expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+    }
+  });
+
   // ---- v0.6.6 avoidSubgraphs under a live DRAG (FR5, REV-002): dragging re-runs the live pass
   // on the moved container boxes. Prove it stays deterministic (a repeated identical edit is
   // byte-identical) and that the live re-route byte-matches the static applyPositions() of the

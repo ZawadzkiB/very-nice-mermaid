@@ -1995,6 +1995,83 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     }
     for (const kk in moved) edges[Number(kk)]!.path = pathPoly(edges[Number(kk)]!.points);
   }
+  // mirrors geometry.separateNestedJogs() (v0.7.3): exactly two border-adjacent jogs
+  // on one node side share a track and the stub of one lands inside the other's span,
+  // so the two lines merge. The inner jog keeps the track (it turns first) and the
+  // outer one moves JOG_GAP=26 away from the node, unless the far leg is shorter than
+  // 2 * JOG_GAP. Same buckets as separateConvergentJogs (insertion order), NEST_TOUCH=2,
+  // nAt == n, orthoPathT == orthoPath. Elbow and curved; keep in lockstep with the
+  // static pass.
+  function separateNestedJogs(
+    edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>,
+    pairs: Array<{ from: string; to: string }>,
+  ): void {
+    if (edgeStyle !== "elbow" && edgeStyle !== "curved") return;
+    const JOG_GAP = 26;
+    const NEST_TOUCH = 2;
+    type Rec = { edge: number; seg: LaneSeg; vertical: boolean; toward: number; stub: number; room: number };
+    const jogOf = (p: Pt[], role: "source" | "target"): Omit<Rec, "edge"> | null => {
+      const len = p.length;
+      if (len < 4) return null;
+      const i = role === "target" ? len - 3 : 1;
+      const a = p[i]!;
+      const b = p[i + 1]!;
+      const isVert = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 1;
+      const isHorz = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 1;
+      if (!isVert && !isHorz) return null;
+      const along = isVert ? a.x : a.y;
+      const lo = isVert ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+      const hi = isVert ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+      const near = role === "target" ? b : a;
+      const far = role === "target" ? a : b;
+      const anchor = role === "target" ? p[len - 1]! : p[0]!;
+      const next = role === "target" ? p[i - 1]! : p[i + 2]!;
+      const toward = isVert ? Math.sign(anchor.x - near.x) : Math.sign(anchor.y - near.y);
+      const stub = isVert ? near.y : near.x;
+      const room = (isVert ? next.x - far.x : next.y - far.y) * -toward;
+      return { seg: { edge: 0, i, along, lo, hi }, vertical: isVert, toward, stub, room };
+    };
+    const buckets: Record<string, Rec[]> = {};
+    edges.forEach((e, idx) => {
+      const ep = pairs[idx]!;
+      const roles: Array<["source" | "target", string]> = [["source", ep.from], ["target", ep.to]];
+      for (const [role, node] of roles) {
+        const j = jogOf(e.points, role);
+        if (!j || j.toward === 0) continue;
+        const key = node + "|" + (j.vertical ? "V" : "H") + "|" + j.toward + "|" + nAt(j.seg.along);
+        const rec: Rec = { edge: idx, seg: { edge: idx, i: j.seg.i, along: j.seg.along, lo: j.seg.lo, hi: j.seg.hi }, vertical: j.vertical, toward: j.toward, stub: j.stub, room: j.room };
+        (buckets[key] || (buckets[key] = [])).push(rec);
+      }
+    });
+    const moved: Record<number, boolean> = {};
+    for (const key in buckets) {
+      const recs = buckets[key]!;
+      if (recs.length !== 2) continue;
+      const x = recs[0]!;
+      const y = recs[1]!;
+      if (x.edge === y.edge || moved[x.edge] || moved[y.edge]) continue;
+      if (Math.min(x.seg.hi, y.seg.hi) - Math.max(x.seg.lo, y.seg.lo) < -NEST_TOUCH) continue;
+      const inside = (s: number, r: Rec): boolean => s > r.seg.lo - NEST_TOUCH && s < r.seg.hi + NEST_TOUCH;
+      const xIn = inside(x.stub, y);
+      if (xIn === inside(y.stub, x)) continue;
+      const outer = xIn ? y : x;
+      if (outer.room < 2 * JOG_GAP) continue;
+      const target = nAt(outer.seg.along - outer.toward * JOG_GAP);
+      const e = edges[outer.edge]!;
+      const p = e.points;
+      if (outer.vertical) {
+        shiftLabelOnSeg(e, true, outer.seg, target);
+        p[outer.seg.i] = { x: target, y: p[outer.seg.i]!.y };
+        p[outer.seg.i + 1] = { x: target, y: p[outer.seg.i + 1]!.y };
+      } else {
+        shiftLabelOnSeg(e, false, outer.seg, target);
+        p[outer.seg.i] = { x: p[outer.seg.i]!.x, y: target };
+        p[outer.seg.i + 1] = { x: p[outer.seg.i + 1]!.x, y: target };
+      }
+      moved[outer.edge] = true;
+    }
+    for (const kk in moved) edges[Number(kk)]!.path = orthoPathT(edges[Number(kk)]!.points);
+  }
   // mirrors geometry.resolveLabelNodeCollisions() (UAT-1): push any edge-label
   // plate that overlaps a NODE box off it by the smallest move (least-penetration
   // axis, away from the node centre; centred tie → +y then +x). Nodes are fixed
@@ -2417,6 +2494,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     separateAntiParallelJogs(routed, edgeEls);
     // v0.6.5: de-tangle a ≥3-edge convergence bundle at one node side (defect #1).
     separateConvergentJogs(routed, edgeEls);
+    // v0.7.3: pull apart a nested jog pair on one node side (mirror finishEdges).
+    separateNestedJogs(routed, edgeEls);
     // FR6: de-collide label plates, folding the shift back into labelPos so the
     // label-vs-node pass sees the moved plate (uses the same rounded-centre
     // resolver as buildSvg → the live view matches the exported SVG).
@@ -3396,6 +3475,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     separateAntiParallelJogs(routesB, edgeEls);
     // v0.6.5: de-tangle a ≥3-edge convergence bundle at one node side (defect #1).
     separateConvergentJogs(routesB, edgeEls);
+    // v0.7.3: pull apart a nested jog pair on one node side (mirror finishEdges).
+    separateNestedJogs(routesB, edgeEls);
     // FR6: de-collide label plates from the ROUNDED routed midpoints (== the value
     // the sink emits), folding each shift into labelPos so the shift byte-matches
     // the static layout()'s and the label-vs-node pass reads the moved plate.

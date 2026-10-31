@@ -274,6 +274,46 @@ describe("no short jog where an edge leaves or enters a box (v0.7.3)", () => {
   });
 });
 
+describe("two edges on one node side never merge into one line (v0.7.3)", () => {
+  /** Axis-aligned segments of DIFFERENT edges on one track that overlap or touch: they read as one line. */
+  const merges = (pos: ReturnType<typeof layout>) => {
+    const runs = pos.edges.map((e) =>
+      e.points.slice(0, -1).flatMap((a, i) => {
+        const b = e.points[i + 1]!;
+        if (Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 0.5) return [{ v: true, at: a.x, lo: Math.min(a.y, b.y), hi: Math.max(a.y, b.y) }];
+        if (Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 0.5) return [{ v: false, at: a.y, lo: Math.min(a.x, b.x), hi: Math.max(a.x, b.x) }];
+        return [];
+      }),
+    );
+    const out: string[] = [];
+    runs.forEach((ra, i) =>
+      runs.slice(i + 1).forEach((rb, k) => {
+        for (const a of ra)
+          for (const b of rb)
+            if (a.v === b.v && Math.abs(a.at - b.at) < 1 && Math.min(a.hi, b.hi) - Math.max(a.lo, b.lo) >= -1)
+              out.push(`${pos.edges[i]!.from}->${pos.edges[i]!.to} & ${pos.edges[i + 1 + k]!.from}->${pos.edges[i + 1 + k]!.to}`);
+      }),
+    );
+    return out;
+  };
+
+  // The README hero: gw -> catalog's jog used to end on gw -> cart's port and run on as one bar.
+  const hero = readFileSync(join(fixturesDir, "arch-microservices.mmd"), "utf8");
+  for (const name of ["light", "dark", "fancy", "arch", "arch-light"]) {
+    it(`arch-microservices.mmd (${name})`, () => {
+      const pos = layout(parse(hero), { theme: themes[name]! });
+      expect(merges(pos)).toEqual([]);
+      const jogY = (to: string) => pos.edges.find((e) => e.from === "gw" && e.to === to)!.points[1]!.y;
+      expect(jogY("catalog")).toBeGreaterThan(jogY("cart")); // the inner jog (cart) turns first: no crossing
+    });
+  }
+
+  it("examples/src/architecture.mmd (fancy): API -> Auth and API -> PostgreSQL no longer share their first jog", () => {
+    const src = readFileSync(join(here, "..", "examples", "src", "architecture.mmd"), "utf8");
+    expect(merges(layout(parse(src), { theme: themes.fancy! }))).toEqual([]);
+  });
+});
+
 describe("layout produces non-overlapping nodes", () => {
   const files = readdirSync(fixturesDir).filter((f) => f.endsWith(".mmd"));
   for (const file of files) {

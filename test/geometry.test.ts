@@ -19,6 +19,7 @@ import {
   separateLanes,
   separateAntiParallelJogs,
   separateConvergentJogs,
+  separateNestedJogs,
   avoidSubgraphs,
   straightenAnchorJogs,
   SUBGRAPH_AVOID_MARGIN,
@@ -961,6 +962,94 @@ describe("straightenAnchorJogs (v0.7.3)", () => {
     const curvedBefore = JSON.stringify(cubic);
     straightenAnchorJogs([cubic], "curved");
     expect(JSON.stringify(cubic)).toBe(curvedBefore);
+  });
+});
+
+describe("separateNestedJogs (v0.7.3)", () => {
+  // fixtures/arch-microservices.mmd (arch-light): gw -> catalog steps right along y = 336 to a
+  // column 1.5 px past the port of gw -> cart, whose jog runs on along the same y. One bar.
+  type E = { from: string; to: string; points: Array<{ x: number; y: number }>; path: string; labelPos?: { x: number; y: number } };
+  const pair = (): E[] => [
+    {
+      from: "gw",
+      to: "catalog",
+      points: [
+        { x: 287.75, y: 304 },
+        { x: 287.75, y: 336 },
+        { x: 319.25, y: 336 },
+        { x: 319.25, y: 516 },
+      ],
+      path: "",
+      labelPos: { x: 289.25, y: 323 },
+    },
+    {
+      from: "gw",
+      to: "cart",
+      points: [
+        { x: 317.75, y: 304 },
+        { x: 317.75, y: 336 },
+        { x: 578.75, y: 336 },
+        { x: 578.75, y: 516 },
+      ],
+      path: "",
+    },
+  ];
+
+  it("moves the jog that holds the other's stub one JOG_GAP away from the node", () => {
+    const [catalog, cart] = pair() as [E, E];
+    separateNestedJogs([catalog, cart], "elbow");
+    expect(catalog.points).toEqual([
+      { x: 287.75, y: 304 },
+      { x: 287.75, y: 362 },
+      { x: 319.25, y: 362 },
+      { x: 319.25, y: 516 },
+    ]);
+    expect(catalog.path).toBe(toPath(catalog.points, "elbow"));
+    expect(catalog.labelPos).toEqual({ x: 289.25, y: 349 }); // a label on the moved jog rides along
+    expect(cart.points).toEqual(pair()[1]!.points); // the inner jog keeps the track: it turns first
+    expect(cart.path).toBe("");
+  });
+
+  it("does the same on a target side with vertical jogs (LR)", () => {
+    // the avoidSubgraphs LR parity fixture: MCP -> RULES and CONSOLE -> RULES enter RULES's left side
+    const mcp: E = { from: "MCP", to: "RULES", points: [{ x: 357, y: 59 }, { x: 524, y: 59 }, { x: 524, y: 156.5 }, { x: 554, y: 156.5 }], path: "" };
+    const con: E = { from: "CONSOLE", to: "RULES", points: [{ x: 374, y: 141 }, { x: 524, y: 141 }, { x: 524, y: 166.5 }, { x: 554, y: 166.5 }], path: "" };
+    separateNestedJogs([mcp, con], "elbow");
+    expect(mcp.path).toBe("");
+    expect(con.points).toEqual([
+      { x: 374, y: 141 },
+      { x: 498, y: 141 },
+      { x: 498, y: 166.5 },
+      { x: 554, y: 166.5 },
+    ]);
+  });
+
+  it("leaves apart, crossed, three-edge and short-legged pairs alone", () => {
+    const apart = pair();
+    apart[0]!.points[2]!.x = apart[0]!.points[3]!.x = 312; // ends 5.75 px before the cart stub
+    const crossed = pair();
+    crossed[1]!.points = [{ x: 300, y: 304 }, { x: 300, y: 336 }, { x: 280, y: 336 }, { x: 280, y: 516 }]; // each stub inside the other's span
+    const three = [...pair(), { from: "gw", to: "auth", points: [{ x: 257.75, y: 304 }, { x: 257.75, y: 336 }, { x: 200, y: 336 }, { x: 200, y: 516 }], path: "" }];
+    const short = pair();
+    short[0]!.points[3]!.y = 380; // catalog's far leg is 44 px, under 2 * JOG_GAP
+    for (const edges of [apart, crossed, three, short]) {
+      const before = JSON.stringify(edges);
+      separateNestedJogs(edges, "elbow");
+      expect(JSON.stringify(edges)).toBe(before);
+    }
+  });
+
+  it("is idempotent and treats a curved (rounded orthogonal) route the same way", () => {
+    const edges = pair();
+    separateNestedJogs(edges, "elbow");
+    expect(edges[0]!.points[1]!.y).toBe(362);
+    const once = JSON.stringify(edges);
+    separateNestedJogs(edges, "elbow");
+    expect(JSON.stringify(edges)).toBe(once);
+    const curved = pair();
+    separateNestedJogs(curved, "curved");
+    expect(curved[0]!.points).toEqual(edges[0]!.points);
+    expect(curved[0]!.path).not.toBe(toPath(curved[0]!.points, "elbow")); // rounded corners
   });
 });
 
