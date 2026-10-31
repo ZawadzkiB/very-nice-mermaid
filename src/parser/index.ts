@@ -49,6 +49,8 @@ interface Statement {
   line: number;
   /** 1-based column of `text[0]` within its physical line. */
   col: number;
+  /** An `accTitle` / `accDescr` value (raw `text`), not a graph statement. */
+  acc?: "title" | "descr";
 }
 
 /** Ordered shape openers: longer (2-char) delimiters are tested first. */
@@ -182,6 +184,7 @@ export function parse(dsl: string, opts: ParseOptions = {}): DiagramModel {
   // ---- nested helpers (share the closures above) ----
 
   function parseStatement(stmt: Statement): void {
+    if (stmt.acc) return setAcc(stmt);
     const text = stmt.text.trim();
     if (text === "") return;
     const leadCol = stmt.col + (stmt.text.length - stmt.text.trimStart().length);
@@ -202,6 +205,20 @@ export function parse(dsl: string, opts: ParseOptions = {}): DiagramModel {
       return;
     }
     parseChain(stmt);
+  }
+
+  /**
+   * `accTitle` / `accDescr` (mermaid 11.16.0 flow grammar + commonDb): the value is
+   * trimmed, a description folds `\n\s+` to `\n`, entity codes decode, the last one
+   * wins and an empty one clears it.
+   */
+  function setAcc(stmt: Statement): void {
+    let value = stmt.text.trim();
+    if (stmt.acc === "descr") value = value.replace(/\n\s+/g, "\n");
+    value = decodeEntities(value);
+    const key = stmt.acc === "title" ? "accTitle" : "accDescr";
+    if (value) model[key] = value;
+    else delete model[key];
   }
 
   function openSubgraph(rest: string, stmt: Statement, col: number): void {
@@ -443,6 +460,20 @@ function collectStatements(
 ): Statement[] {
   const out: Statement[] = [];
   const lines = dsl.split(/\r\n|\r|\n/);
+  /** Split one (comment-free) line on `;` outside quotes; `base` = 0-based column of `text[0]`. */
+  const pushStatements = (text: string, lineNo: number, base: number) => {
+    let start = 0;
+    let inStr = false;
+    for (let c = 0; c <= text.length; c++) {
+      const ch = text[c];
+      if (ch === '"') inStr = !inStr;
+      if ((ch === ";" && !inStr && !endsInEntity(text.slice(start, c))) || c === text.length) {
+        const seg = text.slice(start, c);
+        if (seg.trim() !== "") out.push({ text: seg, line: lineNo, col: base + start + 1 });
+        start = c + 1;
+      }
+    }
+  };
   for (let l = 0; l < lines.length; l++) {
     const raw = lines[l]!;
     const lineNo = l + 1;
@@ -451,19 +482,44 @@ function collectStatements(
       diag("ignored-directive", "`%%{…}%%` init directive ignored", lineNo, at);
       continue;
     }
-    const cleaned = stripComment(raw);
-    // split on `;` (statement separator) outside of quotes
-    let start = 0;
-    let inStr = false;
-    for (let c = 0; c <= cleaned.length; c++) {
-      const ch = cleaned[c];
-      if (ch === '"') inStr = !inStr;
-      if ((ch === ";" && !inStr && !endsInEntity(cleaned.slice(start, c))) || c === cleaned.length) {
-        const seg = cleaned.slice(start, c);
-        if (seg.trim() !== "") out.push({ text: seg, line: lineNo, col: start + 1 });
-        start = c + 1;
+    // Accessibility statements (mermaid's flow lexer): `accTitle:` / `accDescr:` take the
+    // rest of the line as is (`;` and `%%` included); `accDescr {` runs to the first `}`.
+    const acc = /^(\s*)(?:(accTitle)\s*:|accDescr\s*(:|\{))\s*/.exec(raw);
+    if (acc) {
+      const col = acc[1]!.length + 1;
+      const rest = raw.slice(acc[0].length);
+      if (acc[3] !== "{") {
+        out.push({ text: rest, line: lineNo, col, acc: acc[2] ? "title" : "descr" });
+        continue;
       }
+      const body = [rest];
+      let end = l;
+      let close = rest.indexOf("}");
+      while (close === -1 && end + 1 < lines.length) {
+        end++;
+        body.push(lines[end]!);
+        close = lines[end]!.indexOf("}");
+      }
+      if (close === -1) {
+        diag(
+          "unterminated-acc-descr",
+          "`accDescr {` block is missing its `}`; the rest of the diagram was read as its description",
+          lineNo,
+          col,
+        );
+        out.push({ text: body.join("\n"), line: lineNo, col, acc: "descr" });
+        break;
+      }
+      const last = body[body.length - 1]!;
+      body[body.length - 1] = last.slice(0, close);
+      out.push({ text: body.join("\n"), line: lineNo, col, acc: "descr" });
+      // whatever follows the `}` on its line is parsed as usual
+      const base = end === l ? acc[0].length : 0;
+      pushStatements(stripComment(last.slice(close + 1)), end + 1, base + close + 1);
+      l = end;
+      continue;
     }
+    pushStatements(stripComment(raw), lineNo, 0);
   }
   return out;
 }

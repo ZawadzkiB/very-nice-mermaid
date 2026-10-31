@@ -378,6 +378,58 @@ describe("entity codes in labels decode like mermaid (v0.7.3)", () => {
   });
 });
 
+// v0.7.3 bug 4 - accessible title / description. mermaid 11.16.0 flow lexer: `accTitle\s*:\s*`
+// and `accDescr\s*:\s*` take the rest of the line, `accDescr\s*\{\s*` reads up to the first
+// `}`; the grammar trims the value, setAccTitle drops leading whitespace and
+// setAccDescription folds `\n\s+` to `\n` (commonDb). The last one wins.
+describe("accTitle / accDescr (v0.7.3)", () => {
+  it("reads a one-line title and description without making nodes of them", () => {
+    const m = parse("flowchart TD\n accTitle:   Big   title  \n accDescr: One line.\n A --> B");
+    expect(m.warnings).toEqual([]);
+    expect(m.accTitle).toBe("Big   title");
+    expect(m.accDescr).toBe("One line.");
+    expect(m.nodes.map((n) => n.id)).toEqual(["A", "B"]);
+  });
+  it("reads an `accDescr { ... }` block, folding the indentation of each line", () => {
+    const m = parse(
+      ["flowchart LR", "  accDescr {", "    first line", "       second line", "    third", "  }", "  A --> B"].join("\n"),
+    );
+    expect(m.warnings).toEqual([]);
+    expect(m.accDescr).toBe("first line\nsecond line\nthird");
+    expect(m.edges).toHaveLength(1);
+  });
+  it("reads a one-line block and parses what follows its `}`", () => {
+    const m = parse("flowchart TD\n accDescr { short } A --> B");
+    expect(m.warnings).toEqual([]);
+    expect(m.accDescr).toBe("short");
+    expect(m.edges.map((e) => `${e.from}${e.to}`)).toEqual(["AB"]);
+  });
+  it("keeps `;` and `%%` in the value, and decodes entity codes", () => {
+    const m = parse("flowchart TD\n accTitle: a; b %% c #lt;x#gt;\n A --> B");
+    expect(m.accTitle).toBe("a; b %% c <x>");
+    expect(m.nodes).toHaveLength(2);
+  });
+  it("lets the last one win, and treats an empty value as absent", () => {
+    const m = parse("flowchart TD\n accTitle: first\n accTitle: second\n accDescr: one\n accDescr {\n two\n }\n A");
+    expect(m.accTitle).toBe("second");
+    expect(m.accDescr).toBe("two");
+    const empty = parse("flowchart TD\n accTitle:\n accDescr: \n A");
+    expect("accTitle" in empty).toBe(false);
+    expect("accDescr" in empty).toBe(false);
+  });
+  it("leaves a diagram without them unchanged (no keys)", () => {
+    const m = parse("flowchart TD\n A --> B");
+    expect("accTitle" in m).toBe(false);
+    expect("accDescr" in m).toBe(false);
+  });
+  it("warns on an unterminated block and reads the rest as its description", () => {
+    const m = parse("flowchart TD\n A --> B\n accDescr {\n   never closed\n C --> D");
+    expect(m.warnings.map((w) => [w.code, w.line])).toEqual([["unterminated-acc-descr", 3]]);
+    expect(m.accDescr).toBe("never closed\nC --> D");
+    expect(m.edges).toHaveLength(1);
+  });
+});
+
 describe("corpus fixtures parse cleanly (lenient)", () => {
   const files = readdirSync(fixturesDir).filter((f) => f.endsWith(".mmd"));
   it("has a real corpus", () => {

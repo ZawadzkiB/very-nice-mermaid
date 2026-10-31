@@ -14,6 +14,7 @@
 
 import type { SerializedModel, StyleDef } from "../../model/index.js";
 import type { EdgeStyle, TokenSet, RenderStyle } from "../../theme/index.js";
+import type { DiagramA11y } from "../a11y.js";
 
 export interface RuntimeTheme {
   name: string;
@@ -53,6 +54,11 @@ export interface RuntimePayload {
    * `.toString()`-serialized and cannot import `sketch-font.ts`.
    */
   sketch?: { fontFace: string; fontFamily: string };
+  /**
+   * Accessible title / description (accTitle / accDescr) with their ids, from
+   * `diagramA11y` (the runtime can't import it); absent when the diagram has neither.
+   */
+  a11y?: DiagramA11y;
 }
 
 export interface LayoutData {
@@ -213,6 +219,23 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
   svg.setAttribute("width", String(contentW));
   svg.setAttribute("height", String(contentH));
   svg.setAttribute("style", "position:absolute;left:0;top:0;overflow:visible;pointer-events:none;");
+  // accTitle / accDescr: <title> / <desc> as the first children, wired by aria-labelledby /
+  // aria-describedby. Mirrors src/render/svg.ts (mermaid accessibility.ts).
+  const a11y = payload.a11y;
+  if (a11y && a11y.title !== undefined) {
+    const el = doc.createElementNS(SVGNS, "title");
+    el.setAttribute("id", a11y.titleId);
+    el.textContent = a11y.title;
+    svg.appendChild(el);
+    svg.setAttribute("aria-labelledby", a11y.titleId);
+  }
+  if (a11y && a11y.desc !== undefined) {
+    const el = doc.createElementNS(SVGNS, "desc");
+    el.setAttribute("id", a11y.descId);
+    el.textContent = a11y.desc;
+    svg.appendChild(el);
+    svg.setAttribute("aria-describedby", a11y.descId);
+  }
   const defs = doc.createElementNS(SVGNS, "defs");
   // orient="auto" + a mirrored start marker (see src/render/svg.ts defs()): keep
   // both marker ids/geometry in lockstep with the static SVG so the interactive
@@ -3322,8 +3345,14 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     parts.push(
       '<svg xmlns="http://www.w3.org/2000/svg" width="' + nAt(b.width) + '" height="' + nAt(totalH) +
         '" viewBox="' + nAt(b.x) + " " + nAt(b.y) + " " + nAt(b.width) + " " + nAt(totalH) +
-        '" font-family="' + xmlAttr(sketch && payload.sketch ? payload.sketch.fontFamily : tokens.font.family) + '">',
+        '" font-family="' + xmlAttr(sketch && payload.sketch ? payload.sketch.fontFamily : tokens.font.family) + '"' +
+        (a11y && a11y.title !== undefined ? ' aria-labelledby="' + a11y.titleId + '"' : "") +
+        (a11y && a11y.desc !== undefined ? ' aria-describedby="' + a11y.descId + '"' : "") +
+        ">",
     );
+    // accTitle / accDescr (mirrors src/render/svg.ts a11yElements)
+    if (a11y && a11y.title !== undefined) parts.push('<title id="' + a11y.titleId + '">' + xmlEsc(a11y.title) + "</title>");
+    if (a11y && a11y.desc !== undefined) parts.push('<desc id="' + a11y.descId + '">' + xmlEsc(a11y.desc) + "</desc>");
     parts.push(svgDefs());
     parts.push(
       '<rect x="' + nAt(b.x) + '" y="' + nAt(b.y) + '" width="' + nAt(b.width) + '" height="' + nAt(totalH) +

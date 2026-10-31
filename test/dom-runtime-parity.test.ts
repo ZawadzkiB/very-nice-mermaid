@@ -1061,6 +1061,32 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     expect(XMLValidator.validate(got)).toBe(true);
   });
 
+  // ---- v0.7.3 accTitle / accDescr: the live svg and Save-SVG (buildSvg twin) carry the same
+  // <title> / <desc> + aria-labelledby / aria-describedby as renderSvg (mermaid 11.16.0
+  // accessibility.ts addSVGa11yTitleDescription), in clean AND sketch.
+  it("accTitle / accDescr: the live svg and toSvgString() carry renderSvg's <title> / <desc> (v0.7.3)", () => {
+    const { model, theme } = prepare(
+      "flowchart TD\n accTitle: Order <flow>\n accDescr {\n  Cart & checkout.\n  Then pay.\n }\n A -->|go| B",
+      { theme: "light" },
+    );
+    for (const style of ["clean", "sketch"] as const) {
+      const { root, handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false, style }));
+      const got = handle.toSvgString();
+      expect(got).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme, undefined, style));
+      expect(got).toContain('<title id="chart-title-vnm-');
+      expect(XMLValidator.validate(got)).toBe(true);
+      const svg = walk(root).find((e) => e.tagName === "svg" && e.getAttribute("class") === "vnm-edges")!;
+      const [title, desc] = svg.kids;
+      expect(title!.tagName).toBe("title");
+      expect(title!.textContent).toBe("Order <flow>");
+      expect(svg.getAttribute("aria-labelledby")).toBe(title!.getAttribute("id"));
+      expect(desc!.tagName).toBe("desc");
+      expect(desc!.textContent).toBe("Cart & checkout.\nThen pay.");
+      expect(svg.getAttribute("aria-describedby")).toBe(desc!.getAttribute("id"));
+      expect(got).toContain(`aria-labelledby="${title!.getAttribute("id")}"`);
+    }
+  });
+
   // ---- v0.6.6 avoidSubgraphs under a live DRAG (FR5, REV-002): dragging re-runs the live pass
   // on the moved container boxes. Prove it stays deterministic (a repeated identical edit is
   // byte-identical) and that the live re-route byte-matches the static applyPositions() of the

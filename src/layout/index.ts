@@ -15,6 +15,7 @@ import type {
   Direction,
   Point,
 } from "../model/index.js";
+import { withAcc } from "../model/index.js";
 import { themes, type Theme } from "../theme/index.js";
 import {
   contentBounds,
@@ -361,14 +362,17 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
     BOUNDS_PADDING,
   );
 
-  return {
-    direction: model.direction,
-    nodes: positionedNodes,
-    edges,
-    subgraphs: positionedSubgraphs,
-    classDefs: model.classDefs,
-    bounds,
-  };
+  return withAcc(
+    {
+      direction: model.direction,
+      nodes: positionedNodes,
+      edges,
+      subgraphs: positionedSubgraphs,
+      classDefs: model.classDefs,
+      bounds,
+    },
+    model,
+  );
 }
 
 /**
