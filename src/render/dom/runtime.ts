@@ -1144,6 +1144,8 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // choose each end's border side by the direction to the other node, then
     // group endpoints by (node, border-side) and spread any 2+ onto channels
     const groups: Record<string, Array<{ i: number; role: "source" | "target"; along: number }>> = {};
+    const steps: Record<string, number> = {}; // node|side → spread step (a lone port: PORT_STEP)
+    const deskewed: Record<string, boolean> = {}; // i|role ends the de-skewer moved on purpose
     edgeEls.forEach((e, i) => {
       const from = boxOf(e.from);
       const to = boxOf(e.to);
@@ -1189,6 +1191,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       // border uses the border-filling step that lands the extreme anchors on
       // anchorBound (borderLen/2 − PORT_MARGIN, PORT_MARGIN = 6).
       const step = Math.min(30, (borderLen - 2 * 6) / (k - 1));
+      steps[key] = step;
       recs.forEach((r, slot) => {
         res[r.i]![r.role].offset = (slot - (k - 1) / 2) * step;
       });
@@ -1221,6 +1224,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       if ((axisIsX ? box.w : box.h) / 2 - 6 < tol) return;
       const rec = ra[0]!;
       res[rec.i]![rec.role].offset = Math.sign(dA) * tol;
+      deskewed[rec.i + "|" + rec.role] = true;
     };
     const skNodes: Record<string, boolean> = {};
     for (const key in groups) skNodes[key.slice(0, key.lastIndexOf("|"))] = true;
@@ -1228,6 +1232,42 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
       deskewer(nodeId, "top", "bottom");
       deskewer(nodeId, "left", "right");
     }
+    // v0.7.3 (bug 7) - mirrors geometry.alignPorts(): line up the two ports of a short edge
+    // (sides facing each other; kept bends, if any, all within WAYPOINT_SNAP (=2) of the line
+    // it slides onto) when they are less than a third of the side's step apart: slide the
+    // target onto the source's line, else the source onto the target's. Pinned (FR7) and
+    // de-skewed ends never move; a slide past anchorBound is skipped.
+    const facing: Record<string, string> = { top: "bottom", bottom: "top", left: "right", right: "left" };
+    const slide = (nodeId: string, end: Anchor, toward: Pt): boolean => {
+      const box = boxOf(nodeId);
+      const horiz = end.side === "top" || end.side === "bottom";
+      const at = anchor(box, end.side, end.offset);
+      const gap = horiz ? toward.x - at.x : toward.y - at.y;
+      if (nAt(gap) === 0 || Math.abs(gap) >= (steps[nodeId + "|" + end.side] ?? 30) / 3) return false;
+      const offset = horiz ? toward.x - box.x : toward.y - box.y;
+      if (Math.abs(offset) > anchorBound(box.shape || "rect", horiz, box.w / 2, box.h / 2)) return false;
+      end.offset = offset;
+      return true;
+    };
+    const free = (i: number, role: "source" | "target"): boolean => {
+      const ov = anchorsOv[i];
+      return !(ov && ov[role]) && !deskewed[i + "|" + role];
+    };
+    edgeEls.forEach((e, i) => {
+      const from = boxOf(e.from);
+      const to = boxOf(e.to);
+      if (from.x === to.x && from.y === to.y) return; // self-loop
+      const r = res[i]!;
+      if (facing[r.source.side] !== r.target.side) return;
+      const a = anchor(from, r.source.side, r.source.offset);
+      const b = anchor(to, r.target.side, r.target.offset);
+      const horiz = r.source.side === "top" || r.source.side === "bottom";
+      const wp = e.waypoints || [];
+      const onLine = (q: Pt): boolean => wp.every((w) => Math.abs(horiz ? w.x - q.x : w.y - q.y) <= 2);
+      if (!(free(i, "target") && onLine(a) && slide(e.to, r.target, a)) && free(i, "source") && onLine(b)) {
+        slide(e.from, r.source, b);
+      }
+    });
     // stagger labels of edges that share a node pair so their plates don't clip
     const pairs: Record<string, number[]> = {};
     edgeEls.forEach((e, i) => {
@@ -1544,6 +1584,42 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     return true;
   };
   const orthoPathT = (pts: Pt[]): string => (edgeStyle === "curved" ? pathRounded(pts) : pathPoly(pts));
+  // mirrors geometry.straightenAnchorJogs() (v0.7.3, bug 7): when a long edge steps less than
+  // ANCHOR_JOG_MAX (= PORT_STEP / 3 = 10) sideways right after its source leg (or right before
+  // its target's) and the legs on both sides run the same way (a Z), slide the interior run
+  // after the step onto the anchor's line (moveLane + shiftLabelOnSeg), then simplify. Runs
+  // after avoidSubgraphs + trimEndpointReentry, before the node-avoid passes, matching
+  // finishEdges. Orthogonal routes only. Keep in lockstep with the static pass.
+  function straightenAnchorJogs(edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>): void {
+    edges.forEach((e) => {
+      const p = e.points;
+      if (edgeStyle === "curved" && !isOrthoT(p)) return;
+      let did = false;
+      for (const atSource of [true, false]) {
+        const len = p.length;
+        if (len < 5) break;
+        const i = atSource ? 2 : len - 4;
+        const [a, b, c, d] = atSource ? [p[0]!, p[1]!, p[2]!, p[3]!] : [p[len - 1]!, p[len - 2]!, p[len - 3]!, p[len - 4]!];
+        const vertical = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) >= 0.5;
+        if (!vertical && !(Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) >= 0.5)) continue;
+        const step = vertical ? c.x - b.x : c.y - b.y;
+        const zShape = vertical
+          ? Math.abs(c.y - b.y) < 0.5 && Math.abs(c.x - d.x) < 0.5 && Math.sign(b.y - a.y) === Math.sign(d.y - c.y)
+          : Math.abs(c.x - b.x) < 0.5 && Math.abs(c.y - d.y) < 0.5 && Math.sign(b.x - a.x) === Math.sign(d.x - c.x);
+        if (!zShape || nAt(step) === 0 || Math.abs(step) >= 30 / 3) continue;
+        const along = vertical ? c.x : c.y;
+        const target = vertical ? b.x : b.y;
+        const seg: LaneSeg = { edge: 0, i, along, lo: vertical ? Math.min(c.y, d.y) : Math.min(c.x, d.x), hi: vertical ? Math.max(c.y, d.y) : Math.max(c.x, d.x) };
+        shiftLabelOnSeg(e, vertical, seg, target);
+        p[i] = vertical ? { x: target, y: p[i]!.y } : { x: p[i]!.x, y: target };
+        p[i + 1] = vertical ? { x: target, y: p[i + 1]!.y } : { x: p[i + 1]!.x, y: target };
+        const sp = simplify(p);
+        p.splice(0, p.length, ...sp);
+        did = true;
+      }
+      if (did) e.path = orthoPathT(p);
+    });
+  }
   function avoidNodes(
     edges: Array<{ points: Pt[]; path: string; labelPos: Pt }>,
     pairs: Array<{ from: string; to: string }>,
@@ -2329,6 +2405,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // R1/R2 (mirror finishEdges): clamp endpoint re-entry, then push interior/approach node pierces out.
     const nabL = avoidNodeBoxes((id) => ({ x: positions[id]!.x, y: positions[id]!.y, w: sizes[id]!.w, h: sizes[id]!.h }));
     trimEndpointReentry(routed, edgeEls, nabL);
+    straightenAnchorJogs(routed); // v0.7.3 (bug 7) - mirror finishEdges
     for (let k = 0; k < NODE_AVOID_PASSES; k++) { avoidNodes(routed, edgeEls, nabL); detourApproaches(routed, edgeEls, nabL); }
     // v0.6.4 (option d): lift each label off its line FIRST so the line stays continuous
     // and the de-collision passes below de-collide the offset (drawn) plates.
@@ -3303,6 +3380,7 @@ export function vnmRuntime(root: HTMLElement, payload: RuntimePayload): RuntimeH
     // R1/R2 (mirror finishEdges): clamp endpoint re-entry, then push interior/approach node pierces out.
     const nabB = avoidNodeBoxes((id) => { const b = absBox(id); return { x: b.x, y: b.y, w: b.w, h: b.h }; });
     trimEndpointReentry(routesB, edgeEls, nabB);
+    straightenAnchorJogs(routesB); // v0.7.3 (bug 7) - mirror finishEdges
     for (let k = 0; k < NODE_AVOID_PASSES; k++) { avoidNodes(routesB, edgeEls, nabB); detourApproaches(routesB, edgeEls, nabB); }
     // v0.6.4 (option d): lift each label off its line FIRST so the line stays continuous
     // and the de-collision passes below de-collide the offset (drawn) plates (parity).

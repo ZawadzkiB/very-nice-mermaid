@@ -266,6 +266,8 @@ export function computePerimeterPorts(
   }
   const groups = new Map<string, Rec[]>();
   const groupNode = new Map<string, string>();
+  const steps = new Map<string, number>(); // node|side → spread step (a lone port: PORT_STEP)
+  const deskewed = new Set<string>(); // edgeIndex|role ends the de-skewer moved on purpose
 
   const add = (nodeId: string, side: Side, rec: Rec): void => {
     const key = nodeId + "|" + side;
@@ -320,6 +322,7 @@ export function computePerimeterPorts(
     // allows without pushing an anchor past the corner. This lets a busy hub's
     // fan-in use (almost) the whole node width instead of bunching at PORT_STEP.
     const step = Math.min(PORT_STEP, (borderLen - 2 * PORT_MARGIN) / (k - 1));
+    steps.set(key, step);
     recs.forEach((r, slot) => {
       result[r.edgeIndex]![r.role].offset = (slot - (k - 1) / 2) * step;
     });
@@ -358,14 +361,71 @@ export function computePerimeterPorts(
     if ((axisIsX ? box.width : box.height) / 2 - PORT_MARGIN < tol) return; // no room → leave
     const rec = ra[0]!;
     result[rec.edgeIndex]![rec.role].offset = Math.sign(dA) * tol;
+    deskewed.add(rec.edgeIndex + "|" + rec.role);
   };
   for (const nodeId of new Set(groupNode.values())) {
     deskewer(nodeId, "top", "bottom");
     deskewer(nodeId, "left", "right");
   }
 
+  alignPorts(edges, boxes, result, steps, (i, role) => !overrides?.[i]?.[role] && !deskewed.has(i + "|" + role), bends);
+
   if (labelSizes) computeLabelShifts(edges, boxes, labelSizes, result);
   return result;
+}
+
+/**
+ * **v0.7.3 - line up the two ports of a short edge (bug 7).** The spread puts each port on a
+ * fixed slot ({@link PORT_STEP} apart) and dagre may put two adjacent-rank nodes a few px off
+ * each other's slots, so a short edge whose sides face each other became a Z with a few-px step
+ * (Astrolabe's contracts.md: `ComponentManifest --- PlayerElementApi` stepped 2.65 px, and that
+ * third step under the manifest tipped {@link separateConvergentJogs} into fanning its three
+ * edges into the row below). When the two anchors are less than a third of the side's step
+ * apart, slide the target port onto the source's line (a source usually carries the fan), else
+ * the source onto the target's, so the edge is one straight segment. A third keeps two
+ * neighbours that both slide toward each other a third of a step apart (dagre's own edgesep,
+ * 10, is PORT_STEP / 3). Pinned (FR7) and de-skewed ends never move, a slide past
+ * {@link anchorBound} is skipped, and a long edge counts only while dagre's bends all sit on
+ * the line it slides onto (otherwise its step is {@link straightenAnchorJogs}' to remove).
+ * Mirrored in the runtime twin's `computePorts`.
+ */
+function alignPorts(
+  edges: ReadonlyArray<{ from: string; to: string }>,
+  boxes: Map<string, NodeBox>,
+  result: EdgePorts[],
+  steps: Map<string, number>,
+  free: (edgeIndex: number, role: "source" | "target") => boolean,
+  bends?: ReadonlyArray<ReadonlyArray<{ x: number; y: number }> | undefined>,
+): void {
+  const slide = (nodeId: string, end: EdgeAnchor, toward: { x: number; y: number }): boolean => {
+    const box = boxes.get(nodeId)!;
+    const horiz = end.side === "top" || end.side === "bottom";
+    const at = sidePoint(box, end.side, end.offset);
+    const gap = horiz ? toward.x - at.x : toward.y - at.y;
+    if (n(gap) === 0 || Math.abs(gap) >= (steps.get(nodeId + "|" + end.side) ?? PORT_STEP) / 3) return false;
+    const offset = horiz ? toward.x - box.x : toward.y - box.y;
+    if (Math.abs(offset) > anchorBound(box.shape ?? "rect", end.side, box.width / 2, box.height / 2)) return false;
+    end.offset = offset;
+    return true;
+  };
+  const facing: Record<Side, Side> = { top: "bottom", bottom: "top", left: "right", right: "left" };
+  edges.forEach((e, i) => {
+    const from = boxes.get(e.from);
+    const to = boxes.get(e.to);
+    if (!from || !to || from === to || (from.x === to.x && from.y === to.y)) return;
+    const r = result[i]!;
+    if (facing[r.source.side] !== r.target.side) return;
+    const a = sidePoint(from, r.source.side, r.source.offset);
+    const b = sidePoint(to, r.target.side, r.target.offset);
+    // An edge with dagre bends counts only while they all sit on one end's line (snapWaypoints
+    // puts them on it), so its route is still just the two legs and the step between them.
+    const horiz = r.source.side === "top" || r.source.side === "bottom";
+    const wp = bends?.[i] ?? [];
+    const onLine = (q: Point): boolean => wp.every((w) => Math.abs(horiz ? w.x - q.x : w.y - q.y) <= WAYPOINT_SNAP);
+    if (!(free(i, "target") && onLine(a) && slide(e.to, r.target, a)) && free(i, "source") && onLine(b)) {
+      slide(e.from, r.source, b);
+    }
+  });
 }
 
 /**
@@ -1590,6 +1650,60 @@ export function trimEndpointReentry(
       p.splice(0, p.length, ...sp);
       e.path = orthoPath(p, style);
     }
+  });
+}
+
+/**
+ * v0.7.3 (bug 7) - the longest sideways step {@link straightenAnchorJogs} removes next to an
+ * anchor: a third of {@link PORT_STEP}, the bound {@link computePerimeterPorts} uses to line up a
+ * short edge's ports (and dagre's own edgesep, 10).
+ */
+const ANCHOR_JOG_MAX = PORT_STEP / 3;
+
+/**
+ * **v0.7.3 - straighten a short step next to an anchor (bug 7).** A long edge leaves its port,
+ * then steps a few px sideways onto the column dagre ran it down (Astrolabe's contracts.md:
+ * `Engine --- AnswerKey` stepped 4.9 px under Engine): the port spreader put the port on its
+ * slot, dagre put the column where its dummy nodes fit, and {@link snapWaypoints} only snaps
+ * {@link WAYPOINT_SNAP} px. When the step right after the source's leg (or right before the
+ * target's) is under {@link ANCHOR_JOG_MAX} and the legs on both sides of it run the same way (a
+ * Z, not a U), slide the run after it onto the anchor's line ({@link moveLane}: the next corner
+ * just stretches, a label on the run rides along), so the edge leaves straight. That run is
+ * interior (both ends bends), so no anchor moves. Runs in {@link finishEdges} after
+ * {@link avoidSubgraphs} (which uses the step as the hinge that pulls a trunk out of a
+ * container) and before the node-avoid passes and {@link separateLanes} (which clear whatever
+ * the slid run lands on). Orthogonal routes only (elbow, or curved with bends). Mirrored in the
+ * runtime twin.
+ */
+export function straightenAnchorJogs(
+  edges: Array<{ points: Point[]; path?: string; labelPos?: Point }>,
+  style: EdgeStyle,
+): void {
+  edges.forEach((e) => {
+    const p = e.points;
+    if (style === "curved" && !isOrthogonalRoute(p)) return;
+    let did = false;
+    for (const atSource of [true, false]) {
+      const len = p.length;
+      if (len < 5) break;
+      // anchor leg a→b, step b→c, run c→d (points[i]..points[i+1], both bends)
+      const i = atSource ? 2 : len - 4;
+      const [a, b, c, d] = atSource ? [p[0]!, p[1]!, p[2]!, p[3]!] : [p[len - 1]!, p[len - 2]!, p[len - 3]!, p[len - 4]!];
+      const vertical = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) >= 0.5;
+      if (!vertical && !(Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) >= 0.5)) continue;
+      const step = vertical ? c.x - b.x : c.y - b.y;
+      const zShape = vertical
+        ? Math.abs(c.y - b.y) < 0.5 && Math.abs(c.x - d.x) < 0.5 && Math.sign(b.y - a.y) === Math.sign(d.y - c.y)
+        : Math.abs(c.x - b.x) < 0.5 && Math.abs(c.y - d.y) < 0.5 && Math.sign(b.x - a.x) === Math.sign(d.x - c.x);
+      if (!zShape || n(step) === 0 || Math.abs(step) >= ANCHOR_JOG_MAX) continue;
+      const lo = vertical ? Math.min(c.y, d.y) : Math.min(c.x, d.x);
+      const hi = vertical ? Math.max(c.y, d.y) : Math.max(c.x, d.x);
+      moveLane(e, vertical, { edge: 0, i, along: vertical ? c.x : c.y, lo, hi }, vertical ? b.x : b.y);
+      const sp = simplify(p);
+      p.splice(0, p.length, ...sp);
+      did = true;
+    }
+    if (did) e.path = orthoPath(p, style);
   });
 }
 

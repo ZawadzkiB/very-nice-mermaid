@@ -205,6 +205,75 @@ describe("edge labels get room between ranks (v0.7.3)", () => {
   });
 });
 
+// v0.7.3 bug 7 - a short Z-jog where an edge leaves or enters a box: the port spreader put the
+// anchor a few px off where the edge actually heads (dagre's column for a long edge, or the other
+// end's anchor for a short one), and the elbow router joined the two with a tiny step.
+describe("no short jog where an edge leaves or enters a box (v0.7.3)", () => {
+  /** Interior segments shorter than `max` whose neighbours run the same way: a Z-step, not a turn. */
+  const shortJogs = (pos: ReturnType<typeof layout>, max = 15) =>
+    pos.edges.flatMap((e) =>
+      e.points.slice(1, -2).flatMap((b, s) => {
+        const [a, c, d] = [e.points[s]!, e.points[s + 2]!, e.points[s + 3]!];
+        const len = Math.hypot(c.x - b.x, c.y - b.y);
+        const same = Math.sign(b.x - a.x) === Math.sign(d.x - c.x) && Math.sign(b.y - a.y) === Math.sign(d.y - c.y);
+        return len > 0 && len < max && same ? [`${e.from}->${e.to} ${len.toFixed(2)}px`] : [];
+      }),
+    );
+  // Astrolabe's contracts.md fence: Engine has two edges leaving its bottom, and ComponentManifest three.
+  const CONTRACTS = [
+    "flowchart TD",
+    '  manifest["ComponentManifest<br/>(data, one per type)"]',
+    '  definition["ComponentDefinition<br/>(engine side)"]',
+    '  elementApi["PlayerElementApi<br/>(player side)"]',
+    '  descriptor["EditorDescriptor<br/>(authoring side)"]',
+    '  engine["Engine"]',
+    '  player["#lt;astl-player#gt;"]',
+    '  adapter["EditorAdapter<br/>(your WYSIWYG)"]',
+    '  key["AnswerKey"]',
+    '  checker["Checker<br/>(local or HTTP: grading protocol)"]',
+    "  manifest --- definition",
+    "  manifest --- elementApi",
+    "  manifest --- descriptor",
+    "  definition --- engine",
+    "  engine --- key",
+    "  elementApi ---- player",
+    "  engine -->|view| player",
+    "  descriptor --- adapter",
+    "  adapter --> player",
+    "  player --- checker",
+    "  checker -->|grade| key",
+  ].join("\n");
+
+  it("Engine -> AnswerKey leaves Engine straight down its own column", () => {
+    const pos = layout(parse(CONTRACTS));
+    expect(shortJogs(pos)).toEqual([]);
+    const e = pos.edges.find((ed) => ed.from === "engine" && ed.to === "key")!;
+    expect(e.points[1]!.x).toBe(e.points[0]!.x);
+    expect(e.points[1]!.y - e.points[0]!.y).toBeGreaterThan(100);
+  });
+
+  it("a short edge whose ends are a few px apart is drawn straight", () => {
+    const pos = layout(parse(CONTRACTS));
+    const e = pos.edges.find((ed) => ed.from === "manifest" && ed.to === "elementApi")!;
+    expect(e.points).toHaveLength(2);
+    expect(e.points[0]!.x).toBe(e.points[1]!.x);
+    const lr = layout(parse(readFileSync(join(here, "..", "docs", "pipeline.mmd"), "utf8")));
+    expect(shortJogs(lr)).toEqual([]);
+    const scan = lr.edges.find((ed) => ed.from === "test" && ed.to === "scan")!;
+    expect(scan.points).toHaveLength(2);
+    expect(scan.points[0]!.y).toBe(scan.points[1]!.y);
+  });
+
+  it("no edge of the fence runs through a box that is not its own end", () => {
+    expect(edgeThroughNodeCount(layout(parse(CONTRACTS)))).toBe(0);
+  });
+
+  it("keeps a real elbow (an offset of a third of a port step or more)", () => {
+    const pos = layout(parse("flowchart TD\n A[Wide source node] --> B[B]\n A --> C[C]"));
+    for (const e of pos.edges) expect(e.points.length).toBeGreaterThan(2);
+  });
+});
+
 describe("layout produces non-overlapping nodes", () => {
   const files = readdirSync(fixturesDir).filter((f) => f.endsWith(".mmd"));
   for (const file of files) {

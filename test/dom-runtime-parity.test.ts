@@ -1117,6 +1117,61 @@ describe("DOM runtime parity with shared geometry + style (REV-003)", () => {
     }
   });
 
+  // ---- v0.7.3 bug 7: a short Z-step next to an anchor. Astrolabe's contracts fence fires both
+  // fixes: computePerimeterPorts' alignPorts lines up a short edge's two ports
+  // (ComponentManifest --- PlayerElementApi) and straightenAnchorJogs slides a long edge's column
+  // onto its port (Engine --- AnswerKey). The twin (computePorts + its straightenAnchorJogs)
+  // must reproduce both live, in Save-SVG, and after a drag.
+  it("alignPorts + straightenAnchorJogs: the twin removes the short steps too (v0.7.3)", () => {
+    const dsl = [
+      "flowchart TD",
+      '  manifest["ComponentManifest<br/>(data, one per type)"]',
+      '  elementApi["PlayerElementApi<br/>(player side)"]',
+      '  descriptor["EditorDescriptor<br/>(authoring side)"]',
+      '  definition["ComponentDefinition<br/>(engine side)"]',
+      '  checker["Checker<br/>(local or HTTP: grading protocol)"]',
+      "  manifest --- definition",
+      "  manifest --- elementApi",
+      "  manifest --- descriptor",
+      "  definition --- engine",
+      "  engine --- key[AnswerKey]",
+      "  elementApi ---- player",
+      "  engine -->|view| player",
+      "  descriptor --- adapter[EditorAdapter]",
+      "  adapter --> player",
+      "  player --- checker",
+      "  checker -->|grade| key",
+    ].join("\n");
+    for (const themeName of ["light", "arch-light"] as const) {
+      const { model, theme } = prepare(dsl, { theme: themeName });
+      const edge = (from: string, to: string) => model.edges.find((e) => e.from === from && e.to === to)!;
+      const nodeX = (id: string) => model.nodes.find((nd) => nd.id === id)!.x;
+      if (themeName === "light") {
+        // fired (short edge): one straight segment, off PlayerElementApi's centre line
+        const short = edge("manifest", "elementApi");
+        expect(short.points).toHaveLength(2);
+        expect(short.points[0]!.x).toBe(short.points[1]!.x);
+        expect(short.points[1]!.x).not.toBe(nodeX("elementApi"));
+        // fired (long edge): dagre's column is off the port, and the edge still leaves straight down
+        const long = edge("engine", "key");
+        expect(long.waypoints![0]!.x).not.toBe(long.points[0]!.x);
+        expect(long.points[1]!.x).toBe(long.points[0]!.x);
+      } else {
+        // fired (long edge on its source's column): straight, entering player off its centre
+        const column = edge("elementApi", "player");
+        expect(column.waypoints!.length).toBeGreaterThan(0);
+        expect(column.points).toHaveLength(2);
+        expect(column.points[1]!.x).not.toBe(nodeX("player"));
+      }
+      const { root, handle } = mountFakeH(buildPayload(model, theme, { minimap: false, persist: false }));
+      expect(edgePaths(root)).toEqual(expectedPaths(model, worldBoxes(model), theme));
+      expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+      const api = model.nodes.find((nd) => nd.id === "elementApi")!;
+      handle.importLayout({ version: 1, positions: { elementApi: { x: api.x + 6, y: api.y } } });
+      expect(handle.toSvgString()).toBe(renderSvgFromModel(editedModel(model, theme, handle), theme));
+    }
+  });
+
   // ---- v0.6.6 avoidSubgraphs under a live DRAG (FR5, REV-002): dragging re-runs the live pass
   // on the moved container boxes. Prove it stays deterministic (a repeated identical edit is
   // byte-identical) and that the live re-route byte-matches the static applyPositions() of the
