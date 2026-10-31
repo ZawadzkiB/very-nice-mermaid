@@ -250,6 +250,43 @@ describe("matchLink unit", () => {
   });
 });
 
+// v0.7.3 bug 1 - link length counts like mermaid. mermaid 11.16.0 flowDb.destructEndLink
+// drops the closing character and counts the rest: `-->`, `---`, `==>`, `===`, `-.->`, `-.-`
+// are all length 1, each extra `-` / `=` / `.` adds one; a `-- text -->` link takes its
+// length from the closing operator (destructLink(_str, _startStr) reads the END token).
+// vnm keeps its unit (`-->` = 2), so `length` is mermaid's length + 1.
+describe("link length counts like mermaid (v0.7.3)", () => {
+  const len = (op: string) => matchLink(op)!.length;
+  it("`---` and `===` are as long as `-->` and `==>`", () => {
+    expect(len("-->")).toBe(2);
+    expect(len("---")).toBe(2);
+    expect(len("==>")).toBe(2);
+    expect(len("===")).toBe(2);
+    expect(len("<-->")).toBe(2);
+    expect(len("x--x")).toBe(2);
+  });
+  it("each extra line character adds one", () => {
+    expect(len("--->")).toBe(3);
+    expect(len("----")).toBe(3);
+    expect(len("---->")).toBe(4);
+    expect(len("====")).toBe(3);
+    expect(len("o---o")).toBe(3);
+  });
+  it("dotted links count their dots", () => {
+    expect(len("-.->")).toBe(2);
+    expect(len("-.-")).toBe(2);
+    expect(len("-..->")).toBe(3);
+    expect(len("-..-")).toBe(3);
+  });
+  it("a middle-label link takes its length from the closing operator", () => {
+    expect(len("-- text ---")).toBe(2);
+    expect(len("-- text -->")).toBe(2);
+    expect(len("-- text --->")).toBe(3);
+    expect(len("== t ===>")).toBe(3);
+    expect(len("-. t ..->")).toBe(3);
+  });
+});
+
 describe("corpus fixtures parse cleanly (lenient)", () => {
   const files = readdirSync(fixturesDir).filter((f) => f.endsWith(".mmd"));
   it("has a real corpus", () => {

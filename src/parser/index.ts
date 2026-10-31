@@ -588,17 +588,21 @@ function parseStyleProps(
  * form, and a trailing `|label|`.
  */
 export function matchLink(rest: string): LinkMatch | null {
-  // Middle-label forms first (more specific).
+  // Middle-label forms first (more specific): start marker, opening line, label,
+  // closing line, end marker.
   const mid =
-    /^([<xo])?={2,}[ \t]+(.+?)[ \t]+={2,}([>xo])?/.exec(rest) ??
-    /^([<xo])?-\.+[ \t]+(.+?)[ \t]+\.+-([>xo])?/.exec(rest) ??
-    /^([<xo])?-{2,}[ \t]+(.+?)[ \t]+-{2,}([>xo])?/.exec(rest);
+    /^([<xo])?(={2,})[ \t]+(.+?)[ \t]+(={2,})([>xo])?/.exec(rest) ??
+    /^([<xo])?(-\.+)[ \t]+(.+?)[ \t]+(\.+-)([>xo])?/.exec(rest) ??
+    /^([<xo])?(-{2,})[ \t]+(.+?)[ \t]+(-{2,})([>xo])?/.exec(rest);
   let m: RegExpExecArray | null = mid;
   let label: string | undefined;
   let lineStyle: "solid" | "dotted" | "thick";
+  /** The operator that closes the link; mermaid reads the link length from it. */
+  let closing: string;
   if (m) {
-    label = normalizeLabel(m[2]!);
+    label = normalizeLabel(m[3]!);
     lineStyle = m[0]!.includes("=") ? "thick" : m[0]!.includes(".") ? "dotted" : "solid";
+    closing = m[4]! + (m[5] ?? "");
   } else {
     m =
       /^([<xo])?-\.+-([>xo])?/.exec(rest) ??
@@ -606,6 +610,7 @@ export function matchLink(rest: string): LinkMatch | null {
       /^([<xo])?-{2,}([>xo])?/.exec(rest);
     if (!m) return null;
     lineStyle = m[0]!.includes("=") ? "thick" : m[0]!.includes(".") ? "dotted" : "solid";
+    closing = m[0]!;
   }
 
   let consumed = m[0]!.length;
@@ -623,8 +628,7 @@ export function matchLink(rest: string): LinkMatch | null {
     consumed += pipe[0].length;
   }
 
-  const lineChars = m[0]!.replace(/[<>xo]/g, "");
-  const length = lineChars.replace(/[^-=]/g, "").length || 2;
+  const length = linkLength(closing);
 
   let kind: EdgeKind;
   if (lineStyle === "dotted") kind = "dotted";
@@ -634,4 +638,20 @@ export function matchLink(rest: string): LinkMatch | null {
   const out: LinkMatch = { consumed, kind, arrows, length };
   if (label !== undefined) out.label = label;
   return out;
+}
+
+/**
+ * Link length in vnm's unit (`-->` = 2), counted the way mermaid 11.16.0 does in
+ * `flowDb.destructEndLink`: the closing character (`>`, `x`, `o`, or the last line
+ * character of an open link) is not counted, so `-->`, `---`, `==>`, `===`, `-.->`
+ * and `-.-` are all mermaid length 1 and each extra `-`, `=` or `.` adds one; a
+ * dotted link counts its dots. vnm stores mermaid's length + 1.
+ */
+function linkLength(op: string): number {
+  const marked = /[>xo]$/.test(op);
+  let line = op.replace(/^[<xo]/, "").replace(/[>xo]$/, "");
+  if (!marked) line = line.slice(0, -1);
+  const dots = line.split(".").length - 1;
+  const mermaidLength = dots > 0 ? dots : line.length - 1;
+  return Math.max(1, mermaidLength) + 1;
 }

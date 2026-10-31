@@ -254,7 +254,9 @@ export function layout(model: DiagramModel, opts: LayoutOptions = {}): Positione
 
   model.edges.forEach((edge, i) => {
     if (!g.hasNode(edge.from) || !g.hasNode(edge.to)) return;
-    const minlen = Math.min(4, Math.max(1, Math.round(edge.length / 2)));
+    // mermaid 11.16.0 hands dagre `minlen: edge.length` (flowDb.getData), capped at 10
+    // (flowDb.addSingleLink); vnm's length is mermaid's + 1 (see DiagramEdge.length).
+    const minlen = Math.min(10, Math.max(1, edge.length - 1));
     g.setEdge(edge.from, edge.to, { minlen, weight: 1 }, `e${i}`);
   });
 

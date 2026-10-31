@@ -84,7 +84,11 @@ export interface DiagramEdge {
   kind: EdgeKind;
   label?: string;
   arrows: ArrowEnds;
-  /** Number of line characters (`--` = 2). Feeds layout rank spacing. */
+  /**
+   * Link length in line characters, counted like mermaid: the closing character is
+   * not counted, so `-->`, `---`, `==>`, `===`, `-.->` and `-.-` are all 2 and each
+   * extra `-`, `=` or `.` adds one. An edge spans `length - 1` ranks (at most 10).
+   */
   length: number;
 }
 

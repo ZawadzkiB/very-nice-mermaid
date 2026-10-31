@@ -89,6 +89,37 @@ describe("layout respects direction", () => {
   });
 });
 
+// v0.7.3 bug 1 - mermaid 11.16.0 flowDb.getData hands dagre `minlen: edge.length`, where
+// destructEndLink counts the link without its closing character (`---` = `-->` = 1) and
+// addSingleLink caps the length at 10.
+describe("link length spans ranks like mermaid (v0.7.3)", () => {
+  const gap = (op: string) => {
+    const pos = layout(parse(`flowchart TD\n A ${op} B`));
+    const a = pos.nodes.find((n) => n.id === "A")!;
+    const b = pos.nodes.find((n) => n.id === "B")!;
+    return b.y - a.y;
+  };
+  it("`---`, `===` and `-.-` span the same ranks as `-->`, `==>` and `-.->`", () => {
+    expect(gap("---")).toBe(gap("-->"));
+    expect(gap("===")).toBe(gap("==>"));
+    expect(gap("-.-")).toBe(gap("-.->"));
+    expect(gap("-- text ---")).toBe(gap("-->"));
+  });
+  it("each extra line character adds one rank", () => {
+    const one = gap("-->");
+    const two = gap("--->");
+    const three = gap("---->");
+    expect(two).toBeGreaterThan(one);
+    expect(three - two).toBe(two - one);
+    expect(gap("----")).toBe(two);
+    expect(gap("-..->")).toBe(two);
+  });
+  it("caps the span at 10 ranks", () => {
+    expect(gap("-".repeat(11) + ">")).toBeGreaterThan(gap("-".repeat(10) + ">"));
+    expect(gap("-".repeat(20) + ">")).toBe(gap("-".repeat(11) + ">"));
+  });
+});
+
 describe("layout produces non-overlapping nodes", () => {
   const files = readdirSync(fixturesDir).filter((f) => f.endsWith(".mmd"));
   for (const file of files) {
